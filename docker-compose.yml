@@ -1,0 +1,15 @@
+services:
+  fieldlink:
+    build: ./server
+    ports:
+      - "8000:8000"
+    environment:
+      FIELDLINK_ADMIN_KEY: ${FIELDLINK_ADMIN_KEY:?Set FIELDLINK_ADMIN_KEY in .env}
+      FIELDLINK_DEVICE_TOKEN: ${FIELDLINK_DEVICE_TOKEN:?Set FIELDLINK_DEVICE_TOKEN in .env}
+      FIELDLINK_SECRET: ${FIELDLINK_SECRET:?Set FIELDLINK_SECRET in .env}
+      FIELDLINK_DATA: /data
+    volumes:
+      - fieldlink_data:/data
+    restart: unless-stopped
+volumes:
+  fieldlink_data:
