@@ -15,6 +15,7 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import androidx.documentfile.provider.DocumentFile
+import android.media.projection.MediaProjectionManager
 
 class MainActivity : Activity() {
     private val pickFolder=4101
@@ -75,6 +76,7 @@ class MainActivity : Activity() {
         settings.addView(text("Old cache files are quarantined. Switching projects requires stopping and restarting the uploader.",13f,muted))
         root.addView(settings)
         root.addView(text(""))
+        root.addView(button("Start kamerametadata") { startMetadataCapture() })
         root.addView(button("Start secure upload") { saveAndStart() })
         root.addView(text(""))
         root.addView(button("Stop upload") { stopService(Intent(this,UploadService::class.java));folderLabel.text="Uploader stopped" })
@@ -82,6 +84,11 @@ class MainActivity : Activity() {
         root.addView(text("OFFSET TEST BUILD · Verify project isolation before customer use",12f,muted))
         setContentView(ScrollView(this).apply { addView(root) })
     }
+    private fun startMetadataCapture() {
+    val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+    startActivityForResult(manager.createScreenCaptureIntent(), 4321)
+}
+
     private fun chooseFolder() {
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
@@ -90,6 +97,16 @@ class MainActivity : Activity() {
     @Deprecated("SAF compatibility")
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
         super.onActivityResult(requestCode,resultCode,data)
+        if (requestCode == 4321) {
+    if (resultCode == RESULT_OK && data != null) {
+        val intent = Intent(this, ScreenCaptureService::class.java).apply {
+            putExtra("projection_result_code", resultCode)
+            putExtra("projection_data", data)
+        }
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
+    }
+    return
+}
         if(requestCode==pickFolder && resultCode==RESULT_OK) {
             val uri=data?.data?:return
             contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
