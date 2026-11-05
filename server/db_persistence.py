@@ -21,8 +21,7 @@ BUCKET = lambda: os.environ.get("R2_BUCKET", "offset-rushes")
 def restore(database_path):
     """Restore the authoritative snapshot before opening the application DB."""
     if not r2_enabled():
-        logging.warning("R2 not configured: SQLite database is NOT durable")
-        return
+        raise RuntimeError("R2 is required for durable project storage")
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with LOCK:
@@ -51,7 +50,7 @@ def restore(database_path):
 def snapshot(database_path):
     """Use SQLite's online backup API, then upload a consistent snapshot."""
     if not r2_enabled():
-        return
+        raise RuntimeError("R2 is required for durable project storage")
     path = Path(database_path)
     with LOCK:
         with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".db-snapshot-", delete=False) as f:
