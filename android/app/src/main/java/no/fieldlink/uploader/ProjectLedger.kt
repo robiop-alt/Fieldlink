@@ -74,6 +74,33 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
         db.execSQL("INSERT OR IGNORE INTO media(uri,size,modified,project,state) VALUES(?,?,?,?, 'pending')", arrayOf(key,size,modified,activeProject))
         return "pending"
     }
+    @Synchronized fun enqueueManual(f: DocumentFile, project: String): String {
+        if(project.isBlank() || !f.isFile || f.length()<=0L) return "Invalid file"
+        val key=f.uri.toString()
+        val db=writableDatabase
+        db.rawQuery("SELECT project,state,size,modified FROM media WHERE uri=?",arrayOf(key)).use { row ->
+            if(row.moveToFirst()) {
+                val owner=if(row.isNull(0)) null else row.getString(0)
+                val state=row.getString(1)
+                if(owner!=null && owner!=project) return "File belongs to another project"
+                if(state=="done") return "Already uploaded"
+                if(state=="pending" && owner==project) return "Already queued"
+                db.execSQL("UPDATE media SET project=?,state='pending',size=?,modified=?,upload_id=NULL,received=0 WHERE uri=?",
+                    arrayOf(project,f.length(),f.lastModified(),key))
+                return "Queued"
+            }
+        }
+        db.execSQL("INSERT INTO media(uri,size,modified,project,state) VALUES(?,?,?,?,'pending')",
+            arrayOf(key,f.length(),f.lastModified(),project))
+        return "Queued"
+    }
+    @Synchronized fun manualPending(project:String):List<String> {
+        val result=mutableListOf<String>()
+        readableDatabase.rawQuery("SELECT uri FROM media WHERE project=? AND state='pending'",arrayOf(project)).use { rows ->
+            while(rows.moveToNext()) result.add(rows.getString(0))
+        }
+        return result
+    }
     @Synchronized fun markDone(f: DocumentFile, project: String) {
         writableDatabase.execSQL("UPDATE media SET state='done',upload_id=NULL,received=0 WHERE uri=? AND project=? AND state='pending'", arrayOf(f.uri.toString(),project))
     }
