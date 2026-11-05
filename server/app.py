@@ -205,6 +205,17 @@ def upload_complete(upload_id:str,x_device_token:str=Header(default='')):
     with open(tmp,'rb') as source:
         for block in iter(lambda: source.read(1024*1024), b''): h.update(block)
     digest=h.hexdigest()
+    # Upload the original to durable storage BEFORE acknowledging completion.
+    # On failure, keep the temporary upload and DB record so the client can retry.
+    if os.getenv("R2_ENDPOINT"):
+        try:
+            from r2_storage import upload_clip_if_enabled
+            if not upload_clip_if_enabled(tmp, clip_id):
+                raise RuntimeError("R2 credentials are incomplete")
+        except Exception:
+            import logging
+            logging.exception("R2 upload failed for clip %s", clip_id)
+            raise HTTPException(503, "Permanent video storage unavailable; retry completion")
     with STORAGE_LOCK:
         make_room(u['total'])
         tmp.replace(FILES/clip_id)
@@ -213,13 +224,6 @@ def upload_complete(upload_id:str,x_device_token:str=Header(default='')):
             c.execute('DELETE FROM uploads WHERE id=?',(upload_id,))
     generate_thumbnail(clip_id)
     probe_metadata(clip_id)
-    if os.getenv("R2_ENDPOINT"):
-        try:
-            from r2_storage import upload_clip_if_enabled
-            upload_clip_if_enabled(FILES / clip_id, clip_id)
-        except Exception:
-            import logging
-            logging.exception("R2 upload failed for clip %s", clip_id)
     return {'clip_id':clip_id,'status':'ready','sha256':digest}
 
 @app.get('/api/upload/{upload_id}')
