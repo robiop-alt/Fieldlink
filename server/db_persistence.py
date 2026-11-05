@@ -21,7 +21,7 @@ BUCKET = lambda: os.environ.get("R2_BUCKET", "offset-rushes")
 def restore(database_path):
     """Restore the authoritative snapshot before opening the application DB."""
     if not r2_enabled():
-        raise RuntimeError("R2 is required for durable project storage")
+        return
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with LOCK:
