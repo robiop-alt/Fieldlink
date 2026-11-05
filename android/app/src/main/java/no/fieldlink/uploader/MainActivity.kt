@@ -1,6 +1,15 @@
 package no.fieldlink.uploader
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.Context
+import android.graphics.Bitmap
+import android.widget.ImageView
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.MultiFormatWriter
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -61,6 +70,7 @@ class MainActivity : Activity() {
         token=field("Device token",prefs.getString("token","")?:"",true)
         config.addView(server);config.addView(project);config.addView(token)
         root.addView(config)
+        root.addView(button("Vis prosjektets QR-kode / del lenke") { showProjectShare() })
         root.addView(text(""))
         val source=card("DJI cache")
         folderLabel=text("",13f,muted);source.addView(folderLabel)
@@ -116,6 +126,61 @@ class MainActivity : Activity() {
         root.addView(text("OFFSET TEST BUILD · Verify project isolation before customer use",12f,muted))
         setContentView(ScrollView(this).apply { addView(root) })
     }
+    private fun showProjectShare() {
+        val base=server.text.toString().trim().trimEnd('/')
+        val pid=project.text.toString().trim()
+        val device=token.text.toString().trim()
+        if(!base.startsWith("https://") || pid.isBlank() || device.isBlank()) {
+            AlertDialog.Builder(this).setMessage("Fyll inn HTTPS-server, prosjekt-ID og enhetstoken først.")
+                .setPositiveButton("OK",null).show()
+            return
+        }
+        Thread {
+            try {
+                val request=Request.Builder().url("$base/api/device/projects/$pid/share")
+                    .header("X-Device-Token",device).build()
+                val response=OkHttpClient().newCall(request).execute().use { res ->
+                    if(!res.isSuccessful) throw IllegalStateException("Server svarte ${res.code}")
+                    JSONObject(res.body?.string() ?: "{}")
+                }
+                val url=response.getString("url")
+                val projectName=response.optString("name","Prosjekt")
+                val size=640
+                val matrix=MultiFormatWriter().encode(url,BarcodeFormat.QR_CODE,size,size)
+                val pixels=IntArray(size*size) { index ->
+                    if(matrix[index%size,index/size]) Color.BLACK else Color.WHITE
+                }
+                val bitmap=Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888)
+                bitmap.setPixels(pixels,0,size,0,0,size,size)
+                runOnUiThread {
+                    val image=ImageView(this).apply {
+                        setImageBitmap(bitmap)
+                        setPadding(dp(20),dp(12),dp(20),dp(12))
+                        adjustViewBounds=true
+                    }
+                    AlertDialog.Builder(this)
+                        .setTitle("Del $projectName")
+                        .setMessage("Skann koden for å åpne prosjektet. Mottakeren må fortsatt ha prosjektets PIN-kode.")
+                        .setView(image)
+                        .setPositiveButton("Del lenke") { _,_ ->
+                            val share=Intent(Intent.ACTION_SEND).apply {
+                                type="text/plain"
+                                putExtra(Intent.EXTRA_TEXT,url)
+                            }
+                            startActivity(Intent.createChooser(share,"Del OFFSET-prosjekt"))
+                        }
+                        .setNegativeButton("Lukk",null).show()
+                }
+            } catch(e:Exception) {
+                runOnUiThread {
+                    AlertDialog.Builder(this).setTitle("Kunne ikke hente prosjektlenke")
+                        .setMessage(e.message ?: "Ukjent feil")
+                        .setPositiveButton("OK",null).show()
+                }
+            }
+        }.start()
+    }
+
     private fun startMetadataCapture() {
     val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
     startActivityForResult(manager.createScreenCaptureIntent(), 4321)
