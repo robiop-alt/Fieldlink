@@ -1,5 +1,5 @@
-<!doctype html><html lang="no"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OFFSET · Review</title><link rel="stylesheet" href="/static/style.css"></head><body><main class="shell"><header class="top"><a class="brand" href="/">OFF<span>SET.</span></a><div class="tag">PRIVATE REVIEW</div></header><section class="hero"><p class="eyebrow">SECURE DAILIES</p><h1>Review from<br><em>wherever you are.</em></h1><p class="muted">Privat tilgang til opptak fra felt.</p></section><section class="panel" id="gate"><p class="eyebrow">ACCESS REQUIRED</p><h2>Prosjekt-PIN</h2><label>PIN-kode<input id="pin" inputmode="numeric" autocomplete="one-time-code" placeholder="6-sifret PIN"></label><button id="unlock">Åpne rushes</button><p id="error" class="error"></p></section><section id="content" class="hidden"><div class="panel"><p class="eyebrow">PROJECT MEDIA</p><h2>Rushes</h2><p class="muted" id="count"></p><div id="clips" class="clipgrid"></div></div></section><footer>OFFSET <span>·</span> PRIVATE RUSHES DELIVERY</footer></main><script>
-const slug=location.pathname.split('/').filter(Boolean).pop();let token='';const $=id=>document.getElementById(id);$('unlock').onclick=unlock;$('pin').addEventListener('keydown',e=>{if(e.key==='Enter')unlock()});async function unlock(){try{let r=await fetch(`/api/review/${slug}/unlock`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:$('pin').value})});let d=await r.json();if(!r.ok)throw Error(d.detail||'Feil PIN');token=d.token;$('gate').classList.add('hidden');$('content').classList.remove('hidden');await load()}catch(e){$('error').textContent=e.message}}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OFFSET · Review</title><link rel="stylesheet" href="/static/style.css"></head><body><main class="shell"><header class="top"><a class="brand" href="/"><img src="/static/offset-logo.svg" alt="OFFSET." /></a><div class="tag">PRIVATE REVIEW</div></header><section class="hero"><p class="eyebrow">SECURE DAILIES</p><h1>Review from<br><em>wherever you are.</em></h1><p class="muted">Private access to production footage, wherever you are.</p></section><section class="panel" id="gate"><p class="eyebrow">ACCESS REQUIRED</p><h2>Project PIN</h2><label>PIN code<input id="pin" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit PIN"></label><button id="unlock">Open rushes</button><p id="error" class="error"></p></section><section id="content" class="hidden"><div class="panel"><p class="eyebrow">PROJECT MEDIA</p><h2>Rushes</h2><p class="muted" id="count"></p><div id="clips" class="clipgrid"></div></div></section><footer>OFFSET <span>·</span> PRIVATE RUSHES DELIVERY</footer></main><script>
+const slug=location.pathname.split('/').filter(Boolean).pop();let token='';const $=id=>document.getElementById(id);$('unlock').onclick=unlock;$('pin').addEventListener('keydown',e=>{if(e.key==='Enter')unlock()});async function unlock(){try{let r=await fetch(`/api/review/${slug}/unlock`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:$('pin').value})});let d=await r.json();if(!r.ok)throw Error(d.detail||'Invalid PIN');token=d.token;$('gate').classList.add('hidden');$('content').classList.remove('hidden');await load()}catch(e){$('error').textContent=e.message}}
 let selected=new Set();
 // PIN-free share links carry a 24-hour signed token in the URL fragment.
 (async()=>{
@@ -12,33 +12,33 @@ let selected=new Set();
    body:JSON.stringify({share_token:share})
   });
   const data=await r.json();
-  if(!r.ok)throw Error(data.detail||'Delingslenken er utløpt');
+  if(!r.ok)throw Error(data.detail||'Share link has expired');
   token=data.token;
   $('gate').classList.add('hidden');
   $('content').classList.remove('hidden');
   await load();
- }catch(e){$('error').textContent=e.message+' · Skriv inn PIN-kode for å fortsette.'}
+ }catch(e){$('error').textContent=e.message+' · Skriv inn PIN code for å fortsette.'}
 })();
 
 async function load(){
  const r=await fetch(`/api/review/${slug}/clips`,{headers:{Authorization:`Bearer ${token}`}});
- const clips=await r.json();if(!r.ok)throw Error(clips.detail||'Kunne ikke hente klipp');
- $('count').textContent=`${clips.length} klipp tilgjengelig`;
+ const clips=await r.json();if(!r.ok)throw Error(clips.detail||'Could not load clips');
+ $('count').textContent=`${clips.length} clips available`;
  let filters=document.getElementById('metadata-filters');
  if(!filters){filters=document.createElement('div');filters.id='metadata-filters';$('clips').before(filters)}
- filters.innerHTML='<label>Filter: kamera / kodek / brennvidde <input id="clip-filter" placeholder="F.eks. prores, 35, X9"></label>';
+ filters.innerHTML='<label>Filter: camera / codec / focal length <input id="clip-filter" placeholder="e.g. ProRes, 35, X9"></label>';
  const renderFilter=()=>{const q=document.getElementById('clip-filter').value.toLowerCase();
  document.querySelectorAll('.clip[data-search]').forEach(el=>{el.style.display=el.dataset.search.includes(q)?'':'none'})};
  const base=`/api/review/${slug}`;const auth=`session=${encodeURIComponent(token)}`;
- $('clips').innerHTML=clips.map(c=>`<article class="clip" data-search="${esc([c.filename,...Object.values(c.metadata||{})].join(' ').toLowerCase())}"><video controls preload="metadata" playsinline poster="${base}/clips/${c.id}/thumbnail?${auth}" src="${base}/clips/${c.id}/file?${auth}"></video><div class="clipmeta"><b>${esc(c.filename)}</b><span>${(c.size/1048576).toFixed(1)} MB · <span id="dur-${c.id}">--:--</span></span><small>${esc(Object.entries(c.metadata||{}).filter(([k,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>`${k.replaceAll('_',' ')}: ${v}`).join(' · ')||'Ingen lesbare kamerametadata')}</small></div><label><input type="checkbox" data-select="${c.id}"> Marker klipp</label><a href="${base}/clips/${c.id}/file?${auth}&download=1">Last ned klipp ↓</a></article>`).join('')||'Ingen klipp er lastet opp ennå.';document.getElementById('clip-filter').oninput=renderFilter;
+ $('clips').innerHTML=clips.map(c=>`<article class="clip" data-search="${esc([c.filename,...Object.values(c.metadata||{})].join(' ').toLowerCase())}"><video controls preload="metadata" playsinline poster="${base}/clips/${c.id}/thumbnail?${auth}" src="${base}/clips/${c.id}/file?${auth}"></video><div class="clipmeta"><b>${esc(c.filename)}</b><span>${(c.size/1048576).toFixed(1)} MB · <span id="dur-${c.id}">--:--</span></span><small>${esc(Object.entries(c.metadata||{}).filter(([k,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>`${k.replaceAll('_',' ')}: ${v}`).join(' · ')||'No readable camera metadata')}</small></div><label><input type="checkbox" data-select="${c.id}"> Select clip</label><a href="${base}/clips/${c.id}/file?${auth}&download=1">Download clip ↓</a></article>`).join('')||'No clips uploaded yet.';document.getElementById('clip-filter').oninput=renderFilter;
  let toolbar=document.getElementById('offset-tools');if(!toolbar){toolbar=document.createElement('div');toolbar.id='offset-tools';$('clips').before(toolbar)}
- toolbar.innerHTML='<button id="select-all" type="button">Marker alle</button> <button id="download-selected" type="button">Last ned markerte (ZIP)</button> <span id="selected-count"></span> <p id="storage-status" class="muted"></p><p class="muted">Midlertidig lagring: de eldste klippene slettes automatisk når plassen trengs. Last ned klipp du vil beholde.</p>';
- const update=()=>{$('selected-count').textContent=`${selected.size} markert`};
+ toolbar.innerHTML='<button id="select-all" type="button">Select all</button> <button id="download-selected" type="button">Download selected (ZIP)</button> <span id="selected-count"></span> <p id="storage-status" class="muted"></p><p class="muted">Originals are stored in durable cloud storage; local cache is managed automatically.</p>';
+ const update=()=>{$('selected-count').textContent=`${selected.size} selected`};
  document.querySelectorAll('[data-select]').forEach(el=>{el.checked=selected.has(el.dataset.select);el.onchange=()=>{el.checked?selected.add(el.dataset.select):selected.delete(el.dataset.select);update()}});
  $('select-all').onclick=()=>{let all=clips.every(c=>selected.has(c.id));selected=all?new Set():new Set(clips.map(c=>c.id));document.querySelectorAll('[data-select]').forEach(el=>el.checked=selected.has(el.dataset.select));update()};
- $('download-selected').onclick=()=>{if(!selected.size)return alert('Marker minst ett klipp');location.href=`${base}/download-selected?${auth}&ids=${[...selected].join(',')}`};update();
+ $('download-selected').onclick=()=>{if(!selected.size)return alert('Select at least one clip');location.href=`${base}/download-selected?${auth}&ids=${[...selected].join(',')}`};update();
  clips.forEach(async c=>{try{let r=await fetch(`${base}/clips/${c.id}/duration?${auth}`);let d=await r.json();if(d.seconds!=null){let n=Math.floor(d.seconds);let el=document.getElementById(`dur-${c.id}`);if(el)el.textContent=`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`}}catch(e){}});
- try{let r=await fetch(`${base}/storage?${auth}`);let d=await r.json();$('storage-status').textContent=`Lagring: ${(d.used_bytes/1073741824).toFixed(2)} / ${(d.limit_bytes/1073741824).toFixed(0)} GB`;}catch(e){}
+ try{let r=await fetch(`${base}/storage?${auth}`);let d=await r.json();$('storage-status').textContent=`Local cache: ${(d.used_bytes/1073741824).toFixed(2)} / ${(d.limit_bytes/1073741824).toFixed(0)} GB`;}catch(e){}
 }
 
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
