@@ -226,7 +226,7 @@ def health(): return {'ok':True,'product':'OFFSET','version':'1.0.0'}
 def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
     with db() as c:
-        alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ'
         for _ in range(20):
             pid=''.join(secrets.choice(alphabet) for _ in range(8))
             if not c.execute('SELECT 1 FROM projects WHERE id=?',(pid,)).fetchone(): break
