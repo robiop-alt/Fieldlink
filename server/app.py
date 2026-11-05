@@ -1,3 +1,4 @@
+from r2_storage import upload_file, download_file, delete_file
 from fastapi import FastAPI, HTTPException, Header, Request, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -206,6 +207,13 @@ def upload_complete(upload_id:str,x_device_token:str=Header(default='')):
             c.execute('DELETE FROM uploads WHERE id=?',(upload_id,))
     generate_thumbnail(clip_id)
     probe_metadata(clip_id)
+    if os.getenv("R2_ENDPOINT"):
+        try:
+            from r2_storage import upload_clip_if_enabled
+            upload_clip_if_enabled(FILES / clip_id, clip_id)
+        except Exception:
+            import logging
+            logging.exception("R2 upload failed for clip %s", clip_id)
     return {'clip_id':clip_id,'status':'ready','sha256':digest}
 
 @app.get('/api/upload/{upload_id}')
