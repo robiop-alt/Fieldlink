@@ -29,7 +29,7 @@ async function load(){
  $('count').textContent=`${clips.length} clips available`;
  let filters=document.getElementById('metadata-filters');
  if(!filters){filters=document.createElement('div');filters.id='metadata-filters';$('clips').before(filters)}
- filters.innerHTML='<label>Filter: camera / codec / focal length <input id="clip-filter" placeholder="e.g. ProRes, 35, X9"></label>';
+ filters.innerHTML='<label class="filter-compact"><span>Filter clips</span><input id="clip-filter" type="search" placeholder="Camera, codec, focal length…" aria-label="Filter clips"></label>';
  const renderFilter=()=>{const q=document.getElementById('clip-filter').value.toLowerCase();
  document.querySelectorAll('.clip[data-search]').forEach(el=>{el.style.display=el.dataset.search.includes(q)?'':'none'})};
  const base=`/api/review/${slug}`;const auth=`session=${encodeURIComponent(token)}`;
