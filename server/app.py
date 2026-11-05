@@ -286,19 +286,25 @@ def upload_status(upload_id:str,x_device_token:str=Header(default='')):
 # OFFSET additions
 
 def make_room(incoming):
-    """Delete oldest completed clips until the next upload fits."""
-    with db() as c:
-        rows=c.execute('SELECT id,size FROM clips WHERE status="ready" ORDER BY created ASC,id ASC').fetchall()
-        used=sum((FILES/r['id']).stat().st_size for r in rows if (FILES/r['id']).exists())
-        for r in rows:
-            if used+incoming <= LIMIT_BYTES: break
-            f=FILES/r['id']; actual=f.stat().st_size if f.exists() else 0
-            f.unlink(missing_ok=True)
-            (THUMBS/(r['id']+'.jpg')).unlink(missing_ok=True)
-            c.execute('DELETE FROM clips WHERE id=?',(r['id'],))
-            c.execute('DELETE FROM clip_metadata WHERE clip_id=?',(r['id'],))
-            used-=actual
-        if used+incoming > LIMIT_BYTES: raise HTTPException(507,'Insufficient storage')
+    """Evict only locally cached R2 originals; preserve clip records and metadata."""
+    from r2_storage import r2_enabled
+    if not r2_enabled():
+        raise HTTPException(503, 'Durable object storage is required before cache eviction')
+    rows=[]
+    with db() as connection:
+        rows=connection.execute('SELECT id FROM clips WHERE status="ready" ORDER BY created ASC,id ASC').fetchall()
+    used=sum(p.stat().st_size for p in FILES.iterdir() if p.is_file())
+    for row in rows:
+        if used+incoming<=LIMIT_BYTES: break
+        file=FILES/row['id']
+        if not file.exists(): continue
+        size=file.stat().st_size
+        file.unlink()
+        (THUMBS/(row['id']+'.jpg')).unlink(missing_ok=True)
+        used-=size
+    if used+incoming>LIMIT_BYTES:
+        raise HTTPException(507,'Insufficient local cache storage')
+
 
 def generate_thumbnail(clip_id):
     source=FILES/clip_id; output=THUMBS/(clip_id+'.jpg')
