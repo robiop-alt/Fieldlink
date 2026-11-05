@@ -154,7 +154,7 @@ class MainActivity : Activity() {
                         }
                     } else {
                         val data=JSONObject(response.body?.string() ?: "{}")
-                        "Connected successfully!\nProject: ${data.optString("name","Unknown")}\nThe controller can access this project."
+                        "Connection successful: project verified."name","Unknown")}\nThe controller can access this project."
                     }
                 }
             }catch(e:Exception){"Connection failed: ${e.localizedMessage ?: "Check network and server URL."}"}
