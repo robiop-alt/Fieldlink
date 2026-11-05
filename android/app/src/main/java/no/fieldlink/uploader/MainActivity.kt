@@ -13,6 +13,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.documentfile.provider.DocumentFile
 import android.media.projection.MediaProjectionManager
@@ -70,6 +71,37 @@ class MainActivity : Activity() {
         val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay",v).apply() } }
         settings.addView(overlay)
+        settings.addView(text("Gjennomsiktighet på overlay",14f,muted))
+        val opacityValue=text("",13f,muted)
+        val opacity=SeekBar(this).apply {
+            max=80
+            progress=prefs.getInt("overlay_opacity",70).coerceIn(20,100)-20
+            setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar:SeekBar?,value:Int,fromUser:Boolean) {
+                    val percent=value+20
+                    opacityValue.text="Synlighet: $percent %"
+                    if(fromUser) prefs.edit().putInt("overlay_opacity",percent).apply()
+                }
+                override fun onStartTrackingTouch(bar:SeekBar?) {}
+                override fun onStopTrackingTouch(bar:SeekBar?) {}
+            })
+        }
+        opacityValue.text="Synlighet: ${opacity.progress+20} %"
+        settings.addView(opacity)
+        settings.addView(opacityValue)
+        val showStatus=Switch(this).apply {
+            text="Vis opplastingsstatus";setTextColor(Color.WHITE)
+            isChecked=prefs.getBoolean("overlay_show_status",true)
+            setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay_show_status",v).apply() }
+        }
+        val showProject=Switch(this).apply {
+            text="Vis prosjekt-ID";setTextColor(Color.WHITE)
+            isChecked=prefs.getBoolean("overlay_show_project",false)
+            setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay_show_project",v).apply() }
+        }
+        settings.addView(showStatus)
+        settings.addView(showProject)
+        settings.addView(text("Endringer i overlay vises neste gang opplasteren startes.",12f,muted))
         settings.addView(button("Allow overlay on top of DJI Pilot 2") {
             if(Build.VERSION.SDK_INT>=23) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
         })
