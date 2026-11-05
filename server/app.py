@@ -133,19 +133,25 @@ def clips(slug:str, authorization:str=Header(default='')):
             out.append(item)
     return out
 
-@app.get('/api/review/{slug}/clips/{clip_id}/file')
-def clip_file(slug:str,clip_id:str,request:Request,authorization:str=Header(default=''),session:str='',download:int=0):
-    token=authorization.removeprefix('Bearer ').strip() or session; p=review_project(slug,token)
-    with db() as c: clip=c.execute('SELECT * FROM clips WHERE id=? AND project_id=? AND status="ready"',(clip_id,p['id'])).fetchone()
-    if not clip: raise HTTPException(404,'Clip not found')
-    path=FILES/clip_id
+def ensure_clip_local(clip_id):
+    """Restore a missing original from R2 for authenticated review endpoints."""
+    path = FILES / clip_id
     if not path.exists() and os.getenv("R2_ENDPOINT"):
         try:
             download_file(f"clips/{clip_id}", path)
         except Exception:
             import logging
             logging.exception("R2 download failed for clip %s", clip_id)
-    if not path.exists(): raise HTTPException(404,'File missing')
+    if not path.exists():
+        raise HTTPException(404, "Clip missing")
+    return path
+
+@app.get('/api/review/{slug}/clips/{clip_id}/file')
+def clip_file(slug:str,clip_id:str,request:Request,authorization:str=Header(default=''),session:str='',download:int=0):
+    token=authorization.removeprefix('Bearer ').strip() or session; p=review_project(slug,token)
+    with db() as c: clip=c.execute('SELECT * FROM clips WHERE id=? AND project_id=? AND status="ready"',(clip_id,p['id'])).fetchone()
+    if not clip: raise HTTPException(404,'Clip not found')
+    path=ensure_clip_local(clip_id)
     if download: return FileResponse(path,media_type='application/octet-stream',filename=clip['filename'])
     size=path.stat().st_size; range_header=request.headers.get('range')
     if range_header:
@@ -270,7 +276,7 @@ def thumbnail(slug:str,clip_id:str,session:str=''):
     get_clip_for_review(slug,clip_id,session)
     path=THUMBS/(clip_id+'.jpg')
     if not path.exists():
-        if not (FILES/clip_id).exists(): raise HTTPException(404,'Clip missing')
+        ensure_clip_local(clip_id)
         generate_thumbnail(clip_id)
     if not path.exists(): raise HTTPException(404,'Thumbnail unavailable')
     return FileResponse(path,media_type='image/jpeg')
@@ -279,6 +285,7 @@ def thumbnail(slug:str,clip_id:str,session:str=''):
 def duration(slug:str,clip_id:str,session:str=''):
     get_clip_for_review(slug,clip_id,session)
     try:
+        ensure_clip_local(clip_id)
         result=subprocess.run(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(FILES/clip_id)],capture_output=True,text=True,timeout=12,check=True)
         return {'seconds':float(result.stdout.strip())}
     except Exception: return {'seconds':None}
@@ -296,8 +303,7 @@ def download_selected(slug:str,ids:str='',session:str=''):
     used=set()
     for cid in wanted:
         if cid not in by_id: raise HTTPException(404,'Clip unavailable')
-        path=FILES/cid
-        if not path.exists(): raise HTTPException(404,'Clip missing')
+        path=ensure_clip_local(cid)
         name=by_id[cid]['filename']
         if name in used: name=cid[:8]+'_'+name
         used.add(name)
