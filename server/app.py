@@ -33,6 +33,44 @@ def ensure_metadata_schema():
         c.execute("CREATE TABLE IF NOT EXISTS clip_metadata (clip_id TEXT PRIMARY KEY, data_json TEXT NOT NULL)")
 ensure_metadata_schema()
 
+# Editable public website copy; changes are stored in the durable project database.
+SITE_DEFAULTS = {
+    'admin_title': 'Send rushes.',
+    'admin_highlight': 'Keep the story moving.',
+    'admin_description': 'Create a project and share a private review page with your production team.',
+    'review_title': 'Review from',
+    'review_highlight': 'wherever you are.',
+    'review_description': 'Private access to production footage, wherever you are.',
+}
+with db() as connection:
+    connection.execute('CREATE TABLE IF NOT EXISTS site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+
+class SiteSettingsIn(BaseModel):
+    admin_title: str = Field(max_length=120)
+    admin_highlight: str = Field(max_length=120)
+    admin_description: str = Field(max_length=400)
+    review_title: str = Field(max_length=120)
+    review_highlight: str = Field(max_length=120)
+    review_description: str = Field(max_length=400)
+
+def site_copy():
+    with db() as connection:
+        rows=connection.execute('SELECT key,value FROM site_settings').fetchall()
+    return {**SITE_DEFAULTS, **{r['key']:r['value'] for r in rows if r['key'] in SITE_DEFAULTS}}
+
+@app.get('/api/site/settings')
+def public_site_settings():
+    return site_copy()
+
+@app.put('/api/admin/settings')
+def update_site_settings(body:SiteSettingsIn, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key)
+    values=body.model_dump()
+    with db() as connection:
+        for key,value in values.items():
+            connection.execute('INSERT INTO site_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(key,value.strip()))
+    return site_copy()
+
 def probe_metadata(clip_id):
     import json
     path=FILES/clip_id
