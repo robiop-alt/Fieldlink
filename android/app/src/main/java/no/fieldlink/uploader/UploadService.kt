@@ -80,6 +80,20 @@ class UploadService : Service() {
                 if (prefs.getString("project", "") != sessionProject) {
                     status("Prosjekt endret: stopp og start OFFSET på nytt"); stopSelf(); return
                 }
+                // Explicitly queued older files may be outside the monitored DJI folder.
+                // Only the operator can bind them to the selected project.
+                for(uriString in ledger.manualPending(sessionProject)) {
+                    if(!running) break
+                    try {
+                        val file=DocumentFile.fromSingleUri(this,Uri.parse(uriString)) ?: continue
+                        if(!file.isFile || file.length()<=0L) continue
+                        if(ledger.observe(file,sessionProject,false)!="pending") continue
+                        if(upload(file,file.length())) {
+                            ledger.markDone(file,sessionProject)
+                            ledger.logEvent(sessionProject,file.name ?: "proxy.mp4","done","Manual upload completed")
+                        }
+                    }catch(e:Exception) { status("Manual upload waiting: ${e.message?.take(55)}") }
+                }
                 val candidates = mutableListOf<DocumentFile>()
                 collect(root, candidates, 0)
                 var uploaded = 0
