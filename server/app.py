@@ -109,6 +109,16 @@ def list_projects(x_admin_key:str=Header(default='')):
         rows=c.execute('SELECT p.id,p.name,p.slug,p.created,COUNT(cl.id) clips FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
     return [dict(r) for r in rows]
 
+@app.get('/api/device/projects/{project_id}/share')
+def device_project_share(project_id:str, request:Request, x_device_token:str=Header(default='')):
+    """Return the PIN-protected review URL; never disclose the project's PIN."""
+    require_device(x_device_token)
+    with db() as c:
+        p=c.execute('SELECT name,slug FROM projects WHERE id=?',(project_id,)).fetchone()
+    if not p: raise HTTPException(404,'Project not found')
+    base=str(request.base_url).rstrip('/')
+    return {'name':p['name'],'url':f"{base}/r/{p['slug']}"}
+
 @app.post('/api/review/{slug}/unlock')
 def unlock(slug:str, body:PinIn):
     with db() as c: p=c.execute('SELECT * FROM projects WHERE slug=?',(slug,)).fetchone()
