@@ -126,7 +126,7 @@ class MainActivity : Activity() {
         root.addView(text("OFFSET TEST BUILD · Verify project isolation before customer use",12f,muted))
         setContentView(ScrollView(this).apply { addView(root) })
     }
-    private fun showProjectShare() {
+    private fun showProjectShare(pinless:Boolean=false) {
         val base=server.text.toString().trim().trimEnd('/')
         val pid=project.text.toString().trim()
         val device=token.text.toString().trim()
@@ -137,7 +137,7 @@ class MainActivity : Activity() {
         }
         Thread {
             try {
-                val request=Request.Builder().url("$base/api/device/projects/$pid/share")
+                val request=Request.Builder().url("$base/api/device/projects/$pid/share?pinless=$pinless")
                     .header("X-Device-Token",device).build()
                 val response=OkHttpClient().newCall(request).execute().use { res ->
                     if(!res.isSuccessful) throw IllegalStateException("Server svarte ${res.code}")
@@ -158,10 +158,23 @@ class MainActivity : Activity() {
                         setPadding(dp(20),dp(12),dp(20),dp(12))
                         adjustViewBounds=true
                     }
+                    val layout=LinearLayout(this).apply {
+                        orientation=LinearLayout.VERTICAL
+                        addView(Switch(this@MainActivity).apply {
+                            text="Åpne uten PIN (gyldig i 24 timer)"
+                            setTextColor(Color.DKGRAY)
+                            isChecked=pinless
+                            setPadding(dp(14),dp(8),dp(14),dp(8))
+                            setOnCheckedChangeListener { _,enabled ->
+                                showProjectShare(enabled)
+                            }
+                        })
+                        addView(image)
+                    }
                     AlertDialog.Builder(this)
                         .setTitle("Del $projectName")
-                        .setMessage("Skann koden for å åpne prosjektet. Mottakeren må fortsatt ha prosjektets PIN-kode.")
-                        .setView(image)
+                        .setMessage(if(pinless) "Alle med denne lenken får tilgang uten PIN i 24 timer. Del bare med personer du stoler på." else "Mottakeren må oppgi prosjektets PIN-kode.")
+                        .setView(layout)
                         .setPositiveButton("Del lenke") { _,_ ->
                             val share=Intent(Intent.ACTION_SEND).apply {
                                 type="text/plain"
