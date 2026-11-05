@@ -11,7 +11,22 @@ $('create-without-pin').onclick=()=>createProject(true);
 let allProjects=[];const siteKeys=['admin_title','admin_highlight','admin_description','review_title','review_highlight','review_description'];
 async function loadSiteCopy(){try{const r=await fetch('/api/site/settings');if(!r.ok)throw Error('Could not load website settings');const settings=await r.json();for(const key of siteKeys){const field=$('edit_'+key);if(field)field.value=settings[key]||'';const display=$(key);if(display)display.textContent=settings[key]||''}}catch(e){$('settings-status').textContent=e.message}}
 $('save-settings').onclick=async()=>{const body={};for(const key of siteKeys)body[key]=$('edit_'+key).value;try{const result=await api('/api/admin/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});for(const key of siteKeys){const display=$(key);if(display)display.textContent=result[key]}$('settings-status').textContent='Website text saved successfully.'}catch(e){$('settings-status').textContent=e.message}};
-function renderProjects(){const q=$('project-search').value.trim().toLowerCase();const rows=allProjects.filter(p=>p.name.toLowerCase().includes(q)||p.id.toLowerCase().includes(q));$('project-total').textContent='('+allProjects.length+')';$('projects').innerHTML=rows.length?rows.map(p=>`<div class="project"><div><b>${esc(p.name)}</b><div class="hint">ID: <code>${esc(p.id)}</code></div></div><span>${p.clips} clips · ${p.public_review?"No PIN":"PIN protected"}</span><a href="/r/${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">Open review</a></div>`).join(''):(q?'No matching projects.':'No projects yet.')}
+function renderProjects(){const q=$('project-search').value.trim().toLowerCase();const rows=allProjects.filter(p=>p.name.toLowerCase().includes(q)||p.id.toLowerCase().includes(q));$('project-total').textContent='('+allProjects.length+')';$('projects').innerHTML=rows.length?rows.map(p=>`<div class="project"><div><b>${esc(p.name)}</b><div class="hint">ID: <code>${esc(p.id)}</code></div></div><span>${p.clips} clips · ${p.public_review?"No PIN":"PIN protected"}</span><a href="/r/${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">Open review</a><button type="button" class="secondary delete-project" data-delete-id="${esc(p.id)}">Delete project</button></div>`).join(''):(q?'No matching projects.':'No projects yet.')}
+async function deleteProject(projectId){
+ const project=allProjects.find(p=>p.id===projectId);if(!project)return;
+ const count=Number(project.clips)||0;
+ if(count){
+  const answer=prompt('Delete "'+project.name+'" and all '+count+' clips? This permanently deletes the project and its proxy files. Type DELETE to confirm.');
+  if(answer!=='DELETE')return;
+ }else{
+  if(!confirm('Delete empty project "'+project.name+'"? This cannot be undone.'))return;
+ }
+ try{
+  await api('/api/admin/projects/'+encodeURIComponent(projectId)+(count?'?confirm_clips=true':''),{method:'DELETE'});
+  await load();
+ }catch(e){alert(typeof e.message==='string'&&e.message!=='[object Object]'?e.message:'Unable to delete project. Please try again.')}
+}
+$('projects').addEventListener('click',e=>{const button=e.target.closest('button[data-delete-id]');if(button)deleteProject(button.dataset.deleteId)});
 $('project-search').oninput=renderProjects;
 $('refresh').onclick=load;async function load(){try{allProjects=await api('/api/admin/projects');renderProjects()}catch(e){$('projects').textContent=e.message}}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}loadSiteCopy();fetch('/api/admin/me',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d)setSignedIn(d.username)}).catch(()=>{});
