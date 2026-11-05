@@ -63,7 +63,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor=bg;window.navigationBarColor=bg
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setBackgroundColor(bg);setPadding(dp(20),dp(20),dp(20),dp(20)) }
-        root.addView(text("●  OFFSET",30f,accent))
+        root.addView(text("OFFSET.",30f,Color.WHITE))
         root.addView(text("CONTROLLER  /  INSPIRE 3 · ZENMUSE X9",12f,muted))
         root.addView(text("Secure rushes delivery",16f))
         val config=card("Connection & project")
@@ -72,8 +72,8 @@ class MainActivity : Activity() {
         token=field("Device token",prefs.getString("token","")?:"",true)
         config.addView(server);config.addView(project);config.addView(token)
         root.addView(config)
-        root.addView(button("Vis prosjektets QR-kode / del lenke") { showProjectShare() })
-        root.addView(button("Opplastingshistorikk") { showUploadHistory() })
+        root.addView(button("Project QR code / Share link") { showProjectShare() })
+        root.addView(button("Upload history") { showUploadHistory() })
         root.addView(text(""))
         val source=card("DJI cache")
         folderLabel=text("",13f,muted);source.addView(folderLabel)
@@ -84,7 +84,7 @@ class MainActivity : Activity() {
         val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay",v).apply() } }
         settings.addView(overlay)
-        settings.addView(text("Gjennomsiktighet på overlay",14f,muted))
+        settings.addView(text("Overlay opacity",14f,muted))
         val opacityValue=text("",13f,muted)
         val opacity=SeekBar(this).apply {
             max=80
@@ -92,36 +92,36 @@ class MainActivity : Activity() {
             setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar:SeekBar?,value:Int,fromUser:Boolean) {
                     val percent=value+20
-                    opacityValue.text="Synlighet: $percent %"
+                    opacityValue.text="Opacity: $percent %"
                     if(fromUser) prefs.edit().putInt("overlay_opacity",percent).apply()
                 }
                 override fun onStartTrackingTouch(bar:SeekBar?) {}
                 override fun onStopTrackingTouch(bar:SeekBar?) {}
             })
         }
-        opacityValue.text="Synlighet: ${opacity.progress+20} %"
+        opacityValue.text="Opacity: ${opacity.progress+20} %"
         settings.addView(opacity)
         settings.addView(opacityValue)
         val showStatus=Switch(this).apply {
-            text="Vis opplastingsstatus";setTextColor(Color.WHITE)
+            text="Show upload status";setTextColor(Color.WHITE)
             isChecked=prefs.getBoolean("overlay_show_status",true)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay_show_status",v).apply() }
         }
         val showProject=Switch(this).apply {
-            text="Vis prosjekt-ID";setTextColor(Color.WHITE)
+            text="Show project ID";setTextColor(Color.WHITE)
             isChecked=prefs.getBoolean("overlay_show_project",false)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay_show_project",v).apply() }
         }
         settings.addView(showStatus)
         settings.addView(showProject)
-        settings.addView(text("Endringer i overlay vises neste gang opplasteren startes.",12f,muted))
+        settings.addView(text("Overlay changes apply after restarting the uploader.",12f,muted))
         settings.addView(button("Allow overlay on top of DJI Pilot 2") {
             if(Build.VERSION.SDK_INT>=23) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
         })
         settings.addView(text("Old cache files are quarantined. Switching projects requires stopping and restarting the uploader.",13f,muted))
         root.addView(settings)
         root.addView(text(""))
-        root.addView(button("Start kamerametadata") { startMetadataCapture() })
+        root.addView(button("Start camera metadata capture") { startMetadataCapture() })
         root.addView(button("Start secure upload") { saveAndStart() })
         root.addView(text(""))
         root.addView(button("Stop upload") { stopService(Intent(this,UploadService::class.java));folderLabel.text="Uploader stopped" })
@@ -132,26 +132,26 @@ class MainActivity : Activity() {
     private fun showUploadHistory() {
         val pid=project.text.toString().trim()
         if(pid.isBlank()) {
-            AlertDialog.Builder(this).setMessage("Velg prosjekt-ID først.")
+            AlertDialog.Builder(this).setMessage("Enter a project ID first.")
                 .setPositiveButton("OK",null).show()
             return
         }
         val ledger=ProjectLedger(this)
         val events=ledger.history(pid)
         val (done,pending,quarantined)=ledger.counts(pid)
-        val summary="$done fullført · $pending venter · $quarantined blokkert"
+        val summary="$done completed · $pending pending · $quarantined quarantined"
         val rows=events.joinToString("\\n\\n") { event ->
             val label=when(event.status) {
-                "done" -> "✓ Fullført"
-                "started" -> "↑ Starter"
-                "waiting" -> "↻ Venter / prøver igjen"
+                "done" -> "✓ Completed"
+                "started" -> "↑ Starting"
+                "waiting" -> "↻ Waiting / retrying"
                 else -> event.status
             }
             val date=DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT)
                 .format(Date(event.created))
             "$label · $date\\n${event.filename}\\n${event.detail}"
         }.replace("\\n","\n")
-        val message=if(rows.isEmpty()) "$summary\\n\\nIngen opplastinger registrert ennå."
+        val message=if(rows.isEmpty()) "$summary\\n\\nNo uploads recorded yet."
             else "$summary\\n\\n$rows"
         val historyText=TextView(this).apply {
             text=message.replace("\\n","\n")
@@ -160,8 +160,8 @@ class MainActivity : Activity() {
             setPadding(dp(18),dp(12),dp(18),dp(12))
         }
         val scroll=ScrollView(this).apply { addView(historyText) }
-        AlertDialog.Builder(this).setTitle("Opplastingshistorikk")
-            .setView(scroll).setPositiveButton("Lukk",null).show()
+        AlertDialog.Builder(this).setTitle("Upload history")
+            .setView(scroll).setPositiveButton("Close",null).show()
     }
 
     private fun showProjectShare(pinless:Boolean=false) {
@@ -169,7 +169,7 @@ class MainActivity : Activity() {
         val pid=project.text.toString().trim()
         val device=token.text.toString().trim()
         if(!base.startsWith("https://") || pid.isBlank() || device.isBlank()) {
-            AlertDialog.Builder(this).setMessage("Fyll inn HTTPS-server, prosjekt-ID og enhetstoken først.")
+            AlertDialog.Builder(this).setMessage("Enter HTTPS server, project ID and device token first.")
                 .setPositiveButton("OK",null).show()
             return
         }
@@ -178,11 +178,11 @@ class MainActivity : Activity() {
                 val request=Request.Builder().url("$base/api/device/projects/$pid/share?pinless=$pinless")
                     .header("X-Device-Token",device).build()
                 val response=OkHttpClient().newCall(request).execute().use { res ->
-                    if(!res.isSuccessful) throw IllegalStateException("Server svarte ${res.code}")
+                    if(!res.isSuccessful) throw IllegalStateException("Server responded with ${res.code}")
                     JSONObject(res.body?.string() ?: "{}")
                 }
                 val url=response.getString("url")
-                val projectName=response.optString("name","Prosjekt")
+                val projectName=response.optString("name","Project")
                 val size=640
                 val matrix=MultiFormatWriter().encode(url,BarcodeFormat.QR_CODE,size,size)
                 val pixels=IntArray(size*size) { index ->
@@ -200,7 +200,7 @@ class MainActivity : Activity() {
                     val layout=LinearLayout(this).apply {
                         orientation=LinearLayout.VERTICAL
                         addView(Switch(this@MainActivity).apply {
-                            text="Åpne uten PIN (gyldig i 24 timer)"
+                            text="Open without PIN (valid for 24 hours)"
                             setTextColor(Color.DKGRAY)
                             isChecked=pinless
                             setPadding(dp(14),dp(8),dp(14),dp(8))
@@ -212,22 +212,22 @@ class MainActivity : Activity() {
                         addView(image)
                     }
                     AlertDialog.Builder(this)
-                        .setTitle("Del $projectName")
-                        .setMessage(if(pinless) "Alle med denne lenken får tilgang uten PIN i 24 timer. Del bare med personer du stoler på." else "Mottakeren må oppgi prosjektets PIN-kode.")
+                        .setTitle("Share $projectName")
+                        .setMessage(if(pinless) "Anyone with this link can access without a PIN for 24 hours. Share only with trusted people." else "Recipient must enter the project PIN.")
                         .setView(layout)
-                        .setPositiveButton("Del lenke") { _,_ ->
+                        .setPositiveButton("Share link") { _,_ ->
                             val share=Intent(Intent.ACTION_SEND).apply {
                                 type="text/plain"
                                 putExtra(Intent.EXTRA_TEXT,url)
                             }
-                            startActivity(Intent.createChooser(share,"Del OFFSET-prosjekt"))
+                            startActivity(Intent.createChooser(share,"Share OFFSET project"))
                         }
-                        .setNegativeButton("Lukk",null).create().also { shareDialog=it; it.show() }
+                        .setNegativeButton("Close",null).create().also { shareDialog=it; it.show() }
                 }
             } catch(e:Exception) {
                 runOnUiThread {
-                    AlertDialog.Builder(this).setTitle("Kunne ikke hente prosjektlenke")
-                        .setMessage(e.message ?: "Ukjent feil")
+                    AlertDialog.Builder(this).setTitle("Could not retrieve project link")
+                        .setMessage(e.message ?: "Unknown error")
                         .setPositiveButton("OK",null).show()
                 }
             }
