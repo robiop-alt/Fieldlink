@@ -35,16 +35,11 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
       - name: Build debug APK
         working-directory: android
-        run: |
-          if [ -f ./gradlew ]; then
-            chmod +x ./gradlew
-            ./gradlew :app:assembleDebug --no-daemon
-          else
-            echo 'No Gradle wrapper found; Android build is not configured for CI.'
-            exit 1
-          fi
+        run: gradle :app:assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         if: success()
         with:
