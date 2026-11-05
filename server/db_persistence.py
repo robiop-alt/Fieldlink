@@ -34,7 +34,9 @@ def restore(database_path):
             except ClientError as exc:
                 if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
                     if path.exists():
-                        raise RuntimeError("R2 database snapshot missing while local database exists")
+                        # First-time migration from an existing local SQLite database.
+                        # Upload before accepting any further writes.
+                        snapshot(path)
                     return
                 raise
             # Validate the snapshot before replacing any local database.
