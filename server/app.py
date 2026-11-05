@@ -1,4 +1,4 @@
-from r2_storage import upload_file, download_file, delete_file
+from r2_storage import upload_file, download_file, delete_file, r2_enabled
 from fastapi import FastAPI, HTTPException, Header, Request, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
