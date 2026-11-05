@@ -1,6 +1,25 @@
 <!doctype html><html lang="no"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OFFSET · Review</title><link rel="stylesheet" href="/static/style.css"></head><body><main class="shell"><header class="top"><a class="brand" href="/">OFF<span>SET.</span></a><div class="tag">PRIVATE REVIEW</div></header><section class="hero"><p class="eyebrow">SECURE DAILIES</p><h1>Review from<br><em>wherever you are.</em></h1><p class="muted">Privat tilgang til opptak fra felt.</p></section><section class="panel" id="gate"><p class="eyebrow">ACCESS REQUIRED</p><h2>Prosjekt-PIN</h2><label>PIN-kode<input id="pin" inputmode="numeric" autocomplete="one-time-code" placeholder="6-sifret PIN"></label><button id="unlock">Åpne rushes</button><p id="error" class="error"></p></section><section id="content" class="hidden"><div class="panel"><p class="eyebrow">PROJECT MEDIA</p><h2>Rushes</h2><p class="muted" id="count"></p><div id="clips" class="clipgrid"></div></div></section><footer>OFFSET <span>·</span> PRIVATE RUSHES DELIVERY</footer></main><script>
 const slug=location.pathname.split('/').filter(Boolean).pop();let token='';const $=id=>document.getElementById(id);$('unlock').onclick=unlock;$('pin').addEventListener('keydown',e=>{if(e.key==='Enter')unlock()});async function unlock(){try{let r=await fetch(`/api/review/${slug}/unlock`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:$('pin').value})});let d=await r.json();if(!r.ok)throw Error(d.detail||'Feil PIN');token=d.token;$('gate').classList.add('hidden');$('content').classList.remove('hidden');await load()}catch(e){$('error').textContent=e.message}}
 let selected=new Set();
+// PIN-free share links carry a 24-hour signed token in the URL fragment.
+(async()=>{
+ const share=new URLSearchParams(location.hash.slice(1)).get('share');
+ if(!share)return;
+ history.replaceState(null,'',location.pathname+location.search);
+ try{
+  const r=await fetch(`/api/review/${slug}/share-unlock`,{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({share_token:share})
+  });
+  const data=await r.json();
+  if(!r.ok)throw Error(data.detail||'Delingslenken er utløpt');
+  token=data.token;
+  $('gate').classList.add('hidden');
+  $('content').classList.remove('hidden');
+  await load();
+ }catch(e){$('error').textContent=e.message+' · Skriv inn PIN-kode for å fortsette.'}
+})();
+
 async function load(){
  const r=await fetch(`/api/review/${slug}/clips`,{headers:{Authorization:`Bearer ${token}`}});
  const clips=await r.json();if(!r.ok)throw Error(clips.detail||'Kunne ikke hente klipp');
