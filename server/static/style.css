@@ -6,3 +6,5 @@
 textarea{display:block;width:100%;margin-top:8px;padding:14px 15px;border:1px solid #39434a;border-radius:7px;background:#0b0e10;color:white;font:15px 'DM Sans';resize:vertical;outline:none}textarea:focus{border-color:var(--accent)}h3{font:600 17px 'Space Grotesk';margin:25px 0 8px}.project code{overflow-wrap:anywhere}
 
 .settings-disclosure{margin-top:28px}.settings-disclosure>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px;border-top:1px solid var(--line);padding:18px 4px;color:var(--muted);font:600 14px 'DM Sans',sans-serif}.settings-disclosure>summary::-webkit-details-marker{display:none}.settings-disclosure>summary:before{content:'▸';color:var(--accent);margin-right:8px}.settings-disclosure[open]>summary:before{content:'▾'}.settings-disclosure>summary span{font-weight:400;font-size:12px;margin-left:auto}.settings-disclosure>.panel{margin-top:0}
+
+select{display:block;width:100%;margin-top:8px;padding:14px 15px;border:1px solid #39434a;border-radius:7px;background:#0b0e10;color:white;font:15px 'DM Sans',sans-serif}
