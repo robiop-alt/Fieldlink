@@ -1,0 +1,53 @@
+name: OFFSET development checks
+on:
+  push:
+    branches: [offset-r2-storage]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+      - name: Check Python syntax
+        run: python -m compileall -q .
+      - name: Import backend without live cloud credentials
+        env:
+          FIELDLINK_DATA: ${{ runner.temp }}/offset-test-data
+          FIELDLINK_SECRET: ci-test-secret-not-for-production
+        run: python -c "import app; assert app.app.title == 'OFFSET API'"
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew :app:assembleDebug --no-daemon
+          else
+            echo 'No Gradle wrapper found; Android build is not configured for CI.'
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: offset-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
