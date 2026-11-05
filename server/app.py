@@ -37,6 +37,13 @@ def ensure_metadata_schema():
         c.execute("CREATE TABLE IF NOT EXISTS clip_metadata (clip_id TEXT PRIMARY KEY, data_json TEXT NOT NULL)")
 ensure_metadata_schema()
 
+def ensure_project_access_schema():
+    with db() as c:
+        columns={row['name'] for row in c.execute('PRAGMA table_info(projects)').fetchall()}
+        if 'public_review' not in columns:
+            c.execute('ALTER TABLE projects ADD COLUMN public_review INTEGER NOT NULL DEFAULT 0')
+ensure_project_access_schema()
+
 # Editable public website copy; changes are stored in the durable project database.
 SITE_DEFAULTS = {
     'admin_title': 'Send rushes.',
@@ -200,6 +207,7 @@ def safe_name(name):
 
 class ProjectIn(BaseModel):
     name: str = Field(min_length=1,max_length=120)
+    public_review: bool = False
 class PinIn(BaseModel):
     pin: str = Field(min_length=4,max_length=12)
 class UploadInit(BaseModel):
@@ -219,14 +227,14 @@ def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(defau
     require_admin(x_admin_key,request)
     pid=uuid.uuid4().hex; slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
     pin=f'{secrets.randbelow(1_000_000):06d}'
-    with db() as c: c.execute('INSERT INTO projects VALUES(?,?,?,?,?)',(pid,body.name,slug,pin_digest(pin),int(time.time())))
-    return {'id':pid,'name':body.name,'slug':slug,'url_path':f'/r/{slug}','pin':pin}
+    with db() as c: c.execute('INSERT INTO projects(id,name,slug,pin_hash,created,public_review) VALUES(?,?,?,?,?,?)',(pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review)))
+    return {'id':pid,'name':body.name,'slug':slug,'url_path':f'/r/{slug}','pin':None if body.public_review else pin,'public_review':body.public_review}
 
 @app.get('/api/admin/projects')
 def list_projects(request:Request, x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
     with db() as c:
-        rows=c.execute('SELECT p.id,p.name,p.slug,p.created,COUNT(cl.id) clips FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
+        rows=c.execute('SELECT p.id,p.name,p.slug,p.created,p.public_review,COUNT(cl.id) clips FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
     return [dict(r) for r in rows]
 
 def signed_share_token(project_id, expiry):
@@ -269,6 +277,14 @@ def share_unlock(slug:str, body:ShareIn):
     if not valid: raise HTTPException(403,'Invalid or expired share link')
     session_expiry=min(int(expiry),int(time.time())+8*3600)
     return {'token':session_token(p['id'],session_expiry),'expires':session_expiry}
+
+@app.post('/api/review/{slug}/public-unlock')
+def public_unlock(slug:str):
+    with db() as c:
+        p=c.execute('SELECT id,public_review FROM projects WHERE slug=?',(slug,)).fetchone()
+    if not p or not p['public_review']: raise HTTPException(403,'Project requires a PIN')
+    expiry=int(time.time())+8*3600
+    return {'token':session_token(p['id'],expiry),'expires':expiry}
 
 @app.post('/api/review/{slug}/unlock')
 def unlock(slug:str, body:PinIn):
