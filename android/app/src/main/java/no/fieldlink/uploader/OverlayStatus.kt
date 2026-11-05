@@ -35,12 +35,6 @@ class OverlayStatus(private val ctx: Context) {
             setPadding(20,12,20,12)
             elevation=10f
         }
-        val header=TextView(ctx).apply {
-            text="●  OFFSET     −"; setTextColor(Color.rgb(183,243,77)); textSize=15f
-            setTypeface(null,Typeface.BOLD)
-            setOnClickListener { collapsed=!collapsed; detail?.visibility=if(collapsed) View.GONE else View.VISIBLE; projectText.visibility=if(collapsed || !showProject) View.GONE else View.VISIBLE; text=if(collapsed) "●  OFFSET  +" else "●  OFFSET     −" }
-        }
-        val sub=TextView(ctx).apply { text=last; setTextColor(Color.WHITE); textSize=12f }
         val showStatus=prefs.getBoolean("overlay_show_status",true)
         val showProject=prefs.getBoolean("overlay_show_project",false)
         val projectText=TextView(ctx).apply {
@@ -48,6 +42,12 @@ class OverlayStatus(private val ctx: Context) {
             setTextColor(Color.LTGRAY);textSize=11f
             visibility=if(showProject) View.VISIBLE else View.GONE
         }
+        val header=TextView(ctx).apply {
+            text="●  OFFSET     −"; setTextColor(Color.rgb(183,243,77)); textSize=15f
+            setTypeface(null,Typeface.BOLD)
+            setOnClickListener { collapsed=!collapsed; detail?.visibility=if(collapsed) View.GONE else View.VISIBLE; projectText.visibility=if(collapsed || !showProject) View.GONE else View.VISIBLE; text=if(collapsed) "●  OFFSET  +" else "●  OFFSET     −" }
+        }
+        val sub=TextView(ctx).apply { text=last; setTextColor(Color.WHITE); textSize=12f }
         detail=if(showStatus) sub else null
         root.addView(header)
         if(showStatus) root.addView(sub)
