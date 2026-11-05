@@ -154,13 +154,13 @@ class MainActivity : Activity() {
                         }
                     } else {
                         val data=JSONObject(response.body?.string() ?: "{}")
-                        "Connected successfully!\\nProject: ${data.optString("name","Unknown")}\\nThe controller can access this project."
+                        "Connected successfully!\nProject: ${data.optString("name","Unknown")}\nThe controller can access this project."
                     }
                 }
             }catch(e:Exception){"Connection failed: ${e.localizedMessage ?: "Check network and server URL."}"}
             runOnUiThread {
                 AlertDialog.Builder(this).setTitle("Connection test")
-                    .setMessage(result.replace("\\\\n","\\n"))
+                    .setMessage(result)
                     .setPositiveButton("OK",null).show()
             }
         }.start()
