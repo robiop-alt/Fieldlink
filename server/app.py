@@ -225,7 +225,13 @@ def health(): return {'ok':True,'product':'OFFSET','version':'1.0.0'}
 @app.post('/api/admin/projects')
 def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
-    pid=uuid.uuid4().hex; slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
+    with db() as c:
+        alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        for _ in range(20):
+            pid=''.join(secrets.choice(alphabet) for _ in range(8))
+            if not c.execute('SELECT 1 FROM projects WHERE id=?',(pid,)).fetchone(): break
+        else: raise HTTPException(503,'Could not allocate a unique project ID')
+    slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
     pin=f'{secrets.randbelow(1_000_000):06d}'
     with db() as c: c.execute('INSERT INTO projects(id,name,slug,pin_hash,created,public_review) VALUES(?,?,?,?,?,?)',(pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review)))
     return {'id':pid,'name':body.name,'slug':slug,'url_path':f'/r/{slug}','pin':None if body.public_review else pin,'public_review':body.public_review}
