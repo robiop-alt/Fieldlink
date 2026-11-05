@@ -31,6 +31,7 @@ import android.media.projection.MediaProjectionManager
 
 class MainActivity : Activity() {
     private val pickFolder=4101
+    private val pickManual=4102
     private val prefs by lazy { getSharedPreferences("fieldlink",MODE_PRIVATE) }
     private lateinit var server:EditText
     private lateinit var project:EditText
@@ -75,6 +76,7 @@ class MainActivity : Activity() {
         root.addView(config)
         root.addView(button("Project QR code / Share link") { showProjectShare() })
         root.addView(button("Upload history") { showUploadHistory() })
+        root.addView(button("Add proxy files manually") { chooseManualFiles() })
         root.addView(text(""))
         val source=card("DJI cache")
         folderLabel=text("",13f,muted);source.addView(folderLabel)
@@ -276,6 +278,52 @@ class MainActivity : Activity() {
     startActivityForResult(manager.createScreenCaptureIntent(), 4321)
 }
 
+    private fun chooseManualFiles() {
+        val pid=project.text.toString().trim()
+        if(pid.isBlank()) {
+            AlertDialog.Builder(this).setMessage("Enter the destination project ID first.")
+                .setPositiveButton("OK",null).show()
+            return
+        }
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            type="video/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true)
+            addCategory(Intent.CATEGORY_OPENABLE)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        },pickManual)
+    }
+    private fun queueManualFiles(data:Intent?) {
+        val pid=project.text.toString().trim()
+        if(pid.isBlank() || data==null) return
+        val uris=mutableListOf<Uri>()
+        data.clipData?.let { clips -> for(i in 0 until clips.itemCount) uris.add(clips.getItemAt(i).uri) }
+        data.data?.let { if(!uris.contains(it)) uris.add(it) }
+        if(uris.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Add proxy files to project?")
+            .setMessage("Queue ${uris.size} selected file(s) for project $pid? Only select clips belonging to this project.")
+            .setNegativeButton("Cancel",null)
+            .setPositiveButton("Add to queue") { _,_ ->
+                val ledger=ProjectLedger(this)
+                var added=0
+                val problems=mutableListOf<String>()
+                for(uri in uris) {
+                    try {
+                        contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        val file=DocumentFile.fromSingleUri(this,uri)
+                        if(file==null || !file.isFile || !(file.name ?: "").endsWith(".mp4",true)) {
+                            problems.add("Unsupported file");continue
+                        }
+                        val result=ledger.enqueueManual(file,pid)
+                        if(result=="Queued") added++ else problems.add(result)
+                    }catch(e:Exception) { problems.add(e.message ?: "File access denied") }
+                }
+                AlertDialog.Builder(this).setTitle("Manual upload queue")
+                    .setMessage("$added file(s) queued for $pid. Start secure upload to send them. "+
+                        if(problems.isEmpty()) "" else "${problems.size} skipped: ${problems.first()}")
+                    .setPositiveButton("OK",null).show()
+            }.show()
+    }
     private fun chooseFolder() {
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
@@ -294,6 +342,7 @@ class MainActivity : Activity() {
     }
     return
 }
+        if(requestCode==pickManual && resultCode==RESULT_OK) { queueManualFiles(data);return }
         if(requestCode==pickFolder && resultCode==RESULT_OK) {
             val uri=data?.data?:return
             contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
