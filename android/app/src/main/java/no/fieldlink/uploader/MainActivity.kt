@@ -158,6 +158,7 @@ class MainActivity : Activity() {
                         setPadding(dp(20),dp(12),dp(20),dp(12))
                         adjustViewBounds=true
                     }
+                    var shareDialog:AlertDialog?=null
                     val layout=LinearLayout(this).apply {
                         orientation=LinearLayout.VERTICAL
                         addView(Switch(this@MainActivity).apply {
@@ -166,6 +167,7 @@ class MainActivity : Activity() {
                             isChecked=pinless
                             setPadding(dp(14),dp(8),dp(14),dp(8))
                             setOnCheckedChangeListener { _,enabled ->
+                                shareDialog?.dismiss()
                                 showProjectShare(enabled)
                             }
                         })
@@ -182,7 +184,7 @@ class MainActivity : Activity() {
                             }
                             startActivity(Intent.createChooser(share,"Del OFFSET-prosjekt"))
                         }
-                        .setNegativeButton("Lukk",null).show()
+                        .setNegativeButton("Lukk",null).create().also { shareDialog=it; it.show() }
                 }
             } catch(e:Exception) {
                 runOnUiThread {
