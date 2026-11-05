@@ -10,3 +10,5 @@ textarea{display:block;width:100%;margin-top:8px;padding:14px 15px;border:1px so
 select{display:block;width:100%;margin-top:8px;padding:14px 15px;border:1px solid #39434a;border-radius:7px;background:#0b0e10;color:white;font:15px 'DM Sans',sans-serif}
 
 .create-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}.create-actions button{flex:1 1 210px}
+
+.brand svg{display:block;width:158px;max-width:38vw;height:auto;flex-shrink:0}
