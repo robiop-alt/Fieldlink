@@ -18,11 +18,27 @@ def upload_file(local_path, object_key):
     )
 
 def download_file(object_key, local_path):
-    r2_client().download_file(
-        os.environ.get("R2_BUCKET", "offset-rushes"),
-        object_key,
-        str(local_path),
-    )
+    """Download to a temporary file, then atomically publish the completed clip."""
+    from pathlib import Path
+    import tempfile
+
+    destination = Path(local_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=destination.parent, prefix=".r2-download-", delete=False
+        ) as temporary:
+            temp_path = Path(temporary.name)
+        r2_client().download_file(
+            os.environ.get("R2_BUCKET", "offset-rushes"),
+            object_key,
+            str(temp_path),
+        )
+        os.replace(temp_path, destination)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
 def delete_file(object_key):
     r2_client().delete_object(
