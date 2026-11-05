@@ -95,7 +95,14 @@ class UploadService : Service() {
                     if (binding != "pending") continue
                     if (size <= 0L) continue
                     status("Sender ${f.name ?: "videoklipp"} · ${(size / 1048576)} MB")
-                    if (upload(f, size)) { ledger.markDone(f,sessionProject); uploaded++ }
+                    ledger.logEvent(sessionProject,f.name ?: "videoklipp","started","${size / 1048576} MB")
+                    if (upload(f, size)) {
+                        ledger.markDone(f,sessionProject)
+                        ledger.logEvent(sessionProject,f.name ?: "videoklipp","done","${size / 1048576} MB sendt")
+                        uploaded++
+                    } else {
+                        ledger.logEvent(sessionProject,f.name ?: "videoklipp","waiting","Venter på nytt forsøk / nett")
+                    }
                 }
                 status(if (uploaded > 0) "$uploaded klipp sendt · overvåker nye filer" else "Overvåker · ${ledger.countQuarantined()} gamle/ukjente filer blokkert")
             } catch (e: Exception) { status("Venter på nett / tilgang · ${e.message?.take(70) ?: "feil"}") }
