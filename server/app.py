@@ -109,15 +109,46 @@ def list_projects(x_admin_key:str=Header(default='')):
         rows=c.execute('SELECT p.id,p.name,p.slug,p.created,COUNT(cl.id) clips FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
     return [dict(r) for r in rows]
 
+def signed_share_token(project_id, expiry):
+    payload=f"share:{project_id}:{expiry}"
+    signature=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+    return f"{payload}:{signature}"
+
 @app.get('/api/device/projects/{project_id}/share')
-def device_project_share(project_id:str, request:Request, x_device_token:str=Header(default='')):
-    """Return the PIN-protected review URL; never disclose the project's PIN."""
+def device_project_share(project_id:str, request:Request, pinless:bool=False, x_device_token:str=Header(default='')):
+    """Generate a standard PIN link or an expiring bearer link for the device operator."""
     require_device(x_device_token)
     with db() as c:
-        p=c.execute('SELECT name,slug FROM projects WHERE id=?',(project_id,)).fetchone()
+        p=c.execute('SELECT id,name,slug FROM projects WHERE id=?',(project_id,)).fetchone()
     if not p: raise HTTPException(404,'Project not found')
     base=str(request.base_url).rstrip('/')
-    return {'name':p['name'],'url':f"{base}/r/{p['slug']}"}
+    url=f"{base}/r/{p['slug']}"
+    if pinless:
+        expiry=int(time.time())+24*3600
+        share=signed_share_token(p['id'],expiry)
+        # Fragment is not sent to the web server or included in HTTP referrers.
+        url+=f"#share={share}"
+    return {'name':p['name'],'url':url,'pinless':pinless}
+
+class ShareIn(BaseModel):
+    share_token: str
+
+@app.post('/api/review/{slug}/share-unlock')
+def share_unlock(slug:str, body:ShareIn):
+    with db() as c:
+        p=c.execute('SELECT id FROM projects WHERE slug=?',(slug,)).fetchone()
+    if not p: raise HTTPException(403,'Invalid share link')
+    try:
+        purpose,pid,expiry,signature=body.share_token.split(':')
+        payload=f"{purpose}:{pid}:{expiry}"
+        expected=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+        valid=(purpose=='share' and pid==p['id'] and int(expiry)>int(time.time())
+               and int(expiry)<=int(time.time())+24*3600 and hmac.compare_digest(signature,expected))
+    except (ValueError,TypeError):
+        valid=False
+    if not valid: raise HTTPException(403,'Invalid or expired share link')
+    session_expiry=min(int(expiry),int(time.time())+8*3600)
+    return {'token':session_token(p['id'],session_expiry),'expires':session_expiry}
 
 @app.post('/api/review/{slug}/unlock')
 def unlock(slug:str, body:PinIn):
