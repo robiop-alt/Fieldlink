@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
 import os, sqlite3, secrets, hashlib, hmac, time, uuid, re, mimetypes, subprocess, threading
+from db_persistence import DurableConnection, restore
 
 DATA = Path(os.getenv('FIELDLINK_DATA', './data')).resolve()
 FILES = DATA / 'files'; TMP = DATA / 'tmp'; THUMBS = DATA / 'thumbs'; DB = DATA / 'fieldlink.sqlite3'
@@ -19,8 +20,9 @@ app.mount('/static', StaticFiles(directory='static'), name='static')
 # Metadata is extracted from the received original, never from client-supplied values.
 
 
+restore(DB)
 def db():
-    c=sqlite3.connect(DB); c.row_factory=sqlite3.Row; return c
+    return DurableConnection(DB)
 with db() as c:
     c.executescript('''CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,name TEXT NOT NULL,slug TEXT UNIQUE NOT NULL,pin_hash TEXT NOT NULL,created INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS clips(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,filename TEXT NOT NULL,size INTEGER NOT NULL,created INTEGER NOT NULL,status TEXT NOT NULL,sha256 TEXT,UNIQUE(project_id,filename),FOREIGN KEY(project_id) REFERENCES projects(id));
