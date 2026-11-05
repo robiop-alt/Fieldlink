@@ -1,6 +1,6 @@
 from r2_storage import upload_file, download_file, delete_file
 from fastapi import FastAPI, HTTPException, Header, Request, UploadFile, File
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
@@ -12,7 +12,10 @@ FILES = DATA / 'files'; TMP = DATA / 'tmp'; THUMBS = DATA / 'thumbs'; DB = DATA 
 LIMIT_BYTES = 6 * 1024**3
 STORAGE_LOCK = threading.RLock()
 for p in (FILES, TMP, THUMBS): p.mkdir(parents=True, exist_ok=True)
-ADMIN = os.getenv('FIELDLINK_ADMIN_KEY', ''); DEVICE = os.getenv('FIELDLINK_DEVICE_TOKEN', '')
+ADMIN = os.getenv('FIELDLINK_ADMIN_KEY', '')
+ADMIN_USER = os.getenv('OFFSET_ADMIN_USERNAME', '')
+ADMIN_PASSWORD = os.getenv('OFFSET_ADMIN_PASSWORD', '')
+DEVICE = os.getenv('FIELDLINK_DEVICE_TOKEN', '')
 SECRET = os.getenv('FIELDLINK_SECRET', 'development-only-change-me')
 app = FastAPI(title='OFFSET API', version='1.0.0')
 app.mount('/static', StaticFiles(directory='static'), name='static')
@@ -63,8 +66,8 @@ def public_site_settings():
     return site_copy()
 
 @app.put('/api/admin/settings')
-def update_site_settings(body:SiteSettingsIn, x_admin_key:str=Header(default='')):
-    require_admin(x_admin_key)
+def update_site_settings(body:SiteSettingsIn, request:Request, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
     values=body.model_dump()
     with db() as connection:
         for key,value in values.items():
@@ -97,8 +100,60 @@ def probe_metadata(clip_id):
         return out
     except Exception: return {}
 
-def require_admin(key):
-    if not ADMIN or not hmac.compare_digest(key or '', ADMIN): raise HTTPException(401,'Admin authentication required')
+def admin_cookie_valid(request):
+    if request is None or not ADMIN_USER or not ADMIN_PASSWORD or SECRET == 'development-only-change-me':
+        return False
+    cookie=request.cookies.get('offset_admin','')
+    try:
+        username,expires,signature=cookie.split(':')
+        payload=f'{username}:{expires}'
+        expected=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+        return (hmac.compare_digest(username,ADMIN_USER) and int(expires)>int(time.time())
+                and hmac.compare_digest(signature,expected))
+    except (ValueError,TypeError):
+        return False
+
+def require_admin(key, request=None):
+    if admin_cookie_valid(request):
+        if request.method not in ('GET','HEAD','OPTIONS'):
+            origin=request.headers.get('origin','')
+            expected=str(request.base_url).rstrip('/')
+            if not origin or origin.rstrip('/')!=expected:
+                raise HTTPException(403,'Invalid request origin')
+        return
+    if ADMIN and hmac.compare_digest(key or '', ADMIN):
+        return
+    raise HTTPException(401,'Admin authentication required')
+
+class AdminLogin(BaseModel):
+    username: str
+    password: str
+
+@app.post('/api/admin/login')
+def admin_login(body:AdminLogin,request:Request,response:Response):
+    if not ADMIN_USER or not ADMIN_PASSWORD or SECRET=='development-only-change-me':
+        raise HTTPException(503,'Admin login is not configured')
+    valid_user=hmac.compare_digest(body.username,ADMIN_USER)
+    valid_password=hmac.compare_digest(body.password,ADMIN_PASSWORD)
+    if not (valid_user and valid_password):
+        raise HTTPException(401,'Invalid username or password')
+    expiry=int(time.time())+7*24*3600
+    payload=f'{ADMIN_USER}:{expiry}'
+    sig=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+    response.set_cookie('offset_admin',f'{payload}:{sig}',max_age=7*24*3600,
+                        httponly=True,secure=True,samesite='strict',path='/')
+    return {'ok':True,'username':ADMIN_USER}
+
+@app.post('/api/admin/logout')
+def admin_logout(response:Response):
+    response.delete_cookie('offset_admin',path='/',secure=True,httponly=True,samesite='strict')
+    return {'ok':True}
+
+@app.get('/api/admin/me')
+def admin_me(request:Request):
+    if not admin_cookie_valid(request): raise HTTPException(401,'Sign in required')
+    return {'username':ADMIN_USER}
+
 def require_device(key):
     if not DEVICE or not hmac.compare_digest(key or '', DEVICE): raise HTTPException(401,'Uploader authentication required')
 def pin_digest(pin): return hashlib.sha256((pin+SECRET).encode()).hexdigest()
@@ -133,16 +188,16 @@ def review(slug:str): return FileResponse('static/review.html')
 def health(): return {'ok':True,'product':'OFFSET','version':'1.0.0'}
 
 @app.post('/api/admin/projects')
-def create_project(body:ProjectIn, x_admin_key:str=Header(default='')):
-    require_admin(x_admin_key)
+def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
     pid=uuid.uuid4().hex; slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
     pin=f'{secrets.randbelow(1_000_000):06d}'
     with db() as c: c.execute('INSERT INTO projects VALUES(?,?,?,?,?)',(pid,body.name,slug,pin_digest(pin),int(time.time())))
     return {'id':pid,'name':body.name,'slug':slug,'url_path':f'/r/{slug}','pin':pin}
 
 @app.get('/api/admin/projects')
-def list_projects(x_admin_key:str=Header(default='')):
-    require_admin(x_admin_key)
+def list_projects(request:Request, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
     with db() as c:
         rows=c.execute('SELECT p.id,p.name,p.slug,p.created,COUNT(cl.id) clips FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
     return [dict(r) for r in rows]
