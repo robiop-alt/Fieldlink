@@ -38,7 +38,7 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
         readableDatabase.rawQuery("SELECT SUM(CASE WHEN state='done' THEN 1 ELSE 0 END),SUM(CASE WHEN state='pending' THEN 1 ELSE 0 END),SUM(CASE WHEN state='quarantine' THEN 1 ELSE 0 END) FROM media WHERE project=?",
             arrayOf(project)).use { rows ->
             rows.moveToFirst()
-            return Triple(rows.getInt(0),rows.getInt(1),rows.getInt(2))
+            return Triple(if(rows.isNull(0)) 0 else rows.getInt(0),if(rows.isNull(1)) 0 else rows.getInt(1),if(rows.isNull(2)) 0 else rows.getInt(2))
         }
     }
     @Synchronized fun registerExisting(files: List<DocumentFile>) {
