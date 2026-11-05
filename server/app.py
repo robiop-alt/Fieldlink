@@ -243,6 +243,33 @@ def list_projects(request:Request, x_admin_key:str=Header(default='')):
         rows=c.execute('SELECT p.id,p.name,p.slug,p.created,p.public_review,COUNT(cl.id) clips FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
     return [dict(r) for r in rows]
 
+@app.delete('/api/admin/projects/{project_id}')
+def delete_project(project_id:str,request:Request,confirm_clips:bool=False,x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
+    with db() as conn:
+        project=conn.execute('SELECT id,name FROM projects WHERE id=?',(project_id,)).fetchone()
+        if not project: raise HTTPException(404,'Project not found')
+        clips=conn.execute('SELECT id FROM clips WHERE project_id=?',(project_id,)).fetchall()
+        uploads=conn.execute('SELECT id FROM uploads WHERE project_id=?',(project_id,)).fetchall()
+        if uploads: raise HTTPException(409,'Project has uploads in progress. Finish or cancel uploads before deleting.')
+        if clips and not confirm_clips: raise HTTPException(409,'Confirm deletion of project clips')
+        # Remove cloud media before removing the database records; do not claim success on storage failure.
+        if r2_enabled():
+            try:
+                for clip in clips: delete_file(f"clips/{clip['id']}")
+            except Exception:
+                import logging
+                logging.exception('Cloud clip deletion failed for project %s',project_id)
+                raise HTTPException(502,'Could not delete cloud media. Project was not deleted; please retry.')
+        for clip in clips:
+            cid=clip['id']
+            (FILES/cid).unlink(missing_ok=True)
+            (THUMBS/(cid+'.jpg')).unlink(missing_ok=True)
+            conn.execute('DELETE FROM clip_metadata WHERE clip_id=?',(cid,))
+        conn.execute('DELETE FROM clips WHERE project_id=?',(project_id,))
+        conn.execute('DELETE FROM projects WHERE id=?',(project_id,))
+    return {'deleted':True,'clips_deleted':len(clips)}
+
 def signed_share_token(project_id, expiry):
     payload=f"share:{project_id}:{expiry}"
     signature=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
