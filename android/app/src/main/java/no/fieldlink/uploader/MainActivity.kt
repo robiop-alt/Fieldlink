@@ -2,6 +2,8 @@ package no.fieldlink.uploader
 
 import android.app.Activity
 import android.app.AlertDialog
+import java.text.DateFormat
+import java.util.Date
 import android.content.Context
 import android.graphics.Bitmap
 import android.widget.ImageView
@@ -71,6 +73,7 @@ class MainActivity : Activity() {
         config.addView(server);config.addView(project);config.addView(token)
         root.addView(config)
         root.addView(button("Vis prosjektets QR-kode / del lenke") { showProjectShare() })
+        root.addView(button("Opplastingshistorikk") { showUploadHistory() })
         root.addView(text(""))
         val source=card("DJI cache")
         folderLabel=text("",13f,muted);source.addView(folderLabel)
@@ -126,6 +129,41 @@ class MainActivity : Activity() {
         root.addView(text("OFFSET TEST BUILD · Verify project isolation before customer use",12f,muted))
         setContentView(ScrollView(this).apply { addView(root) })
     }
+    private fun showUploadHistory() {
+        val pid=project.text.toString().trim()
+        if(pid.isBlank()) {
+            AlertDialog.Builder(this).setMessage("Velg prosjekt-ID først.")
+                .setPositiveButton("OK",null).show()
+            return
+        }
+        val ledger=ProjectLedger(this)
+        val events=ledger.history(pid)
+        val (done,pending,quarantined)=ledger.counts(pid)
+        val summary="$done fullført · $pending venter · $quarantined blokkert"
+        val rows=events.joinToString("\\n\\n") { event ->
+            val label=when(event.status) {
+                "done" -> "✓ Fullført"
+                "started" -> "↑ Starter"
+                "waiting" -> "↻ Venter / prøver igjen"
+                else -> event.status
+            }
+            val date=DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT)
+                .format(Date(event.created))
+            "$label · $date\\n${event.filename}\\n${event.detail}"
+        }.replace("\\n","\n")
+        val message=if(rows.isEmpty()) "$summary\\n\\nIngen opplastinger registrert ennå."
+            else "$summary\\n\\n$rows"
+        val historyText=TextView(this).apply {
+            text=message.replace("\\n","\n")
+            setTextColor(Color.WHITE)
+            textSize=14f
+            setPadding(dp(18),dp(12),dp(18),dp(12))
+        }
+        val scroll=ScrollView(this).apply { addView(historyText) }
+        AlertDialog.Builder(this).setTitle("Opplastingshistorikk")
+            .setView(scroll).setPositiveButton("Lukk",null).show()
+    }
+
     private fun showProjectShare(pinless:Boolean=false) {
         val base=server.text.toString().trim().trimEnd('/')
         val pid=project.text.toString().trim()
