@@ -406,24 +406,32 @@ def upload_status(upload_id:str,x_device_token:str=Header(default='')):
 # OFFSET additions
 
 def make_room(incoming):
-    """Evict only locally cached R2 originals; preserve clip records and metadata."""
-    from r2_storage import r2_enabled
+    """Evict local copies only after verifying each complete original exists in R2."""
+    from r2_storage import r2_enabled, r2_client
     if not r2_enabled():
         raise HTTPException(503, 'Durable object storage is required before cache eviction')
-    rows=[]
     with db() as connection:
-        rows=connection.execute('SELECT id FROM clips WHERE status="ready" ORDER BY created ASC,id ASC').fetchall()
+        rows=connection.execute('SELECT id,size FROM clips WHERE status="ready" ORDER BY created ASC,id ASC').fetchall()
     used=sum(p.stat().st_size for p in FILES.iterdir() if p.is_file())
     for row in rows:
-        if used+incoming<=LIMIT_BYTES: break
+        if used+incoming<=LIMIT_BYTES:
+            break
         file=FILES/row['id']
-        if not file.exists(): continue
+        if not file.exists():
+            continue
         size=file.stat().st_size
+        try:
+            remote=r2_client().head_object(Bucket=os.environ.get('R2_BUCKET','offset-rushes'),Key=f"clips/{row['id']}")
+            if int(remote['ContentLength'])!=size or size!=row['size']:
+                continue
+        except Exception:
+            # Never remove the only known copy of a clip.
+            continue
         file.unlink()
         (THUMBS/(row['id']+'.jpg')).unlink(missing_ok=True)
         used-=size
     if used+incoming>LIMIT_BYTES:
-        raise HTTPException(507,'Insufficient local cache storage')
+        raise HTTPException(507,'Insufficient verified local cache storage')
 
 
 def generate_thumbnail(clip_id):
