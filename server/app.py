@@ -139,6 +139,12 @@ def clip_file(slug:str,clip_id:str,request:Request,authorization:str=Header(defa
     with db() as c: clip=c.execute('SELECT * FROM clips WHERE id=? AND project_id=? AND status="ready"',(clip_id,p['id'])).fetchone()
     if not clip: raise HTTPException(404,'Clip not found')
     path=FILES/clip_id
+    if not path.exists() and os.getenv("R2_ENDPOINT"):
+        try:
+            download_file(f"clips/{clip_id}", path)
+        except Exception:
+            import logging
+            logging.exception("R2 download failed for clip %s", clip_id)
     if not path.exists(): raise HTTPException(404,'File missing')
     if download: return FileResponse(path,media_type='application/octet-stream',filename=clip['filename'])
     size=path.stat().st_size; range_header=request.headers.get('range')
