@@ -1,0 +1,62 @@
+name: OFFSET development checks
+on:
+  push:
+    branches: [offset-r2-storage]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt pytest httpx
+      - name: Check Python syntax
+        run: python -m compileall -q .
+      - name: Run backend authentication regression tests
+        env:
+          FIELDLINK_DATA: ${{ runner.temp }}/offset-test-data
+          FIELDLINK_SECRET: ci-test-secret-not-for-production
+        run: python -m pytest -q tests
+      - name: Import backend without live cloud credentials
+        env:
+          FIELDLINK_DATA: ${{ runner.temp }}/offset-test-data
+          FIELDLINK_SECRET: ci-test-secret-not-for-production
+        run: python -c "import app; assert app.app.title == 'OFFSET API'"
+      - name: Build production Docker image
+        run: docker build -t offset-server-ci .
+      - name: Verify production image imports app and storage modules
+        run: docker run --rm -e FIELDLINK_DATA=/tmp/offset-ci -e FIELDLINK_SECRET=ci-test-secret-not-for-production offset-server-ci python -c "import app, db_persistence, r2_storage; assert app.app.title == 'OFFSET API'"
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK packages
+        run: |
+          SDKMANAGER="$(find /usr/local/lib/android/sdk/cmdline-tools -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build debug APK
+        working-directory: android
+        run: gradle :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: offset-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7

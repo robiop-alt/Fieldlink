@@ -1,16 +1,22 @@
+from r2_storage import upload_file, download_file, delete_file
 from fastapi import FastAPI, HTTPException, Header, Request, UploadFile, File
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
 import os, sqlite3, secrets, hashlib, hmac, time, uuid, re, mimetypes, subprocess, threading
+from urllib.parse import urlsplit
+from db_persistence import DurableConnection, restore
 
 DATA = Path(os.getenv('FIELDLINK_DATA', './data')).resolve()
 FILES = DATA / 'files'; TMP = DATA / 'tmp'; THUMBS = DATA / 'thumbs'; DB = DATA / 'fieldlink.sqlite3'
 LIMIT_BYTES = 6 * 1024**3
 STORAGE_LOCK = threading.RLock()
 for p in (FILES, TMP, THUMBS): p.mkdir(parents=True, exist_ok=True)
-ADMIN = os.getenv('FIELDLINK_ADMIN_KEY', ''); DEVICE = os.getenv('FIELDLINK_DEVICE_TOKEN', '')
+ADMIN = os.getenv('FIELDLINK_ADMIN_KEY', '')
+ADMIN_USER = os.getenv('OFFSET_ADMIN_USERNAME', '')
+ADMIN_PASSWORD = os.getenv('OFFSET_ADMIN_PASSWORD', '')
+DEVICE = os.getenv('FIELDLINK_DEVICE_TOKEN', '')
 SECRET = os.getenv('FIELDLINK_SECRET', 'development-only-change-me')
 app = FastAPI(title='OFFSET API', version='1.0.0')
 app.mount('/static', StaticFiles(directory='static'), name='static')
@@ -18,8 +24,9 @@ app.mount('/static', StaticFiles(directory='static'), name='static')
 # Metadata is extracted from the received original, never from client-supplied values.
 
 
+restore(DB)
 def db():
-    c=sqlite3.connect(DB); c.row_factory=sqlite3.Row; return c
+    return DurableConnection(DB)
 with db() as c:
     c.executescript('''CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,name TEXT NOT NULL,slug TEXT UNIQUE NOT NULL,pin_hash TEXT NOT NULL,created INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS clips(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,filename TEXT NOT NULL,size INTEGER NOT NULL,created INTEGER NOT NULL,status TEXT NOT NULL,sha256 TEXT,UNIQUE(project_id,filename),FOREIGN KEY(project_id) REFERENCES projects(id));
@@ -29,6 +36,44 @@ def ensure_metadata_schema():
     with db() as c:
         c.execute("CREATE TABLE IF NOT EXISTS clip_metadata (clip_id TEXT PRIMARY KEY, data_json TEXT NOT NULL)")
 ensure_metadata_schema()
+
+# Editable public website copy; changes are stored in the durable project database.
+SITE_DEFAULTS = {
+    'admin_title': 'Send rushes.',
+    'admin_highlight': 'Keep the story moving.',
+    'admin_description': 'Create a project and share a private review page with your production team.',
+    'review_title': 'Review from',
+    'review_highlight': 'wherever you are.',
+    'review_description': 'Private access to production footage, wherever you are.',
+}
+with db() as connection:
+    connection.execute('CREATE TABLE IF NOT EXISTS site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+
+class SiteSettingsIn(BaseModel):
+    admin_title: str = Field(max_length=120)
+    admin_highlight: str = Field(max_length=120)
+    admin_description: str = Field(max_length=400)
+    review_title: str = Field(max_length=120)
+    review_highlight: str = Field(max_length=120)
+    review_description: str = Field(max_length=400)
+
+def site_copy():
+    with db() as connection:
+        rows=connection.execute('SELECT key,value FROM site_settings').fetchall()
+    return {**SITE_DEFAULTS, **{r['key']:r['value'] for r in rows if r['key'] in SITE_DEFAULTS}}
+
+@app.get('/api/site/settings')
+def public_site_settings():
+    return site_copy()
+
+@app.put('/api/admin/settings')
+def update_site_settings(body:SiteSettingsIn, request:Request, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
+    values=body.model_dump()
+    with db() as connection:
+        for key,value in values.items():
+            connection.execute('INSERT INTO site_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(key,value.strip()))
+    return site_copy()
 
 def probe_metadata(clip_id):
     import json
@@ -56,8 +101,86 @@ def probe_metadata(clip_id):
         return out
     except Exception: return {}
 
-def require_admin(key):
-    if not ADMIN or not hmac.compare_digest(key or '', ADMIN): raise HTTPException(401,'Admin authentication required')
+LOGIN_ATTEMPTS = {}
+LOGIN_LOCK = threading.Lock()
+
+def check_login_limit(client_id):
+    now=time.monotonic()
+    with LOGIN_LOCK:
+        # Bound memory use even if many distinct clients attempt login.
+        if len(LOGIN_ATTEMPTS)>5000:
+            for key in list(LOGIN_ATTEMPTS):
+                if LOGIN_ATTEMPTS[key][1]<now:
+                    del LOGIN_ATTEMPTS[key]
+        count,until=LOGIN_ATTEMPTS.get(client_id,(0,now+900))
+        if now>until: count,until=0,now+900
+        if count>=8: raise HTTPException(429,'Too many attempts. Try again later.')
+        LOGIN_ATTEMPTS[client_id]=(count+1,until)
+
+def same_origin(request):
+    origin=request.headers.get('origin','')
+    try:
+        parsed=urlsplit(origin)
+        return parsed.scheme in ('https','http') and parsed.netloc==request.headers.get('host','') and not parsed.username and not parsed.password
+    except ValueError:
+        return False
+
+def admin_cookie_valid(request):
+    if request is None or not ADMIN_USER or not ADMIN_PASSWORD or SECRET == 'development-only-change-me':
+        return False
+    cookie=request.cookies.get('offset_admin','')
+    try:
+        username,expires,signature=cookie.split(':')
+        payload=f'{username}:{expires}'
+        expected=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+        return (hmac.compare_digest(username,ADMIN_USER) and int(expires)>int(time.time())
+                and hmac.compare_digest(signature,expected))
+    except (ValueError,TypeError):
+        return False
+
+def require_admin(key, request=None):
+    if admin_cookie_valid(request):
+        if request.method not in ('GET','HEAD','OPTIONS'):
+            if not same_origin(request):
+                raise HTTPException(403,'Invalid request origin')
+        return
+    if not ADMIN_USER and ADMIN and hmac.compare_digest(key or '', ADMIN):
+        return
+    raise HTTPException(401,'Admin authentication required')
+
+class AdminLogin(BaseModel):
+    username: str
+    password: str
+
+@app.post('/api/admin/login')
+def admin_login(body:AdminLogin,request:Request,response:Response):
+    if not ADMIN_USER or not ADMIN_PASSWORD or SECRET=='development-only-change-me':
+        raise HTTPException(503,'Admin login is not configured')
+    check_login_limit(request.client.host if request.client else 'unknown')
+    valid_user=hmac.compare_digest(body.username,ADMIN_USER)
+    valid_password=hmac.compare_digest(body.password,ADMIN_PASSWORD)
+    if not (valid_user and valid_password):
+        raise HTTPException(401,'Invalid username or password')
+    with LOGIN_LOCK:
+        LOGIN_ATTEMPTS.pop(request.client.host if request.client else 'unknown',None)
+    expiry=int(time.time())+7*24*3600
+    payload=f'{ADMIN_USER}:{expiry}'
+    sig=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+    response.set_cookie('offset_admin',f'{payload}:{sig}',max_age=7*24*3600,
+                        httponly=True,secure=True,samesite='strict',path='/')
+    return {'ok':True,'username':ADMIN_USER}
+
+@app.post('/api/admin/logout')
+def admin_logout(request:Request,response:Response):
+    if not same_origin(request): raise HTTPException(403,'Invalid request origin')
+    response.delete_cookie('offset_admin',path='/',secure=True,httponly=True,samesite='strict')
+    return {'ok':True}
+
+@app.get('/api/admin/me')
+def admin_me(request:Request):
+    if not admin_cookie_valid(request): raise HTTPException(401,'Sign in required')
+    return {'username':ADMIN_USER}
+
 def require_device(key):
     if not DEVICE or not hmac.compare_digest(key or '', DEVICE): raise HTTPException(401,'Uploader authentication required')
 def pin_digest(pin): return hashlib.sha256((pin+SECRET).encode()).hexdigest()
@@ -92,19 +215,60 @@ def review(slug:str): return FileResponse('static/review.html')
 def health(): return {'ok':True,'product':'OFFSET','version':'1.0.0'}
 
 @app.post('/api/admin/projects')
-def create_project(body:ProjectIn, x_admin_key:str=Header(default='')):
-    require_admin(x_admin_key)
+def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
     pid=uuid.uuid4().hex; slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
     pin=f'{secrets.randbelow(1_000_000):06d}'
     with db() as c: c.execute('INSERT INTO projects VALUES(?,?,?,?,?)',(pid,body.name,slug,pin_digest(pin),int(time.time())))
     return {'id':pid,'name':body.name,'slug':slug,'url_path':f'/r/{slug}','pin':pin}
 
 @app.get('/api/admin/projects')
-def list_projects(x_admin_key:str=Header(default='')):
-    require_admin(x_admin_key)
+def list_projects(request:Request, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
     with db() as c:
         rows=c.execute('SELECT p.id,p.name,p.slug,p.created,COUNT(cl.id) clips FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
     return [dict(r) for r in rows]
+
+def signed_share_token(project_id, expiry):
+    payload=f"share:{project_id}:{expiry}"
+    signature=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+    return f"{payload}:{signature}"
+
+@app.get('/api/device/projects/{project_id}/share')
+def device_project_share(project_id:str, request:Request, pinless:bool=False, x_device_token:str=Header(default='')):
+    """Generate a standard PIN link or an expiring bearer link for the device operator."""
+    require_device(x_device_token)
+    with db() as c:
+        p=c.execute('SELECT id,name,slug FROM projects WHERE id=?',(project_id,)).fetchone()
+    if not p: raise HTTPException(404,'Project not found')
+    base=str(request.base_url).rstrip('/')
+    url=f"{base}/r/{p['slug']}"
+    if pinless:
+        expiry=int(time.time())+24*3600
+        share=signed_share_token(p['id'],expiry)
+        # Fragment is not sent to the web server or included in HTTP referrers.
+        url+=f"#share={share}"
+    return {'name':p['name'],'url':url,'pinless':pinless}
+
+class ShareIn(BaseModel):
+    share_token: str
+
+@app.post('/api/review/{slug}/share-unlock')
+def share_unlock(slug:str, body:ShareIn):
+    with db() as c:
+        p=c.execute('SELECT id FROM projects WHERE slug=?',(slug,)).fetchone()
+    if not p: raise HTTPException(403,'Invalid share link')
+    try:
+        purpose,pid,expiry,signature=body.share_token.split(':')
+        payload=f"{purpose}:{pid}:{expiry}"
+        expected=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+        valid=(purpose=='share' and pid==p['id'] and int(expiry)>int(time.time())
+               and int(expiry)<=int(time.time())+24*3600 and hmac.compare_digest(signature,expected))
+    except (ValueError,TypeError):
+        valid=False
+    if not valid: raise HTTPException(403,'Invalid or expired share link')
+    session_expiry=min(int(expiry),int(time.time())+8*3600)
+    return {'token':session_token(p['id'],session_expiry),'expires':session_expiry}
 
 @app.post('/api/review/{slug}/unlock')
 def unlock(slug:str, body:PinIn):
@@ -132,13 +296,25 @@ def clips(slug:str, authorization:str=Header(default='')):
             out.append(item)
     return out
 
+def ensure_clip_local(clip_id):
+    """Restore a missing original from R2 for authenticated review endpoints."""
+    path = FILES / clip_id
+    if not path.exists() and os.getenv("R2_ENDPOINT"):
+        try:
+            download_file(f"clips/{clip_id}", path)
+        except Exception:
+            import logging
+            logging.exception("R2 download failed for clip %s", clip_id)
+    if not path.exists():
+        raise HTTPException(404, "Clip missing")
+    return path
+
 @app.get('/api/review/{slug}/clips/{clip_id}/file')
 def clip_file(slug:str,clip_id:str,request:Request,authorization:str=Header(default=''),session:str='',download:int=0):
     token=authorization.removeprefix('Bearer ').strip() or session; p=review_project(slug,token)
     with db() as c: clip=c.execute('SELECT * FROM clips WHERE id=? AND project_id=? AND status="ready"',(clip_id,p['id'])).fetchone()
     if not clip: raise HTTPException(404,'Clip not found')
-    path=FILES/clip_id
-    if not path.exists(): raise HTTPException(404,'File missing')
+    path=ensure_clip_local(clip_id)
     if download: return FileResponse(path,media_type='application/octet-stream',filename=clip['filename'])
     size=path.stat().st_size; range_header=request.headers.get('range')
     if range_header:
@@ -198,6 +374,17 @@ def upload_complete(upload_id:str,x_device_token:str=Header(default='')):
     with open(tmp,'rb') as source:
         for block in iter(lambda: source.read(1024*1024), b''): h.update(block)
     digest=h.hexdigest()
+    # Upload the original to durable storage BEFORE acknowledging completion.
+    # On failure, keep the temporary upload and DB record so the client can retry.
+    if os.getenv("R2_ENDPOINT"):
+        try:
+            from r2_storage import upload_clip_if_enabled
+            if not upload_clip_if_enabled(tmp, clip_id):
+                raise RuntimeError("R2 credentials are incomplete")
+        except Exception:
+            import logging
+            logging.exception("R2 upload failed for clip %s", clip_id)
+            raise HTTPException(503, "Permanent video storage unavailable; retry completion")
     with STORAGE_LOCK:
         make_room(u['total'])
         tmp.replace(FILES/clip_id)
@@ -219,19 +406,33 @@ def upload_status(upload_id:str,x_device_token:str=Header(default='')):
 # OFFSET additions
 
 def make_room(incoming):
-    """Delete oldest completed clips until the next upload fits."""
-    with db() as c:
-        rows=c.execute('SELECT id,size FROM clips WHERE status="ready" ORDER BY created ASC,id ASC').fetchall()
-        used=sum((FILES/r['id']).stat().st_size for r in rows if (FILES/r['id']).exists())
-        for r in rows:
-            if used+incoming <= LIMIT_BYTES: break
-            f=FILES/r['id']; actual=f.stat().st_size if f.exists() else 0
-            f.unlink(missing_ok=True)
-            (THUMBS/(r['id']+'.jpg')).unlink(missing_ok=True)
-            c.execute('DELETE FROM clips WHERE id=?',(r['id'],))
-            c.execute('DELETE FROM clip_metadata WHERE clip_id=?',(r['id'],))
-            used-=actual
-        if used+incoming > LIMIT_BYTES: raise HTTPException(507,'Insufficient storage')
+    """Evict local copies only after verifying each complete original exists in R2."""
+    from r2_storage import r2_enabled, r2_client
+    if not r2_enabled():
+        raise HTTPException(503, 'Durable object storage is required before cache eviction')
+    with db() as connection:
+        rows=connection.execute('SELECT id,size FROM clips WHERE status="ready" ORDER BY created ASC,id ASC').fetchall()
+    used=sum(p.stat().st_size for p in FILES.iterdir() if p.is_file())
+    for row in rows:
+        if used+incoming<=LIMIT_BYTES:
+            break
+        file=FILES/row['id']
+        if not file.exists():
+            continue
+        size=file.stat().st_size
+        try:
+            remote=r2_client().head_object(Bucket=os.environ.get('R2_BUCKET','offset-rushes'),Key=f"clips/{row['id']}")
+            if int(remote['ContentLength'])!=size or size!=row['size']:
+                continue
+        except Exception:
+            # Never remove the only known copy of a clip.
+            continue
+        file.unlink()
+        (THUMBS/(row['id']+'.jpg')).unlink(missing_ok=True)
+        used-=size
+    if used+incoming>LIMIT_BYTES:
+        raise HTTPException(507,'Insufficient verified local cache storage')
+
 
 def generate_thumbnail(clip_id):
     source=FILES/clip_id; output=THUMBS/(clip_id+'.jpg')
@@ -252,7 +453,7 @@ def thumbnail(slug:str,clip_id:str,session:str=''):
     get_clip_for_review(slug,clip_id,session)
     path=THUMBS/(clip_id+'.jpg')
     if not path.exists():
-        if not (FILES/clip_id).exists(): raise HTTPException(404,'Clip missing')
+        ensure_clip_local(clip_id)
         generate_thumbnail(clip_id)
     if not path.exists(): raise HTTPException(404,'Thumbnail unavailable')
     return FileResponse(path,media_type='image/jpeg')
@@ -261,6 +462,7 @@ def thumbnail(slug:str,clip_id:str,session:str=''):
 def duration(slug:str,clip_id:str,session:str=''):
     get_clip_for_review(slug,clip_id,session)
     try:
+        ensure_clip_local(clip_id)
         result=subprocess.run(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(FILES/clip_id)],capture_output=True,text=True,timeout=12,check=True)
         return {'seconds':float(result.stdout.strip())}
     except Exception: return {'seconds':None}
@@ -278,8 +480,7 @@ def download_selected(slug:str,ids:str='',session:str=''):
     used=set()
     for cid in wanted:
         if cid not in by_id: raise HTTPException(404,'Clip unavailable')
-        path=FILES/cid
-        if not path.exists(): raise HTTPException(404,'Clip missing')
+        path=ensure_clip_local(cid)
         name=by_id[cid]['filename']
         if name in used: name=cid[:8]+'_'+name
         used.add(name)

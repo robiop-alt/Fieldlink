@@ -2,6 +2,7 @@ package no.fieldlink.uploader
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.os.Build
@@ -20,22 +21,37 @@ class OverlayStatus(private val ctx: Context) {
     private var detail: TextView?=null
     private var collapsed=false
     private var last="Ready"
+    private val prefs=ctx.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
     private var params: WindowManager.LayoutParams?=null
     fun show() {
         if (view!=null || Build.VERSION.SDK_INT<23 || !Settings.canDrawOverlays(ctx)) return
         val root=LinearLayout(ctx).apply {
             orientation=LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(29,34,37))
+            val opacity=prefs.getInt("overlay_opacity",70).coerceIn(20,100)
+            background=GradientDrawable().apply {
+                setColor(Color.argb((opacity*255/100),29,34,37))
+                cornerRadius=16f
+            }
             setPadding(20,12,20,12)
             elevation=10f
+        }
+        val showStatus=prefs.getBoolean("overlay_show_status",true)
+        val showProject=prefs.getBoolean("overlay_show_project",false)
+        val projectText=TextView(ctx).apply {
+            text="Prosjekt: "+(prefs.getString("project","") ?: "").take(12)
+            setTextColor(Color.LTGRAY);textSize=11f
+            visibility=if(showProject) View.VISIBLE else View.GONE
         }
         val header=TextView(ctx).apply {
             text="●  OFFSET     −"; setTextColor(Color.rgb(183,243,77)); textSize=15f
             setTypeface(null,Typeface.BOLD)
-            setOnClickListener { collapsed=!collapsed; detail?.visibility=if(collapsed) View.GONE else View.VISIBLE; text=if(collapsed) "●  OFFSET  +" else "●  OFFSET     −" }
+            setOnClickListener { collapsed=!collapsed; detail?.visibility=if(collapsed) View.GONE else View.VISIBLE; projectText.visibility=if(collapsed || !showProject) View.GONE else View.VISIBLE; text=if(collapsed) "●  OFFSET  +" else "●  OFFSET     −" }
         }
         val sub=TextView(ctx).apply { text=last; setTextColor(Color.WHITE); textSize=12f }
-        detail=sub; root.addView(header); root.addView(sub)
+        detail=if(showStatus) sub else null
+        root.addView(header)
+        if(showStatus) root.addView(sub)
+        if(showProject) root.addView(projectText)
         val p=WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,
             if(Build.VERSION.SDK_INT>=26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,

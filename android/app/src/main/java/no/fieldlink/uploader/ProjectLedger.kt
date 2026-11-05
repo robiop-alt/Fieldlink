@@ -6,11 +6,41 @@ import android.database.sqlite.SQLiteOpenHelper
 import androidx.documentfile.provider.DocumentFile
 
 /** Persistent fail-closed binding. Never reassign an observed file to another customer. */
-class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", null, 1) {
+class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", null, 2) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE media (uri TEXT PRIMARY KEY, size INTEGER NOT NULL, modified INTEGER NOT NULL, project TEXT, state TEXT NOT NULL, upload_id TEXT, received INTEGER NOT NULL DEFAULT 0)")
+        createHistory(db)
     }
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if(oldVersion<2) createHistory(db)
+    }
+    private fun createHistory(db:SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS upload_history (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, filename TEXT NOT NULL, status TEXT NOT NULL, detail TEXT, created INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_history_project ON upload_history(project,created DESC)")
+    }
+    data class HistoryItem(val filename:String,val status:String,val detail:String,val created:Long)
+    @Synchronized fun logEvent(project:String,filename:String,status:String,detail:String="") {
+        if(project.isBlank()) return
+        val db=writableDatabase
+        db.execSQL("INSERT INTO upload_history(project,filename,status,detail,created) VALUES(?,?,?,?,?)",
+            arrayOf(project,filename.take(180),status,detail.take(180),System.currentTimeMillis()))
+        db.execSQL("DELETE FROM upload_history WHERE id NOT IN (SELECT id FROM upload_history ORDER BY id DESC LIMIT 500)")
+    }
+    @Synchronized fun history(project:String,limit:Int=50):List<HistoryItem> {
+        val items=mutableListOf<HistoryItem>()
+        readableDatabase.rawQuery("SELECT filename,status,COALESCE(detail,''),created FROM upload_history WHERE project=? ORDER BY id DESC LIMIT ?",
+            arrayOf(project,limit.coerceIn(1,100).toString())).use { rows ->
+            while(rows.moveToNext()) items.add(HistoryItem(rows.getString(0),rows.getString(1),rows.getString(2),rows.getLong(3)))
+        }
+        return items
+    }
+    @Synchronized fun counts(project:String):Triple<Int,Int,Int> {
+        readableDatabase.rawQuery("SELECT SUM(CASE WHEN state='done' THEN 1 ELSE 0 END),SUM(CASE WHEN state='pending' THEN 1 ELSE 0 END),SUM(CASE WHEN state='quarantine' THEN 1 ELSE 0 END) FROM media WHERE project=?",
+            arrayOf(project)).use { rows ->
+            rows.moveToFirst()
+            return Triple(if(rows.isNull(0)) 0 else rows.getInt(0),if(rows.isNull(1)) 0 else rows.getInt(1),if(rows.isNull(2)) 0 else rows.getInt(2))
+        }
+    }
     @Synchronized fun registerExisting(files: List<DocumentFile>) {
         val db = writableDatabase
         db.beginTransaction()
