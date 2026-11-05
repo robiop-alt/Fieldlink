@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
 import os, sqlite3, secrets, hashlib, hmac, time, uuid, re, mimetypes, subprocess, threading
+from urllib.parse import urlsplit
 from db_persistence import DurableConnection, restore
 
 DATA = Path(os.getenv('FIELDLINK_DATA', './data')).resolve()
@@ -100,6 +101,30 @@ def probe_metadata(clip_id):
         return out
     except Exception: return {}
 
+LOGIN_ATTEMPTS = {}
+LOGIN_LOCK = threading.Lock()
+
+def check_login_limit(client_id):
+    now=time.monotonic()
+    with LOGIN_LOCK:
+        # Bound memory use even if many distinct clients attempt login.
+        if len(LOGIN_ATTEMPTS)>5000:
+            for key in list(LOGIN_ATTEMPTS):
+                if LOGIN_ATTEMPTS[key][1]<now:
+                    del LOGIN_ATTEMPTS[key]
+        count,until=LOGIN_ATTEMPTS.get(client_id,(0,now+900))
+        if now>until: count,until=0,now+900
+        if count>=8: raise HTTPException(429,'Too many attempts. Try again later.')
+        LOGIN_ATTEMPTS[client_id]=(count+1,until)
+
+def same_origin(request):
+    origin=request.headers.get('origin','')
+    try:
+        parsed=urlsplit(origin)
+        return parsed.scheme in ('https','http') and parsed.netloc==request.headers.get('host','') and not parsed.username and not parsed.password
+    except ValueError:
+        return False
+
 def admin_cookie_valid(request):
     if request is None or not ADMIN_USER or not ADMIN_PASSWORD or SECRET == 'development-only-change-me':
         return False
@@ -116,12 +141,10 @@ def admin_cookie_valid(request):
 def require_admin(key, request=None):
     if admin_cookie_valid(request):
         if request.method not in ('GET','HEAD','OPTIONS'):
-            origin=request.headers.get('origin','')
-            expected=str(request.base_url).rstrip('/')
-            if not origin or origin.rstrip('/')!=expected:
+            if not same_origin(request):
                 raise HTTPException(403,'Invalid request origin')
         return
-    if ADMIN and hmac.compare_digest(key or '', ADMIN):
+    if not ADMIN_USER and ADMIN and hmac.compare_digest(key or '', ADMIN):
         return
     raise HTTPException(401,'Admin authentication required')
 
@@ -133,10 +156,13 @@ class AdminLogin(BaseModel):
 def admin_login(body:AdminLogin,request:Request,response:Response):
     if not ADMIN_USER or not ADMIN_PASSWORD or SECRET=='development-only-change-me':
         raise HTTPException(503,'Admin login is not configured')
+    check_login_limit(request.client.host if request.client else 'unknown')
     valid_user=hmac.compare_digest(body.username,ADMIN_USER)
     valid_password=hmac.compare_digest(body.password,ADMIN_PASSWORD)
     if not (valid_user and valid_password):
         raise HTTPException(401,'Invalid username or password')
+    with LOGIN_LOCK:
+        LOGIN_ATTEMPTS.pop(request.client.host if request.client else 'unknown',None)
     expiry=int(time.time())+7*24*3600
     payload=f'{ADMIN_USER}:{expiry}'
     sig=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
@@ -145,7 +171,8 @@ def admin_login(body:AdminLogin,request:Request,response:Response):
     return {'ok':True,'username':ADMIN_USER}
 
 @app.post('/api/admin/logout')
-def admin_logout(response:Response):
+def admin_logout(request:Request,response:Response):
+    if not same_origin(request): raise HTTPException(403,'Invalid request origin')
     response.delete_cookie('offset_admin',path='/',secure=True,httponly=True,samesite='strict')
     return {'ok':True}
 
