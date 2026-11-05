@@ -71,6 +71,7 @@ class MainActivity : Activity() {
         project=field("Project ID",prefs.getString("project","")?:"")
         token=field("Device token",prefs.getString("token","")?:"",true)
         config.addView(server);config.addView(project);config.addView(token)
+        config.addView(button("Test connection & project") { testConnection() })
         root.addView(config)
         root.addView(button("Project QR code / Share link") { showProjectShare() })
         root.addView(button("Upload history") { showUploadHistory() })
@@ -129,6 +130,42 @@ class MainActivity : Activity() {
         root.addView(text("OFFSET TEST BUILD · Verify project isolation before customer use",12f,muted))
         setContentView(ScrollView(this).apply { addView(root) })
     }
+    private fun testConnection() {
+        val base=server.text.toString().trim().trimEnd('/')
+        val pid=project.text.toString().trim()
+        val device=token.text.toString().trim()
+        if(!base.startsWith("https://") || pid.isBlank() || device.isBlank()) {
+            AlertDialog.Builder(this).setTitle("Connection details required")
+                .setMessage("Enter a valid HTTPS server URL, project ID and device token.")
+                .setPositiveButton("OK",null).show()
+            return
+        }
+        Thread {
+            val result=try {
+                val request=Request.Builder()
+                    .url("$base/api/device/projects/${Uri.encode(pid)}/share")
+                    .header("X-Device-Token",device).build()
+                OkHttpClient().newCall(request).execute().use { response ->
+                    if(!response.isSuccessful) {
+                        when(response.code) {
+                            401,403 -> "Device token rejected. Check your token."
+                            404 -> "Project not found. Check the project ID."
+                            else -> "Server returned HTTP ${response.code}. Please retry."
+                        }
+                    } else {
+                        val data=JSONObject(response.body?.string() ?: "{}")
+                        "Connected successfully!\\nProject: ${data.optString("name","Unknown")}\\nThe controller can access this project."
+                    }
+                }
+            }catch(e:Exception){"Connection failed: ${e.localizedMessage ?: "Check network and server URL."}"}
+            runOnUiThread {
+                AlertDialog.Builder(this).setTitle("Connection test")
+                    .setMessage(result.replace("\\\\n","\\n"))
+                    .setPositiveButton("OK",null).show()
+            }
+        }.start()
+    }
+
     private fun showUploadHistory() {
         val pid=project.text.toString().trim()
         if(pid.isBlank()) {
