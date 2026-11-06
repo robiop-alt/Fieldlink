@@ -78,7 +78,8 @@ class MainActivity : Activity() {
         root.addView(button("Project QR code / Share link") { showProjectShare() })
         root.addView(button("Add proxy files manually") { chooseManualFiles() })
         root.addView(button("Start camera metadata capture") { startMetadataCapture() })
-        root.addView(button("Upload history") { showUploadHistory() })
+        root.addView(button("Server upload history") { showServerUploadHistory() })
+        root.addView(button("Local upload history") { showUploadHistory() })
         root.addView(text(""))
         val source=card("DJI cache")
         folderLabel=text("",13f,muted);source.addView(folderLabel)
@@ -165,6 +166,55 @@ class MainActivity : Activity() {
                 AlertDialog.Builder(this).setTitle("Connection test")
                     .setMessage(result)
                     .setPositiveButton("OK",null).show()
+            }
+        }.start()
+    }
+
+    private fun showServerUploadHistory() {
+        val base=server.text.toString().trim().trimEnd('/')
+        val pid=project.text.toString().trim()
+        val device=token.text.toString().trim()
+        if(!base.startsWith("https://") || pid.isBlank() || device.isBlank()) {
+            AlertDialog.Builder(this).setTitle("Server upload history")
+                .setMessage("Enter HTTPS server, project ID and device token first.")
+                .setPositiveButton("OK",null).show()
+            return
+        }
+        Thread {
+            val result=try {
+                val request=Request.Builder()
+                    .url("$base/api/device/projects/${Uri.encode(pid)}/uploads")
+                    .header("X-Device-Token",device).build()
+                OkHttpClient().newCall(request).execute().use { response ->
+                    if(!response.isSuccessful) {
+                        "Could not load server history (HTTP ${response.code}). Check connection, project and device token."
+                    } else {
+                        val clips=JSONObject(response.body?.string() ?: "{}").optJSONArray("clips")
+                        if(clips==null || clips.length()==0) "No completed uploads on the server for project $pid."
+                        else {
+                            val lines=mutableListOf<String>()
+                            for(i in 0 until clips.length()) {
+                                val clip=clips.getJSONObject(i)
+                                val date=DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT)
+                                    .format(Date(clip.optLong("created")*1000L))
+                                val size=clip.optLong("size")/1048576L
+                                lines.add("✓ $date · ${size} MB\n${clip.optString("filename")}")
+                            }
+                            "${clips.length()} completed server clips · $pid\n\n"+lines.joinToString("\n\n")
+                        }
+                    }
+                }
+            }catch(e:Exception) {
+                "Could not contact server: ${e.localizedMessage ?: "Check your network."}"
+            }
+            runOnUiThread {
+                val label=TextView(this).apply {
+                    text=result;setTextColor(Color.WHITE);textSize=14f
+                    setPadding(dp(18),dp(12),dp(18),dp(12))
+                }
+                AlertDialog.Builder(this).setTitle("Server upload history")
+                    .setView(ScrollView(this).apply { addView(label) })
+                    .setPositiveButton("Close",null).show()
             }
         }.start()
     }
