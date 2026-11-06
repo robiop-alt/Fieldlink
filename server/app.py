@@ -1,5 +1,5 @@
 from r2_storage import upload_file, download_file, delete_file, r2_enabled
-from fastapi import FastAPI, HTTPException, Header, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Header, Request, UploadFile, File, Form
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -488,6 +488,54 @@ def publish_incoming(project_id:str,body:IncomingManifest,x_device_token:str=Hea
             c.execute('INSERT OR REPLACE INTO incoming_clips(project_id,filename,size,updated) VALUES(?,?,?,?)',
                 (project_id,filename,item.size,now))
     return {'ok':True,'count':len(body.clips)}
+
+def incoming_thumb_path(project_id:str,filename:str):
+    key=hashlib.sha256((project_id+'\\0'+filename).encode('utf-8')).hexdigest()
+    return THUMBS / ('incoming-'+project_id+'-'+key+'.jpg'), f'incoming-thumbs/{project_id}/{key}.jpg'
+
+@app.post('/api/device/projects/{project_id}/incoming-thumbnail')
+def incoming_thumbnail_upload(project_id:str,filename:str=Form(...),
+                              image:UploadFile=File(...),x_device_token:str=Header(default='')):
+    """DJI-generated JPG preview, not video bytes. Only authorized upload manifests."""
+    require_device(x_device_token)
+    filename=safe_name(filename)
+    with db() as c:
+        existing=c.execute('SELECT 1 FROM incoming_clips WHERE project_id=? AND filename=?',
+                           (project_id,filename)).fetchone()
+        transferring=c.execute('SELECT 1 FROM uploads WHERE project_id=? AND filename=?',
+                               (project_id,filename)).fetchone()
+    if not existing and not transferring: raise HTTPException(404,'Clip not in upload queue')
+    data=image.file.read(2*1024*1024+1)
+    if len(data)>2*1024*1024 or len(data)<4 or not data.startswith(b'\\xff\\xd8\\xff'):
+        raise HTTPException(415,'Expected JPEG under 2 MB')
+    path,key=incoming_thumb_path(project_id,filename)
+    path.write_bytes(data)
+    if r2_enabled():
+        try: upload_file(path,key)
+        except Exception:
+            import logging
+            logging.exception('Unable to persist incoming preview')
+            raise HTTPException(503,'Preview storage unavailable')
+    return {'ok':True}
+
+@app.get('/api/review/{slug}/incoming-thumbnail')
+def incoming_thumbnail_review(slug:str,filename:str,authorization:str=Header(default=''),session:str=''):
+    token=authorization.removeprefix('Bearer ').strip() or session
+    project=review_project(slug,token)
+    filename=safe_name(filename)
+    now=int(time.time())
+    with db() as c:
+        incoming=c.execute('SELECT 1 FROM incoming_clips WHERE project_id=? AND filename=? AND updated>?',
+                           (project['id'],filename,now-150)).fetchone()
+        active=c.execute('SELECT 1 FROM uploads WHERE project_id=? AND filename=?',
+                         (project['id'],filename)).fetchone()
+    if not incoming and not active: raise HTTPException(404,'Not incoming')
+    path,key=incoming_thumb_path(project['id'],filename)
+    if not path.exists() and r2_enabled():
+        try: download_file(key,path)
+        except Exception: pass
+    if not path.exists(): raise HTTPException(404,'No preview yet')
+    return FileResponse(path,media_type='image/jpeg',headers={'Cache-Control':'private, max-age=15'})
 
 @app.get('/api/review/{slug}/incoming')
 def review_incoming(slug:str,authorization:str=Header(default='')):
