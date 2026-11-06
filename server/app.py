@@ -374,6 +374,35 @@ def device_project_uploads(project_id:str, x_device_token:str=Header(default='')
         ).fetchall()
     return {'project_id':project_id,'clips':[dict(row) for row in rows]}
 
+@app.delete('/api/device/projects/{project_id}/clips/{clip_id}')
+def device_delete_uploaded_clip(project_id:str, clip_id:str, x_device_token:str=Header(default='')):
+    """Remove a delivered proxy from review. Never delete source media on the controller."""
+    require_device(x_device_token)
+    with db() as conn:
+        clip=conn.execute(
+            'SELECT id,filename FROM clips WHERE id=? AND project_id=? AND status=?',
+            (clip_id,project_id,'ready')
+        ).fetchone()
+        if not clip: raise HTTPException(404,'Uploaded clip not found in project')
+        in_progress=conn.execute(
+            'SELECT 1 FROM uploads WHERE project_id=? AND filename=?',
+            (project_id,clip['filename'])
+        ).fetchone()
+        if in_progress: raise HTTPException(409,'Clip is being uploaded; stop or finish the upload first')
+        if r2_enabled():
+            try:
+                delete_file(f"clips/{clip_id}")
+                delete_file(f"thumbnails/{clip_id}.jpg")
+            except Exception:
+                import logging
+                logging.exception('Unable to delete cloud clip %s',clip_id)
+                raise HTTPException(502,'Cloud deletion failed. Clip was not removed from the project.')
+        (FILES/clip_id).unlink(missing_ok=True)
+        (THUMBS/(clip_id+'.jpg')).unlink(missing_ok=True)
+        conn.execute('DELETE FROM clip_metadata WHERE clip_id=?',(clip_id,))
+        conn.execute('DELETE FROM clips WHERE id=? AND project_id=?',(clip_id,project_id))
+    return {'deleted':True,'id':clip_id,'project_id':project_id}
+
 @app.get('/api/device/projects/{project_id}/share')
 def device_project_share(project_id:str, request:Request, pinless:bool=False, x_device_token:str=Header(default='')):
     """Generate a standard PIN link or an expiring bearer link for the device operator."""
