@@ -39,12 +39,6 @@ class UploadService : Service() {
     @Volatile private var loopStarted = false
     private data class FileState(val size: Long, val modified: Long, val stableScans: Int)
     private val seen = mutableMapOf<String, FileState>()
-    // SD copying uses its own stability tracker and continues without Wi-Fi.
-    private val sdSeen = mutableMapOf<String, FileState>()
-    private val sdHandled = mutableSetOf<String>()
-    private var sdActiveRoot = ""
-    private val sdMirror by lazy { SdRushesMirror(this) }
-
     private var batteryPaused=false
 
     override fun onCreate() {
@@ -101,12 +95,6 @@ class UploadService : Service() {
                 }
                 if (prefs.getString("project", "") != sessionProject) {
                     status("Prosjekt endret: stopp og start OFFSET på nytt"); stopSelf(); return
-                }
-                // SD copies are local and do not depend on the server or Wi-Fi.
-                // A copy failure never blocks the normal cloud uploader.
-                if (prefs.getBoolean("sd_copy_enabled", false)) {
-                    try { backupPendingRushes(root) }
-                    catch (e: Exception) { status("SD copy waiting: ${e.message?.take(55)}") }
                 }
                 if (!hasNetwork()) {
                     status("Waiting for network · uploads paused")
@@ -296,69 +284,6 @@ class UploadService : Service() {
             return "0-$reel-$clip"
         }
         return "1-$name"
-    }
-
-    /**
-     * Back up current-project original rushes to the user-selected SD tree.
-     * Only stable clips already bound to this project are eligible. Historical
-     * quarantined media is never silently copied to a different production.
-     */
-    private fun backupPendingRushes(root: DocumentFile) {
-        val project = sessionProject
-        val cardRoot = prefs.getString("sd_tree_uri", "").orEmpty()
-        if (project.isBlank() || cardRoot.isBlank()) return
-        if (sdActiveRoot != cardRoot) {
-            sdHandled.clear()
-            sdSeen.clear()
-            sdActiveRoot = cardRoot
-        }
-        val items=mutableListOf<DocumentFile>()
-        collect(root, items, 0)
-        // Explicitly selected older clips are also eligible for SD copying.
-        val manualUris=ledger.manualPending(project)
-        val manuallySelected=manualUris.mapNotNull { value ->
-            try { DocumentFile.fromSingleUri(this, Uri.parse(value)) } catch (_:Exception) { null }
-        }.filter { it.isFile && it.length()>0L }
-        val visited=HashSet<String>()
-        val ordered=(items+manuallySelected)
-            .filter { visited.add(it.uri.toString()) }
-            .sortedWith(compareBy<DocumentFile> { djiSequenceKey(it.name ?: "") }
-                .thenBy { it.lastModified() })
-        for (file in ordered) {
-            if (!running || !prefs.getBoolean("sd_copy_enabled", false) ||
-                prefs.getString("project", "") != project || lowBatteryPause()) return
-            val key=file.uri.toString()
-            if (key in sdHandled) continue
-            val size=file.length()
-            val modified=file.lastModified()
-            if (size<=0L) continue
-            val previous=sdSeen[key]
-            if (previous==null || previous.size!=size || previous.modified!=modified) {
-                sdSeen[key]=FileState(size,modified,0)
-                continue
-            }
-            val stable=previous.stableScans+1
-            sdSeen[key]=previous.copy(stableScans=stable)
-            if (stable<3) continue
-            val binding=ledger.observe(file,project, key !in manualUris)
-            // observe() will refuse all quarantined or cross-project files.
-            if (binding!="pending" && binding!="done") continue
-            val name=prefs.getString("project_name", "Project").orEmpty()
-            try {
-                if (sdMirror.copy(file,project,name) {
-                    running && prefs.getBoolean("sd_copy_enabled",false) &&
-                        prefs.getString("project","")==project && !lowBatteryPause()
-                }) {
-                    sdHandled.add(key)
-                    ledger.logEvent(project,file.name ?: "clip.mp4","sd_done","Original copied to SD card")
-                    // One new file per pass to avoid delaying the cloud queue.
-                    break
-                }
-            } catch (e: Exception) {
-                status("SD copy waiting: ${e.message?.take(55)}")
-                break
-            }
-        }
     }
 
     private fun collect(dir: DocumentFile, out: MutableList<DocumentFile>, depth: Int) {
