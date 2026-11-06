@@ -233,6 +233,12 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onStop() {
+        // A manual end-of-day SD copy must never continue when DJI Pilot comes back.
+        if(sdBackupRunning)sdBackupCancel=true
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         // Seed defaults before creating the fields or starting the uploader.
@@ -549,7 +555,36 @@ class MainActivity : Activity() {
         } else if(bootPending) {
             prefs.edit().putBoolean("boot_resume_pending",false).apply()
         }
+        if(prefs.getBoolean("startup_health_check",true))window.decorView.post {
+            checkStartupHealth()
+        }
     }
+    private fun checkStartupHealth() {
+        val pid=prefs.getString("project","").orEmpty()
+        val base=prefs.getString("server","").orEmpty().trimEnd('/')
+        val key=prefs.getString("token","").orEmpty()
+        // No repeated modal prompts during controller startup or when unconfigured.
+        if(pid.isBlank())return
+        val problems=mutableListOf<String>()
+        if(!cacheAccessOk())problems.add("DJI cache access missing")
+        if(!base.startsWith("https://")||key.isBlank())problems.add("Secure server connection not configured")
+        if(problems.isNotEmpty()) {
+            val now=System.currentTimeMillis()
+            val last=prefs.getLong("startup_health_warning_at",0L)
+            if(now-last>3600_000L) {
+                prefs.edit().putLong("startup_health_warning_at",now).apply()
+                showOffsetError("OFFSET startup check",problems.joinToString("\n"),
+                    "Uploads cannot start until these settings are corrected.")
+            }
+            return
+        }
+        // Network availability can change during flight; an offline startup
+        // is only a status hint, never an alert requiring operator action.
+        if(!ControllerPolicy.wifiAvailable(this) && prefs.getBoolean("wifi_only",false)) {
+            folderLabel.text="Wi-Fi only · uploads will resume on Wi-Fi"
+        }
+    }
+
     @Volatile private var sdBackupRunning=false
     @Volatile private var sdBackupCancel=false
 
@@ -667,7 +702,6 @@ class MainActivity : Activity() {
         val events=if(pid.isBlank()) emptyList() else ProjectLedger(this).history(pid,500)
         val copied=events.count { it.status=="sd_done" }
         val failures=events.count { it.status=="sd_error" }
-        val enabled=sdCardAccessOk()
         val access=sdCardAccessOk()
         val free=ControllerPolicy.sdFreeBytes(this)
         val space=if(free!=null) String.format(java.util.Locale.US,"%.1f GB",(free.toDouble()/1073741824.0))
