@@ -22,6 +22,8 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action != Intent.ACTION_BOOT_COMPLETED && intent?.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val prefs=context.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
+        if(intent.action==Intent.ACTION_BOOT_COMPLETED) prefs.edit().putBoolean("upload_paused",false).apply()
+        if(prefs.getBoolean("upload_paused",false)) return
         if (!prefs.getBoolean("start_on_boot",true)) return
         // The lightweight status pill is independent of the uploader, so it
         // can appear immediately after boot, before DJI Pilot 2 starts.
