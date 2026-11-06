@@ -54,6 +54,8 @@ class MainActivity : Activity() {
     }
     private fun button(label:String, action:()->Unit)=Button(this).apply {
         text=label;isAllCaps=false;setTextColor(bg);setBackgroundColor(accent)
+        textSize=12f;minHeight=0;minimumHeight=0
+        setPadding(dp(8),dp(5),dp(8),dp(5))
         setOnClickListener { action() }
     }
     private fun card(title:String):LinearLayout = LinearLayout(this).apply {
@@ -64,28 +66,54 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor=bg;window.navigationBarColor=bg
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setBackgroundColor(bg);setPadding(dp(20),dp(20),dp(20),dp(20)) }
-        root.addView(text("OFFSET.",30f,Color.WHITE))
-        root.addView(text("CONTROLLER  /  INSPIRE 3 · ZENMUSE X9",12f,muted))
-        root.addView(text("Secure rushes delivery",16f))
-        root.addView(text("ANDROID BUILD · MANUAL PROXIES / SERVER TEST / METADATA",12f,accent))
+        root.addView(text("OFFSET.  /  INSPIRE 3",22f,Color.WHITE))
+        root.addView(text("Secure rushes delivery · CONTROLLER",11f,muted))
         val config=card("Connection & project")
         server=field("HTTPS server",prefs.getString("server","")?:"")
         project=field("Project ID",prefs.getString("project","")?:"")
         token=field("Device token",prefs.getString("token","")?:"",true)
         config.addView(server);config.addView(project);config.addView(token)
-        config.addView(button("Test connection & project") { testConnection() })
-        root.addView(config)
-        root.addView(button("Project QR code / Share link") { showProjectShare() })
-        root.addView(button("Add proxy files manually") { chooseManualFiles() })
-        root.addView(button("Start camera metadata capture") { startMetadataCapture() })
-        root.addView(button("Server upload history") { showServerUploadHistory() })
-        root.addView(button("Local upload history") { showUploadHistory() })
-        root.addView(text(""))
+        config.addView(button("Test connection") { testConnection() })
+        val projectSummary=text("PROJECT  ·  ${project.text.toString().ifBlank { "NOT SET" }}",14f,accent)
+        root.addView(projectSummary)
+        fun compactRow(left:Button,right:Button):LinearLayout = LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            val lp=LinearLayout.LayoutParams(0,dp(43),1f).apply { setMargins(dp(2),dp(2),dp(2),dp(2)) }
+            addView(left,LinearLayout.LayoutParams(lp))
+            addView(right,LinearLayout.LayoutParams(lp))
+        }
+        root.addView(compactRow(
+            button("START UPLOAD") { saveAndStart() },
+            button("STOP UPLOAD") { stopService(Intent(this,UploadService::class.java));folderLabel.text="Uploader stopped" }
+        ))
+        root.addView(compactRow(
+            button("Server history") { showServerUploadHistory() },
+            button("Local history") { showUploadHistory() }
+        ))
+        root.addView(compactRow(
+            button("Add proxy files") { chooseManualFiles() },
+            button("Camera metadata") { startMetadataCapture() }
+        ))
+        root.addView(compactRow(
+            button("Share / QR") { showProjectShare() },
+            button("Test server") { testConnection() }
+        ))
         val source=card("DJI cache")
-        folderLabel=text("",13f,muted);source.addView(folderLabel)
+        folderLabel=text("",12f,muted);source.addView(folderLabel)
         source.addView(button("Choose CACHE_VIDEO folder") { chooseFolder() })
         root.addView(source);refreshFolderLabel()
-        root.addView(text(""))
+        val connectionButton=button("Connection settings  ▾") {
+            val parent=config.parent
+            if(parent is ViewGroup) parent.removeView(config)
+            AlertDialog.Builder(this).setTitle("Connection settings")
+                .setView(config).setPositiveButton("Save") { _,_ ->
+                    prefs.edit().putString("server",server.text.toString().trim())
+                        .putString("project",project.text.toString().trim())
+                        .putString("token",token.text.toString().trim()).apply()
+                    projectSummary.text="PROJECT  ·  ${project.text.toString().ifBlank { "NOT SET" }}"
+                }.show()
+        }
+        root.addView(connectionButton)
         val settings=card("Upload preferences")
         val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay",v).apply() } }
@@ -125,13 +153,14 @@ class MainActivity : Activity() {
             if(Build.VERSION.SDK_INT>=23) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
         })
         settings.addView(text("Old cache files are quarantined. Switching projects requires stopping and restarting the uploader.",13f,muted))
-        root.addView(settings)
-        root.addView(text(""))
-        root.addView(button("Start secure upload") { saveAndStart() })
-        root.addView(text(""))
-        root.addView(button("Stop upload") { stopService(Intent(this,UploadService::class.java));folderLabel.text="Uploader stopped" })
-        root.addView(text(""))
-        root.addView(text("OFFSET TEST BUILD · Verify project isolation before customer use",12f,muted))
+        root.addView(button("Upload preferences  ▾") {
+            val parent=settings.parent
+            if(parent is ViewGroup) parent.removeView(settings)
+            AlertDialog.Builder(this).setTitle("Upload preferences")
+                .setView(ScrollView(this).apply { addView(settings) })
+                .setPositiveButton("Close",null).show()
+        })
+        root.addView(text("OFFSET TEST BUILD · Verify project isolation",11f,muted))
         setContentView(ScrollView(this).apply { addView(root) })
     }
     private fun testConnection() {
