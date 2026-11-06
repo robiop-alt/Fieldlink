@@ -2,6 +2,25 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Full OFFSET. wordmark kept inside Android's circular adaptive-icon safe area. -->
     <path android:fillColor="#0B0D0F" android:pathData="M0,0h108v108h-108z"/>
-    <path android:fillColor="#57B62F" android:fillType="evenOdd" android:pathData="M54,19a35,35 0,1 0,0 70a35,35 0,1 0,0 -70 M54,34a20,20 0,1 1,0 40a20,20 0,1 1,0 -40"/>
+    <!-- O -->
+    <path android:fillColor="#57B62F" android:fillType="evenOdd"
+        android:pathData="M24,45.5a7.2,8.5 0,1 0,0 17a7.2,8.5 0,1 0,0 -17 M24,49a3.6,5 0,1 1,0 10a3.6,5 0,1 1,0 -10"/>
+    <!-- FF -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M33,46h10v3.3h-6.5v3.4h5.7v3.2h-5.7v6.1h-3.5z
+                          M44.5,46h10v3.3h-6.5v3.4h5.7v3.2h-5.7v6.1h-3.5z"/>
+    <!-- S -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M65.5,49.7l-3.1,1.1c-0.5,-1.5 -1.6,-2 -3,-2c-1.6,0 -2.3,0.6 -2.3,1.5c0,1 0.9,1.3 3.2,1.9c3.7,0.9 5.7,2.2 5.7,5.2c0,3.4 -2.7,5.3 -6.7,5.3c-3.7,0 -6.1,-1.6 -6.9,-4.5l3.3,-1c0.5,1.6 1.8,2.4 3.7,2.4c1.8,0 2.7,-0.6 2.7,-1.6c0,-1.1 -1.1,-1.4 -3.5,-2c-3.6,-0.9 -5.3,-2.2 -5.3,-5c0,-3.2 2.6,-5.3 6.3,-5.3c3.2,0 5.2,1.4 5.9,4z"/>
+    <!-- E -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M67.5,46h10.2v3.3h-6.6v3.2h6v3.1h-6v3.1h6.6v3.3h-10.2z"/>
+    <!-- T -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M79,46h10.6v3.4h-3.5v12.6h-3.6v-12.6h-3.5z"/>
+    <!-- period -->
+    <path android:fillColor="#57B62F"
+        android:pathData="M92.3,58.1a2.2,2.2 0,1 0,0 4.4a2.2,2.2 0,1 0,0 -4.4"/>
 </vector>
