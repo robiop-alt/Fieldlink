@@ -153,6 +153,7 @@ class MainActivity : Activity() {
         upload.addView(row(
             primaryButton("Start upload") { saveAndStart() },
             button("Stop upload") {
+                prefs.edit().putBoolean("upload_paused",true).apply()
                 stopService(Intent(this,UploadService::class.java))
                 folderLabel.text="Uploader stopped"
             }
@@ -1184,7 +1185,7 @@ class MainActivity : Activity() {
         folderLabel.text=if(name==null) "CACHE_VIDEO access needed (choose once)" else "CACHE_VIDEO ready: $name"
     }
     private fun resumeSavedUploader() {
-        if(!prefs.getBoolean("start_on_boot",true)) return
+        if(!prefs.getBoolean("start_on_boot",true) || prefs.getBoolean("upload_paused",false)) return
         val base=prefs.getString("server","").orEmpty()
         val tokenValue=prefs.getString("token","").orEmpty()
         val pid=prefs.getString("project","").orEmpty()
@@ -1212,6 +1213,8 @@ class MainActivity : Activity() {
         if(!base.startsWith("https://")&&!base.contains("localhost")&&!base.contains("10.0.2.2")) {
             folderLabel.text="HTTPS required";return
         }
+        // Explicit Start clears the temporary pause until the next shutdown.
+        prefs.edit().putBoolean("upload_paused",false).apply()
         // Never silently change the project of a running service.
         stopService(Intent(this,UploadService::class.java))
         prefs.edit().putString("server",base).putString("project",pid).putString("token",device).apply()
