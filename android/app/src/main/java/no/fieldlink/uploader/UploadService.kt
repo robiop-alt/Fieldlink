@@ -91,7 +91,9 @@ class UploadService : Service() {
                 val manuallyQueued=ledger.manualPending(sessionProject).mapNotNull { uri ->
                     try { DocumentFile.fromSingleUri(this,Uri.parse(uri)) }catch(_:Exception) { null }
                 }.filter { it.isFile && it.length()>0L }
-                publishIncoming(manuallyQueued)
+                // Manual selection must appear immediately, even in manual-only mode.
+                // Auto mode will publish the complete pending list further below.
+                if(prefs.getString("upload_mode","auto")=="manual") publishIncoming(manuallyQueued)
                 for(uriString in ledger.manualPending(sessionProject)) {
                     if(!running) break
                     try {
@@ -105,6 +107,9 @@ class UploadService : Service() {
                     }catch(e:Exception) { status("Manual upload waiting: ${e.message?.take(55)}") }
                 }
                 if (prefs.getString("upload_mode","auto")=="manual") {
+                    publishIncoming(ledger.manualPending(sessionProject).mapNotNull { uri ->
+                        try { DocumentFile.fromSingleUri(this,Uri.parse(uri)) }catch(_:Exception){null}
+                    }.filter { it.isFile && it.length()>0L })
                     status("Manual mode: waiting for selected clips")
                     Thread.sleep(12000)
                     continue
