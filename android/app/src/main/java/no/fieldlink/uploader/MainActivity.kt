@@ -321,7 +321,7 @@ class MainActivity : Activity() {
         val startOnBoot=Switch(this).apply {
             text="Start on boot"
             setTextColor(Color.WHITE)
-            isChecked=prefs.getBoolean("start_on_boot",false)
+            isChecked=prefs.getBoolean("start_on_boot",true)
             setOnCheckedChangeListener { _,enabled ->
                 prefs.edit().putBoolean("start_on_boot",enabled).apply()
             }
