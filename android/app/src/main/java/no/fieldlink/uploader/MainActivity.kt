@@ -253,8 +253,10 @@ class MainActivity : Activity() {
         settings.addView(showStatus)
         settings.addView(showProject)
         settings.addView(text("Overlay changes apply after restarting the uploader.",12f,muted))
+        settings.addView(button("Check permissions") { showPermissionStatus() })
         settings.addView(button("Allow overlay on top of DJI Pilot 2") {
-            if(Build.VERSION.SDK_INT>=23) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
+            if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
+            else showPermissionStatus()
         })
         settings.addView(text("Old cache files are quarantined. Switching projects requires stopping and restarting the uploader.",13f,muted))
         val footer=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
@@ -760,7 +762,7 @@ class MainActivity : Activity() {
         setContentView(ScrollView(this).apply { addView(root) })
         val base=normalizedServerUrl(server.text.toString())
         val secret=token.text.toString().trim()
-        val cacheUri=prefs.getString("tree_uri",null)?.let(Uri::parse)
+        val cacheUri=savedCacheUri()
         if(pid.isBlank()) {
             status.text="No project selected. Choose or create a project with Manage projects."
             return
@@ -1075,6 +1077,30 @@ class MainActivity : Activity() {
                     .setPositiveButton("OK",null).show()
             }.show()
     }
+    private fun savedCacheUri():Uri? {
+        val raw=prefs.getString("tree_uri",null) ?: return null
+        return try {
+            val uri=Uri.parse(raw)
+            val granted=contentResolver.persistedUriPermissions.any { it.uri==uri && it.isReadPermission }
+            if(granted) uri else null
+        }catch(_:Exception) { null }
+    }
+    private fun cacheAccessOk():Boolean {
+        val uri=savedCacheUri() ?: return false
+        return try { DocumentFile.fromTreeUri(this,uri)?.canRead()==true }catch(_:Exception) { false }
+    }
+    private fun showPermissionStatus() {
+        val overlayGranted=Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this)
+        val cacheGranted=cacheAccessOk()
+        val message="Overlay: ${if(overlayGranted) "GRANTED" else "NOT GRANTED"}\\n" +
+            "CACHE_VIDEO: ${if(cacheGranted) "GRANTED" else "NOT GRANTED"}\\n\\n" +
+            "These Android permissions are normally remembered across launches and in-place app updates. " +
+            "Screen capture permission for metadata is separate and may be required again each session."
+        AlertDialog.Builder(this).setTitle("Access status").setMessage(message)
+            .setPositiveButton("OK",null)
+            .setNeutralButton(if(cacheGranted) "Change folder" else "Choose folder") { _,_ -> chooseFolder() }
+            .show()
+    }
     private fun chooseFolder() {
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
@@ -1096,19 +1122,31 @@ class MainActivity : Activity() {
         if(requestCode==pickManual && resultCode==RESULT_OK) { queueManualFiles(data);return }
         if(requestCode==pickFolder && resultCode==RESULT_OK) {
             val uri=data?.data?:return
-            contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            prefs.edit().putString("tree_uri",uri.toString()).apply();refreshFolderLabel()
+            try {
+                val flags=(data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if(flags==0) throw SecurityException("Folder picker did not grant read access")
+                contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if(contentResolver.persistedUriPermissions.none { it.uri==uri && it.isReadPermission })
+                    throw SecurityException("Android did not persist the folder permission")
+                prefs.edit().putString("tree_uri",uri.toString()).apply()
+                refreshFolderLabel()
+                showMediaLibraryPage()
+            }catch(e:Exception) {
+                AlertDialog.Builder(this).setTitle("Folder permission not saved")
+                    .setMessage(e.localizedMessage ?: "Please choose CACHE_VIDEO again.")
+                    .setPositiveButton("OK",null).show()
+            }
         }
     }
     private fun refreshFolderLabel() {
-        val uri=prefs.getString("tree_uri",null)?.let(Uri::parse)
+        val uri=savedCacheUri()
         val name=uri?.let { DocumentFile.fromTreeUri(this,it)?.name }
-        folderLabel.text=if(name==null) "No cache folder selected" else "Selected folder: $name"
+        folderLabel.text=if(name==null) "CACHE_VIDEO access needed (choose once)" else "CACHE_VIDEO ready: $name"
     }
     private fun saveAndStart() {
         val base=server.text.toString().trim().trimEnd('/')
         val pid=project.text.toString().trim();val device=token.text.toString().trim()
-        if(base.isBlank()||pid.isBlank()||device.isBlank()||prefs.getString("tree_uri",null).isNullOrBlank()) {
+        if(base.isBlank()||pid.isBlank()||device.isBlank()||!cacheAccessOk()) {
             folderLabel.text="Complete server, project, token and cache folder first";return
         }
         if(!base.startsWith("https://")&&!base.contains("localhost")&&!base.contains("10.0.2.2")) {
