@@ -23,7 +23,7 @@
     show_upload_status:true,start_on_boot:true
   };
   let settings={...defaults};
-  let state={screen:'home',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null};
+  let state={screen:'home',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null};
   const projects=['DEMO · Northern Light','DEMO · Mountain Unit','DEMO · Second Camera'];
   const escapeHTML=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','&#39;':'&#39;'}[c]||'&#39;'));
   function button(label,action,kind='') {
@@ -94,10 +94,14 @@
     '<div class="toolbar">'+button('Add proxy files','proxy')+'</div></div>';
   }
   function renderQueue(){
+    const rows=sampleFiles.slice(1,4).map((f,i)=>({file:f,index:i}));
+    rows.sort((a,b)=>Number(b.index===state.priorityClip)-Number(a.index===state.priorityClip)||a.index-b.index);
     return nav('UPLOAD QUEUE · SAMPLE CLIPS')+
-    '<div class="card"><h2>UPLOAD QUEUE</h2><p class="hint">Priority clips upload first. Demo only.</p>'+
-    sampleFiles.slice(1,4).map((f,i)=>'<div class="queue-row"><div><strong>'+f.name+'</strong><span class="hint">'+f.size+' · '+(i?'Pending':'Next')+'</span></div>'+
-    '<button type="button" data-action="prioritize:'+i+'">Next</button></div>').join('')+
+    '<div class="card"><h2>UPLOAD QUEUE</h2><p class="hint">Select Prioritize next for an urgent clip. The active upload finishes first, then the chosen clip goes next. Demo only.</p>'+
+    rows.map(({file:f,index:i})=>'<div class="queue-row"><div><strong>'+(i===state.priorityClip?'★ ':'')+f.name+'</strong><span class="hint">'+f.size+' · '+(i===state.priorityClip?'PRIORITY · next': 'Waiting')+'</span></div>'+
+    '<button type="button" data-action="prioritize:'+i+'">'+(i===state.priorityClip?'★ Next':'Prioritize')+'</button>'+
+    (i===state.priorityClip?'<button type="button" data-action="clearPriority">Clear</button>':'')+
+    '</div>').join('')+
     '<div class="toolbar">'+button('Simulate transfer','start','primary')+'</div></div>';
   }
   function renderTools(){
@@ -146,7 +150,8 @@
       if(f)showModal(f.name,f.size+' · Demonstration media only. No actual video or file access.');
       return;
     }
-    if(code.startsWith('prioritize:')){showModal('Queue updated','Simulated priority updated. No real upload queue was changed.');return}
+    if(code.startsWith('prioritize:')){state.priorityClip=Number(code.split(':')[1]);render();return}
+    if(code==='clearPriority'){state.priorityClip=null;render();return}
     const labels={
       folder:['Cache folder','A real DJI cache folder is only accessible from the Android APK.'],
       proxy:['Add proxy files','Android file picker is disabled in this sandbox preview.'],
@@ -184,7 +189,7 @@
   document.getElementById('openSettings').addEventListener('click',()=>setScreen('settings'));
   document.getElementById('resetDemo').addEventListener('click',()=>{
     settings={...defaults};
-    state={screen:'home',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null};
+    state={screen:'home',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null};
     scenario.value='idle';screenSize.value='tablet';frame.classList.remove('mobile');render();
   });
   setInterval(()=>{
