@@ -450,21 +450,40 @@ def clip_file(slug:str,clip_id:str,request:Request,authorization:str=Header(defa
     if not clip: raise HTTPException(404,'Clip not found')
     path=ensure_clip_local(clip_id)
     if download: return FileResponse(path,media_type='application/octet-stream',filename=clip['filename'])
-    size=path.stat().st_size; range_header=request.headers.get('range')
+    size=path.stat().st_size
+    range_header=request.headers.get('range')
+    headers={'Accept-Ranges':'bytes','Cache-Control':'private, no-store',
+             'Content-Disposition':'inline'}
     if range_header:
-        m=re.match(r'bytes=(\d*)-(\d*)',range_header)
-        if not m: raise HTTPException(416,'Invalid range')
-        start=int(m.group(1) or 0); end=int(m.group(2) or size-1); end=min(end,size-1)
-        if start>end or start>=size: raise HTTPException(416,'Range not satisfiable')
+        # Safari may request suffix ranges (bytes=-N) to read MP4 metadata
+        # from the end of the file. A missing start is NOT byte zero.
+        m=re.fullmatch(r'bytes=(\\d*)-(\\d*)',range_header.strip())
+        if not m or (not m.group(1) and not m.group(2)):
+            return Response(status_code=416,headers={**headers,'Content-Range':f'bytes */{size}'})
+        if m.group(1):
+            start=int(m.group(1))
+            end=min(int(m.group(2)),size-1) if m.group(2) else size-1
+        else:
+            suffix=int(m.group(2))
+            start=max(0,size-suffix)
+            end=size-1
+        if start>end or start>=size or size==0:
+            return Response(status_code=416,headers={**headers,'Content-Range':f'bytes */{size}'})
         def stream():
-            with open(path,'rb') as f:
-                f.seek(start); remaining=end-start+1
+            with open(path,'rb') as file:
+                file.seek(start)
+                remaining=end-start+1
                 while remaining:
-                    chunk=f.read(min(1024*1024,remaining))
+                    chunk=file.read(min(1024*1024,remaining))
                     if not chunk: break
-                    remaining-=len(chunk); yield chunk
-        return StreamingResponse(stream(),status_code=206,media_type='video/mp4',headers={'Content-Range':f'bytes {start}-{end}/{size}','Accept-Ranges':'bytes','Content-Length':str(end-start+1)})
-    return FileResponse(path,media_type='video/mp4',filename=clip['filename'],headers={'Accept-Ranges':'bytes'})
+                    remaining-=len(chunk)
+                    yield chunk
+        return StreamingResponse(
+            stream(),status_code=206,media_type='video/mp4',
+            headers={**headers,'Content-Range':f'bytes {start}-{end}/{size}',
+                     'Content-Length':str(end-start+1)}
+        )
+    return FileResponse(path,media_type='video/mp4',headers=headers)
 
 @app.post('/api/upload/init')
 def upload_init(body:UploadInit,x_device_token:str=Header(default='')):
