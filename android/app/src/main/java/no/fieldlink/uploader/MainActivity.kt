@@ -1222,14 +1222,32 @@ class MainActivity : Activity() {
     private fun showPermissionStatus() {
         val overlayGranted=Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this)
         val cacheGranted=cacheAccessOk()
-        val message="Overlay: ${if(overlayGranted) "GRANTED" else "NOT GRANTED"}\\n" +
-            "CACHE_VIDEO: ${if(cacheGranted) "GRANTED" else "NOT GRANTED"}\\n\\n" +
-            "These Android permissions are normally remembered across launches and in-place app updates. " +
-            "Screen capture permission for metadata is separate and may be required again each session."
-        AlertDialog.Builder(this).setTitle("Access status").setMessage(message)
-            .setPositiveButton("OK",null)
-            .setNeutralButton(if(cacheGranted) "Change folder" else "Choose folder") { _,_ -> chooseFolder() }
-            .show()
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(20),dp(8),dp(20),dp(6))
+        }
+        body.addView(text("ACCESS STATUS",12f,accent).apply {
+            letterSpacing=0.08f
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        body.addView(text("Permissions",20f,Color.WHITE).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        body.addView(text("●  Overlay: ${if(overlayGranted) "Ready" else "Permission needed"}",
+            14f,if(overlayGranted) accent else Color.rgb(255,174,106)))
+        body.addView(text("●  CACHE_VIDEO: ${if(cacheGranted) "Ready" else "Permission needed"}",
+            14f,if(cacheGranted) accent else Color.rgb(255,174,106)))
+        body.addView(text(
+            "These permissions are saved across restarts. Android may require new screen capture permission for each metadata session.",
+            12f,muted))
+        val dialog=AlertDialog.Builder(this).setView(body)
+            .setNegativeButton("Close",null)
+        if(!cacheGranted) dialog.setPositiveButton("Choose folder") { _,_ -> chooseFolder() }
+        else if(!overlayGranted) dialog.setPositiveButton("Allow overlay") { _,_ ->
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
+        }
+        else dialog.setNeutralButton("Change folder") { _,_ -> chooseFolder() }
+        dialog.show()
     }
     private fun chooseFolder() {
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
