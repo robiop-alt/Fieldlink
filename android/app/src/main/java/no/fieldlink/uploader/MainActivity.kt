@@ -665,6 +665,7 @@ class MainActivity : Activity() {
         layout.addView(mode)
         layout.addView(text("${files.size} clips · ${queued.size} queued · Select clips to upload",12f,Color.DKGRAY))
         val thumbs=root.findFile(".thumbnail")
+        val thumbnailFiles=thumbs?.listFiles()?.filter { it.isFile } ?: emptyList()
         for(file in files.take(200)) {
             val key=file.uri.toString()
             val line=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL }
@@ -675,7 +676,7 @@ class MainActivity : Activity() {
             }
             line.addView(check)
             val stem=(file.name ?: "").substringBeforeLast(".")
-            val thumb=thumbs?.listFiles()?.firstOrNull {
+            val thumb=thumbnailFiles.firstOrNull {
                 it.isFile && it.name?.substringBeforeLast(".")==stem && (it.name?.endsWith(".JPEG",true)==true || it.name?.endsWith(".JPG",true)==true)
             }
             if(thumb!=null) {
@@ -713,23 +714,26 @@ class MainActivity : Activity() {
         val queue=ledger.manualPending(pid)
         val layout=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(8),dp(14),dp(8)) }
         layout.addView(text("${queue.size} waiting · Priority clips upload first",13f,Color.DKGRAY))
+        var queueDialog:AlertDialog?=null
         for(uriString in queue.take(150)) {
             val file=DocumentFile.fromSingleUri(this,Uri.parse(uriString))
             val line=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL }
             line.addView(text(file?.name ?: "Clip",13f,Color.BLACK),LinearLayout.LayoutParams(0,-2,1f))
             line.addView(button("Next") {
                 ledger.prioritize(uriString,pid)
+                queueDialog?.dismiss()
                 showUploadQueue()
             })
             line.addView(button("Remove") {
                 ledger.removeFromQueue(uriString,pid)
+                queueDialog?.dismiss()
                 showUploadQueue()
             })
             layout.addView(line)
         }
         AlertDialog.Builder(this).setTitle("Upload queue · $pid")
             .setView(ScrollView(this).apply { addView(layout) })
-            .setPositiveButton("Close",null).show()
+            .setPositiveButton("Close",null).create().also { queueDialog=it;it.show() }
     }
     private fun chooseManualFiles() {
         val pid=project.text.toString().trim()
