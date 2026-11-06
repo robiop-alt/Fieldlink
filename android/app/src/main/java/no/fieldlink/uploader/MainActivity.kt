@@ -89,7 +89,7 @@ class MainActivity : Activity() {
         super.onResume()
         // Restore the pill after an in-place upgrade or the first overlay grant.
         // No permission dialog is shown if Android already granted access.
-        if(prefs.getBoolean("start_on_boot",false) &&
+        if(prefs.getBoolean("start_on_boot",true) &&
             prefs.getBoolean("overlay",true) &&
             (Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this))) {
             try { ControllerOverlayService.launch(this) }catch(_:Exception) {}
@@ -192,7 +192,7 @@ class MainActivity : Activity() {
         settings.addView(startOnBoot)
         settings.addView(text(
             if(Build.VERSION.SDK_INT>=35)
-                "After restarting the controller, tap the OFFSET notification to resume uploads (Android restriction)."
+                "Controller pill starts at boot. On Android 15+, uploads resume automatically when you open OFFSET; Android does not allow starting a data-sync foreground service directly at boot."
             else
                 "Automatically resume the uploader when the controller restarts, if project and cache folder are configured.",
             12f,muted
@@ -289,12 +289,13 @@ class MainActivity : Activity() {
             showMetadataPermissionPrompt()
             intent?.removeExtra("request_metadata_access")
         }
-        if(prefs.getBoolean("boot_resume_pending",false)) {
+        // No daily "resume" dialog: restore the last approved project and
+        // folder automatically when the user opens OFFSET after boot.
+        val bootPending=prefs.getBoolean("boot_resume_pending",false)
+        if(prefs.getBoolean("start_on_boot",true)) {
+            root.post { resumeSavedUploader() }
+        } else if(bootPending) {
             prefs.edit().putBoolean("boot_resume_pending",false).apply()
-            AlertDialog.Builder(this).setTitle("Resume OFFSET uploads?")
-                .setMessage("The controller has restarted. Resume monitoring the selected project?")
-                .setPositiveButton("Resume") { _,_ -> saveAndStart() }
-                .setNegativeButton("Not now",null).show()
         }
     }
     private fun showConnectionSettings() {
@@ -1181,6 +1182,26 @@ class MainActivity : Activity() {
         val uri=savedCacheUri()
         val name=uri?.let { DocumentFile.fromTreeUri(this,it)?.name }
         folderLabel.text=if(name==null) "CACHE_VIDEO access needed (choose once)" else "CACHE_VIDEO ready: $name"
+    }
+    private fun resumeSavedUploader() {
+        if(!prefs.getBoolean("start_on_boot",true)) return
+        val base=prefs.getString("server","").orEmpty()
+        val tokenValue=prefs.getString("token","").orEmpty()
+        val pid=prefs.getString("project","").orEmpty()
+        if(!base.startsWith("https://") || tokenValue.isBlank() || pid.isBlank() || !cacheAccessOk()) {
+            // Do not clear the saved folder or request permission every boot.
+            folderLabel.text="Setup needed: check project, connection or CACHE_VIDEO access"
+            return
+        }
+        try {
+            val service=Intent(this,UploadService::class.java)
+            if(Build.VERSION.SDK_INT>=26) startForegroundService(service)
+            else startService(service)
+            prefs.edit().putBoolean("boot_resume_pending",false).apply()
+            folderLabel.text="Monitoring resumed automatically"
+        }catch(e:Exception) {
+            folderLabel.text="Auto resume unavailable: ${e.localizedMessage ?: "Android restriction"}"
+        }
     }
     private fun saveAndStart() {
         val base=server.text.toString().trim().trimEnd('/')
