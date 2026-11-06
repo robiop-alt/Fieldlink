@@ -284,6 +284,17 @@ def device_delete_project(project_id:str, confirm_clips:bool=False,
     require_device(x_device_token)
     return _delete_project(project_id,confirm_clips)
 
+@app.get('/api/device/app-update')
+def device_app_update(x_device_token:str=Header(default='')):
+    require_device(x_device_token)
+    # Only publish a release after its signed APK has been hosted at a trusted HTTPS URL.
+    version_code=int(os.getenv('OFFSET_ANDROID_RELEASE_CODE','0'))
+    version_name=os.getenv('OFFSET_ANDROID_RELEASE_VERSION','')
+    apk_url=os.getenv('OFFSET_ANDROID_RELEASE_URL','')
+    if not apk_url.startswith('https://'):
+        apk_url=''
+    return {'version_code':version_code,'version_name':version_name,'download_url':apk_url}
+
 @app.get('/api/device/projects')
 def device_list_projects(x_device_token:str=Header(default='')):
     require_device(x_device_token)
