@@ -3,10 +3,11 @@
   const panel=document.getElementById('offset-incoming');
   if(!panel)return;
   let previous='';
+  let lastUploading=new Set();
   const escape=s=>String(s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const formatBytes=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.round(n/1024)+' KB';
   async function refresh() {
-    if(document.hidden || !document.getElementById('content')?.classList.contains('hidden')===false) return;
+    if(document.hidden || document.getElementById('content')?.classList.contains('hidden')) return;
     if(typeof token!=='string'||!token)return;
     try {
       const response=await fetch('/api/review/'+encodeURIComponent(location.pathname.split('/').pop())+'/incoming',{
@@ -14,6 +15,13 @@
       if(!response.ok) return;
       const data=await response.json();
       const clips=Array.isArray(data.clips)?data.clips:[];
+      const nowUploading=new Set(clips.filter(clip=>clip.status==='uploading').map(clip=>clip.filename));
+      const completed=[...lastUploading].some(name=>!clips.some(clip=>clip.filename===name));
+      lastUploading=nowUploading;
+      if(completed && typeof load==='function') {
+        const video=document.querySelector('.offset-featured-video');
+        if(!video || video.paused) load().catch(()=>{});
+      }
       const serialized=JSON.stringify(clips);
       if(serialized===previous)return;
       previous=serialized;
@@ -26,7 +34,7 @@
           const percent=Math.max(0,Math.min(100,Number(clip.percent)||0));
           const status=uploading?'Uploading '+percent+'%':'Queued · waiting to upload';
           return '<article class="offset-incoming-card" aria-label="'+name+' '+status+'">'+
-            '<div class="offset-incoming-art">↑<span>COMING SOON</span></div>'+
+            '<div class="offset-incoming-art"><img loading="lazy" alt="" src="/api/review/${encodeURIComponent(location.pathname.split('/').pop())}/incoming-thumbnail?session=${encodeURIComponent(token)}&filename=${encodeURIComponent(clip.filename)}" onerror="this.style.display='none'"><span>COMING SOON</span></div>'+
             '<div class="offset-incoming-details"><strong>'+name+'</strong>'+
             '<span>'+escape(status)+' · '+escape(formatBytes(clip.size||0))+'</span>'+
             '<div class="offset-incoming-track"><div style="width:'+percent+'%"></div></div></div></article>';
