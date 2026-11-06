@@ -118,6 +118,7 @@ class MainActivity : Activity() {
                 }.show()
         }
         root.addView(connectionButton)
+        root.addView(button("Check for updates") { checkForUpdates() })
         if(server.text.isBlank() || token.text.isBlank()) connectionButton.post { connectionButton.performClick() }
         val settings=card("Upload preferences")
         val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
@@ -319,6 +320,49 @@ class MainActivity : Activity() {
                     }.start()
                 }
             }.show()
+    }
+
+    private fun checkForUpdates() {
+        val base=server.text.toString().trim().trimEnd('/')
+        val device=token.text.toString().trim()
+        if(!base.startsWith("https://") || device.isBlank()) {
+            AlertDialog.Builder(this).setTitle("Check for updates")
+                .setMessage("Configure the server and device token first.")
+                .setPositiveButton("OK",null).show()
+            return
+        }
+        Thread {
+            try {
+                val req=Request.Builder().url("$base/api/device/app-update")
+                    .header("X-Device-Token",device).build()
+                val info=OkHttpClient().newCall(req).execute().use { response ->
+                    if(!response.isSuccessful) throw IllegalStateException("Server HTTP ${response.code}")
+                    JSONObject(response.body?.string() ?: "{}")
+                }
+                val installed=packageManager.getPackageInfo(packageName,0)
+                val currentCode=if(Build.VERSION.SDK_INT>=28) installed.longVersionCode else installed.versionCode.toLong()
+                val latest=info.optLong("version_code",0L)
+                val url=info.optString("download_url")
+                runOnUiThread {
+                    val updateAvailable=latest>currentCode && url.startsWith("https://")
+                    val message=if(updateAvailable)
+                        "Installed: ${installed.versionName} ($currentCode)\\nAvailable: ${info.optString("version_name")} ($latest)\\n\\nDownload the signed APK and confirm installation in Android."
+                    else "Installed: ${installed.versionName} ($currentCode)\\nNo published update available yet."
+                    val dialog=AlertDialog.Builder(this).setTitle("App updates")
+                        .setMessage(message).setNegativeButton("Close",null)
+                    if(updateAvailable) dialog.setPositiveButton("Download update") { _,_ ->
+                        startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))
+                    }
+                    dialog.show()
+                }
+            }catch(e:Exception) {
+                runOnUiThread {
+                    AlertDialog.Builder(this).setTitle("Update check failed")
+                        .setMessage(e.localizedMessage ?: "Check your connection.")
+                        .setPositiveButton("OK",null).show()
+                }
+            }
+        }.start()
     }
 
     private fun testConnection() {
