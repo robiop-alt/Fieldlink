@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -188,6 +189,27 @@ class MainActivity : Activity() {
         val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay",v).apply() } }
         settings.addView(overlay)
+        settings.addView(text("OVERLAY STYLE",12f,accent))
+        val styles=android.widget.RadioGroup(this).apply {
+            orientation=android.widget.RadioGroup.HORIZONTAL
+        }
+        val options=listOf("minimal" to "Minimal","compact" to "Compact","classic" to "Classic")
+        val current=prefs.getString("overlay_style","minimal")
+        options.forEachIndexed { i,pair ->
+            styles.addView(android.widget.RadioButton(this).apply {
+                id=View.generateViewId()
+                text=pair.second
+                textSize=12f
+                setTextColor(Color.WHITE)
+                isChecked=pair.first==current
+                setOnClickListener { prefs.edit().putString("overlay_style",pair.first).apply() }
+            },android.widget.RadioGroup.LayoutParams(0,dp(42),1f))
+        }
+        settings.addView(styles)
+        settings.addView(text(
+            "Minimal: edge pill · Compact: brief progress · Classic: expanded status. Drag to either edge, tap to expand.",
+            12f,muted
+        ))
         settings.addView(text("Overlay opacity",14f,muted))
         val opacityValue=text("",13f,muted)
         val opacity=SeekBar(this).apply {
