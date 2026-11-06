@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSO
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
-import os, sqlite3, secrets, hashlib, hmac, time, uuid, re, mimetypes, subprocess, threading
+import os, sqlite3, secrets, hashlib, hmac, time, uuid, re, mimetypes, subprocess, threading, base64
 from urllib.parse import urlsplit
 from db_persistence import DurableConnection, restore
 
@@ -52,6 +52,14 @@ def ensure_project_access_schema():
             c.execute('ALTER TABLE projects ADD COLUMN public_review INTEGER NOT NULL DEFAULT 0')
         if 'allow_downloads' not in columns:
             c.execute('ALTER TABLE projects ADD COLUMN allow_downloads INTEGER NOT NULL DEFAULT 1')
+        if 'access_nonce' not in columns:
+            c.execute("ALTER TABLE projects ADD COLUMN access_nonce TEXT NOT NULL DEFAULT ''")
+        if 'pin_secret' not in columns:
+            c.execute("ALTER TABLE projects ADD COLUMN pin_secret TEXT NOT NULL DEFAULT ''")
+        if 'pin_days' not in columns:
+            c.execute('ALTER TABLE projects ADD COLUMN pin_days INTEGER NOT NULL DEFAULT 14')
+        if 'pin_expires_at' not in columns:
+            c.execute('ALTER TABLE projects ADD COLUMN pin_expires_at INTEGER NOT NULL DEFAULT 0')
 ensure_project_access_schema()
 
 # Editable public website copy; changes are stored in the durable project database.
@@ -201,13 +209,44 @@ def admin_me(request:Request):
 def require_device(key):
     if not DEVICE or not hmac.compare_digest(key or '', DEVICE): raise HTTPException(401,'Uploader authentication required')
 def pin_digest(pin): return hashlib.sha256((pin+SECRET).encode()).hexdigest()
+PIN_ALLOWED_DAYS={1,7,14,30,60,90,180,365}
+def protect_pin(pin):
+    salt=secrets.token_bytes(16)
+    mask=hmac.new(SECRET.encode(),salt,hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(salt+bytes(a^b for a,b in zip(pin.encode(),mask))).decode()
+def reveal_pin(value):
+    if not value: return None
+    try:
+        raw=base64.urlsafe_b64decode(value)
+        mask=hmac.new(SECRET.encode(),raw[:16],hashlib.sha256).digest()
+        pin=bytes(a^b for a,b in zip(raw[16:],mask)).decode()
+        return pin if re.fullmatch(r'[0-9]{6}',pin) else None
+    except Exception: return None
+
 def session_token(project_id, expiry):
-    payload=f'{project_id}:{expiry}'; sig=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+    # Bind review sessions to the project's current access generation.
+    # The empty nonce preserves old sessions on untouched projects.
+    with db() as c:
+        row=c.execute('SELECT access_nonce,public_review,pin_expires_at FROM projects WHERE id=?',(project_id,)).fetchone()
+    if not row: raise HTTPException(404,'Project not found')
+    if not row['public_review'] and row['pin_expires_at'] and row['pin_expires_at']<=int(time.time()):
+        raise HTTPException(403,'Project PIN expired')
+    payload=f'{project_id}:{expiry}'
+    signing=payload+row['access_nonce']
+    sig=hmac.new(SECRET.encode(),signing.encode(),hashlib.sha256).hexdigest()
     return payload+':'+sig
+
 def check_session(token, project_id):
     try:
-        pid, exp, sig=token.split(':'); payload=f'{pid}:{exp}'
-        return pid==project_id and int(exp)>int(time.time()) and hmac.compare_digest(sig,hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest())
+        pid, exp, sig=token.split(':')
+        if pid!=project_id or int(exp)<=int(time.time()): return False
+        with db() as c:
+            row=c.execute('SELECT access_nonce,public_review,pin_expires_at FROM projects WHERE id=?',(project_id,)).fetchone()
+        if not row: return False
+        if not row['public_review'] and row['pin_expires_at'] and row['pin_expires_at']<=int(time.time()): return False
+        signing=f'{pid}:{exp}'+row['access_nonce']
+        expected=hmac.new(SECRET.encode(),signing.encode(),hashlib.sha256).hexdigest()
+        return hmac.compare_digest(sig,expected)
     except Exception: return False
 
 def safe_name(name):
@@ -272,7 +311,8 @@ def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(defau
         else: raise HTTPException(503,'Could not allocate a unique project ID')
     slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
     pin=f'{secrets.randbelow(1_000_000):06d}'
-    with db() as c: c.execute('INSERT INTO projects(id,name,slug,pin_hash,created,public_review) VALUES(?,?,?,?,?,?)',(pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review)))
+    expires=int(time.time())+14*86400 if not body.public_review else 0
+    with db() as c: c.execute('INSERT INTO projects(id,name,slug,pin_hash,created,public_review,pin_secret,pin_days,pin_expires_at) VALUES(?,?,?,?,?,?,?,?,?)',(pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review),protect_pin(pin) if not body.public_review else '',14,expires))
     return {'id':pid,'name':body.name,'slug':slug,'url_path':f'/r/{slug}','pin':None if body.public_review else pin,'public_review':body.public_review}
 
 @app.get('/api/admin/projects')
@@ -298,17 +338,58 @@ def update_project(project_id:str, body:ProjectUpdateIn, request:Request, x_admi
 
 class ProjectReviewSettingsIn(BaseModel):
     allow_downloads: bool
+    public_review: bool | None = None
+    pin_days: int | None = None
+    renew_pin: bool = False
+
+@app.get('/api/admin/projects/{project_id}/review-settings')
+def admin_project_review_settings(project_id:str, request:Request, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
+    with db() as c:
+        p=c.execute('SELECT public_review,allow_downloads,pin_secret,pin_days,pin_expires_at FROM projects WHERE id=?',(project_id,)).fetchone()
+    if not p: raise HTTPException(404,'Project not found')
+    return JSONResponse({'public_review':bool(p['public_review']),
+        'allow_downloads':bool(p['allow_downloads']),
+        'pin':reveal_pin(p['pin_secret']) if not p['public_review'] else None,
+        'pin_days':p['pin_days'],'pin_expires_at':p['pin_expires_at'],
+        'pin_expired':bool(not p['public_review'] and p['pin_expires_at'] and p['pin_expires_at']<=int(time.time())),
+        'legacy_pin':bool(not p['public_review'] and not p['pin_secret'])},
+        headers={'Cache-Control':'no-store'})
 
 @app.patch('/api/admin/projects/{project_id}/review-settings')
 def update_project_review_settings(project_id:str, body:ProjectReviewSettingsIn,
                                    request:Request, x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
+    now=int(time.time())
     with db() as c:
-        exists=c.execute('SELECT 1 FROM projects WHERE id=?',(project_id,)).fetchone()
-        if not exists: raise HTTPException(404,'Project not found')
-        c.execute('UPDATE projects SET allow_downloads=? WHERE id=?',
-                  (int(body.allow_downloads),project_id))
-    return {'id':project_id,'allow_downloads':body.allow_downloads}
+        existing=c.execute('SELECT public_review,pin_days,pin_secret FROM projects WHERE id=?',(project_id,)).fetchone()
+        if not existing: raise HTTPException(404,'Project not found')
+        days=body.pin_days if body.pin_days is not None else existing['pin_days']
+        if days not in PIN_ALLOWED_DAYS: raise HTTPException(422,'Unsupported PIN duration')
+        old_public=bool(existing['public_review'])
+        new_public=old_public if body.public_review is None else body.public_review
+        changed_mode=new_public!=old_public
+        changed_duration=days!=existing['pin_days']
+        new_pin=None
+        if new_public:
+            if changed_mode:
+                c.execute('UPDATE projects SET public_review=1,allow_downloads=?,pin_secret=?,pin_expires_at=0,access_nonce=? WHERE id=?',
+                    (int(body.allow_downloads),'',secrets.token_hex(16),project_id))
+            else:
+                c.execute('UPDATE projects SET allow_downloads=? WHERE id=?',(int(body.allow_downloads),project_id))
+        else:
+            rotate=changed_mode or body.renew_pin
+            if rotate:
+                new_pin=f'{secrets.randbelow(1_000_000):06d}'
+                c.execute('UPDATE projects SET public_review=0,allow_downloads=?,pin_secret=?,pin_hash=?,pin_days=?,pin_expires_at=?,access_nonce=? WHERE id=?',
+                    (int(body.allow_downloads),protect_pin(new_pin),pin_digest(new_pin),days,now+days*86400,secrets.token_hex(16),project_id))
+            elif changed_duration:
+                c.execute('UPDATE projects SET allow_downloads=?,pin_days=?,pin_expires_at=?,access_nonce=? WHERE id=?',
+                    (int(body.allow_downloads),days,now+days*86400,secrets.token_hex(16),project_id))
+            else:
+                c.execute('UPDATE projects SET allow_downloads=? WHERE id=?',(int(body.allow_downloads),project_id))
+    return {'id':project_id,'allow_downloads':body.allow_downloads,'public_review':new_public,
+            'pin':new_pin,'pin_days':days}
 
 @app.get('/api/review/{slug}/settings')
 def review_settings(slug:str, authorization:str=Header(default=''), session:str=''):
@@ -414,8 +495,8 @@ def device_create_project(body:ProjectIn, x_device_token:str=Header(default=''))
         slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
         pin=f'{secrets.randbelow(1_000_000):06d}'
         conn.execute(
-            'INSERT INTO projects(id,name,slug,pin_hash,created,public_review) VALUES(?,?,?,?,?,?)',
-            (pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review))
+            'INSERT INTO projects(id,name,slug,pin_hash,created,public_review,pin_secret,pin_days,pin_expires_at) VALUES(?,?,?,?,?,?,?,?,?)',
+            (pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review),protect_pin(pin) if not body.public_review else '',14,int(time.time())+14*86400 if not body.public_review else 0)
         )
     return {'id':pid,'name':body.name,'slug':slug,'url_path':f'/r/{slug}',
             'pin':None if body.public_review else pin,'public_review':body.public_review}
@@ -485,8 +566,11 @@ class ShareIn(BaseModel):
 @app.post('/api/review/{slug}/share-unlock')
 def share_unlock(slug:str, body:ShareIn):
     with db() as c:
-        p=c.execute('SELECT id FROM projects WHERE slug=?',(slug,)).fetchone()
+        p=c.execute('SELECT id,public_review,access_nonce FROM projects WHERE slug=?',(slug,)).fetchone()
     if not p: raise HTTPException(403,'Invalid share link')
+    # A prior PIN-free share link must never bypass a newly enabled PIN.
+    if not p['public_review'] and p['access_nonce']:
+        raise HTTPException(403,'Project now requires a PIN')
     try:
         purpose,pid,expiry,signature=body.share_token.split(':')
         payload=f"{purpose}:{pid}:{expiry}"
@@ -510,7 +594,10 @@ def public_unlock(slug:str):
 @app.post('/api/review/{slug}/unlock')
 def unlock(slug:str, body:PinIn):
     with db() as c: p=c.execute('SELECT * FROM projects WHERE slug=?',(slug,)).fetchone()
-    if not p or not hmac.compare_digest(p['pin_hash'],pin_digest(body.pin)): raise HTTPException(403,'Wrong link or PIN')
+    if not p or p['public_review'] or not hmac.compare_digest(p['pin_hash'],pin_digest(body.pin)):
+        raise HTTPException(403,'Wrong link or PIN')
+    if p['pin_expires_at'] and p['pin_expires_at']<=int(time.time()):
+        raise HTTPException(403,'Project PIN expired; contact the administrator')
     expiry=int(time.time())+8*3600
     return {'token':session_token(p['id'],expiry),'expires':expiry}
 

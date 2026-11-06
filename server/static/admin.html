@@ -20,11 +20,11 @@
 }
 </style></head><body><main class="shell"><header class="top"><div class="brand"><img src="/static/offset-logo.svg?v=approved-artwork-1" alt="OFFSET." width="140" height="34" style="display:block;width:140px;max-width:38vw;height:auto;min-height:32px" /></div><div class="tag">FIELD TO PRODUCTION</div></header><section class="hero"><p class="eyebrow">PRODUCTION CONTROL</p><h1><span id="admin_title">Send rushes.</span><br><em id="admin_highlight">Keep the story moving.</em></h1><p class="muted" id="admin_description">Create a project and share a private review page with your production team.</p></section><section class="panel" id="login-panel"><div class="panel-head"><div><p class="eyebrow">01 / ACCESS</p><h2>Sign in</h2></div></div><form id="login-form"><label>Username<input id="username" autocomplete="username" required></label><label>Password<input id="password" type="password" autocomplete="current-password" required></label><button type="submit">Sign in</button></form><p class="error" id="login-error"></p></section><section class="panel hidden" id="account-panel"><div class="panel-head"><div><p class="eyebrow">ACCOUNT</p><h2 id="account-name">Signed in</h2></div><button class="secondary" id="logout">Sign out</button></div></section><section class="panel admin-only hidden"><div class="panel-head"><div><p class="eyebrow">02 / NEW PROJECT</p><h2>New production project</h2></div></div><label>Project name<input id="name" placeholder="e.g. Northern Lights · Drone unit" aria-describedby="project-name-error"></label><p id="project-name-error" class="project-field-error hidden" role="alert">Please enter a project name.</p><div class="create-actions"><button id="create-with-pin" type="button">Create project with PIN</button><button id="create-without-pin" type="button" class="secondary">Create project without PIN</button></div><div id="created" class="result hidden"></div></section><section class="panel admin-only hidden"><div class="panel-head"><div><p class="eyebrow">03 / PROJECTS</p><h2>All projects <small id="project-total" class="muted"></small></h2></div><button class="secondary" id="refresh">Refresh</button></div><label>Search projects<input id="project-search" type="search" placeholder="Search by name or project ID"></label><p class="muted" id="projects-summary" aria-live="polite"></p><div id="projects" class="muted">Sign in to load projects.</div></section><details class="settings-disclosure admin-only hidden"><summary>Settings <span class="muted">Website content</span></summary><section class="panel" id="settings"><div class="panel-head"><div><p class="eyebrow">04 / SETTINGS</p><h2>Website content</h2></div></div><p class="muted">Edit the text displayed to visitors. Changes are published when you save.</p><h3>Admin homepage</h3><label>Headline<input id="edit_admin_title" maxlength="120"></label><label>Highlighted headline<input id="edit_admin_highlight" maxlength="120"></label><label>Description<textarea id="edit_admin_description" maxlength="400" rows="3"></textarea></label><h3>Review page</h3><label>Headline<input id="edit_review_title" maxlength="120"></label><label>Highlighted headline<input id="edit_review_highlight" maxlength="120"></label><label>Description<textarea id="edit_review_description" maxlength="400" rows="3"></textarea></label><button id="save-settings">Save website text</button><p class="hint" id="settings-status"></p></section></details><footer>OFFSET <span>·</span> PRIVATE RUSHES DELIVERY</footer></main><script>
 const $=id=>document.getElementById(id);
-function setSignedIn(username){$('login-panel').classList.toggle('hidden',!!username);$('account-panel').classList.toggle('hidden',!username);document.querySelectorAll('.admin-only').forEach(el=>el.classList.toggle('hidden',!username));if(username){$('account-name').textContent='Signed in as '+username;load()}}
+function setSignedIn(username){if(!username)document.querySelectorAll('.project-review-settings-popover').forEach(el=>el.remove());$('login-panel').classList.toggle('hidden',!!username);$('account-panel').classList.toggle('hidden',!username);document.querySelectorAll('.admin-only').forEach(el=>el.classList.toggle('hidden',!username));if(username){$('account-name').textContent='Signed in as '+username;load()}}
 $('login-form').onsubmit=async e=>{e.preventDefault();$('login-error').textContent='';try{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({username:$('username').value,password:$('password').value})});const d=await r.json();if(!r.ok)throw Error(d.detail||'Sign in failed');$('password').value='';setSignedIn(d.username)}catch(err){$('login-error').textContent=err.message}};
 $('logout').onclick=async()=>{await fetch('/api/admin/logout',{method:'POST',credentials:'same-origin'});setSignedIn(null)};
 async function api(path,opts={}){opts.credentials='same-origin';let r=await fetch(path,opts);let d=await r.json();if(!r.ok)throw Error(d.detail||'Request failed');return d}
-async function createProject(publicReview){const name=$('name').value.trim();const error=$('project-name-error');error.classList.add('hidden');$('name').removeAttribute('aria-invalid');if(!name){error.classList.remove('hidden');$('name').setAttribute('aria-invalid','true');$('name').focus();return}try{let d=await api('/api/admin/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,public_review:publicReview})});$('created').classList.remove('hidden');$('created').innerHTML=`<b>Project created</b><p>Link: <a href="${esc(d.url_path)}" target="_blank" rel="noopener">${esc(location.origin+d.url_path)}</a></p><p>Project ID: <code>${esc(d.id)}</code></p>${d.public_review?`<p class="hint">No PIN required. Anyone with this link can view and download project media for as long as the project exists.</p>`:`<p>PIN: <strong class="pin">${esc(d.pin)}</strong></p><p class="hint">Copy the project ID and PIN now — the PIN will not be displayed again.</p>`}<p class="hint">The device token is configured on the server.</p>`;$('name').value='';load()}catch(e){error.textContent=typeof e.message==='string'&&e.message!=='[object Object]'?e.message:'Unable to create project. Please try again.';error.classList.remove('hidden')}}
+async function createProject(publicReview){const name=$('name').value.trim();const error=$('project-name-error');error.classList.add('hidden');$('name').removeAttribute('aria-invalid');if(!name){error.classList.remove('hidden');$('name').setAttribute('aria-invalid','true');$('name').focus();return}try{let d=await api('/api/admin/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,public_review:publicReview})});$('created').classList.remove('hidden');$('created').innerHTML=`<b>Project created</b><p>Link: <a href="${esc(d.url_path)}" target="_blank" rel="noopener">${esc(location.origin+d.url_path)}</a></p><p>Project ID: <code>${esc(d.id)}</code></p>${d.public_review?`<p class="hint">No PIN required. Anyone with this link can view and download project media for as long as the project exists.</p>`:`<p>PIN: <strong class="pin">${esc(d.pin)}</strong></p><p class="hint">PIN is valid for 14 days by default and remains visible to signed-in admins in project Settings.</p>`}<p class="hint">The device token is configured on the server.</p>`;$('name').value='';load()}catch(e){error.textContent=typeof e.message==='string'&&e.message!=='[object Object]'?e.message:'Unable to create project. Please try again.';error.classList.remove('hidden')}}
 $('name').addEventListener('input',()=>{const error=$('project-name-error');error.classList.add('hidden');error.textContent='Please enter a project name.';$('name').removeAttribute('aria-invalid')});
 $('create-with-pin').onclick=()=>createProject(false);
 $('create-without-pin').onclick=()=>createProject(true);
@@ -54,29 +54,73 @@ async function renameProject(projectId){
 
 async function projectReviewSettings(projectId){
  const p=allProjects.find(item=>item.id===projectId);if(!p)return;
- const wrap=document.createElement('div');
- wrap.style.cssText='padding:12px 18px;background:#14181c;border:1px solid #35413d;border-radius:10px;margin-top:10px';
- const heading=document.createElement('strong');heading.textContent=p.name+' · Review settings';
- const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px;margin:14px 0';
- const check=document.createElement('input');check.type='checkbox';check.checked=!!p.allow_downloads;
- check.style.cssText='width:18px;height:18px;margin:0;accent-color:#b7f34d';
- label.append(check,document.createTextNode('Allow clip downloads'));
- const help=document.createElement('p');help.className='hint';
- help.textContent='Off hides download actions and blocks direct download and ZIP endpoints. Viewers can still watch clips.';
- const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
+ document.querySelectorAll('.project-review-settings-popover').forEach(el=>el.remove());
+ const wrap=document.createElement('div');wrap.className='project-review-settings-popover';
+ wrap.style.cssText='padding:14px 18px;background:#14181c;border:1px solid #35413d;border-radius:10px;margin-top:10px';
+ const heading=document.createElement('strong');heading.textContent=p.name+' · Review settings';wrap.append(heading);
+ const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');status.textContent='Loading settings…';
+ wrap.append(status);document.querySelector('#projects').prepend(wrap);
+ let current;
+ try{current=await api('/api/admin/projects/'+encodeURIComponent(projectId)+'/review-settings',{cache:'no-store'})}
+ catch(err){status.textContent=err.message||'Could not load settings';return}
+ function option(labelText, checked, info){
+  const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px;margin:14px 0 4px';
+  const check=document.createElement('input');check.type='checkbox';check.checked=checked;
+  check.style.cssText='width:18px;height:18px;margin:0;accent-color:#b7f34d';
+  label.append(check,document.createTextNode(labelText));wrap.append(label);
+  const hint=document.createElement('p');hint.className='hint';hint.textContent=info;hint.style.margin='0 0 12px 28px';wrap.append(hint);return check;
+ }
+ const requirePin=option('Require project PIN',!current.public_review,'When off, anyone with the project link can view clips.');
+ const pinArea=document.createElement('div');pinArea.style.cssText='padding:10px 12px;background:#0c1113;border-radius:8px;margin-bottom:12px';
+ const pinText=document.createElement('p');pinText.className='hint';
+ const pinValue=document.createElement('strong');pinValue.style.cssText='font-size:19px;letter-spacing:2px';
+ pinValue.textContent=current.pin||'Not available';
+ const expires=document.createElement('p');expires.className='hint';
+ const showExpiry=()=>{expires.textContent=current.pin_expires_at?
+  (current.pin_expired?'Expired on ':'Valid until ')+new Date(current.pin_expires_at*1000).toLocaleDateString('en-GB'):
+  (current.legacy_pin?'Legacy PIN · Renew once to make it visible in admin.':'A PIN will be created when you save.')};
+ showExpiry();
+ pinText.textContent='Project PIN (admin only)';
+ const copy=document.createElement('button');copy.className='secondary';copy.type='button';copy.textContent='Copy PIN';
+ copy.disabled=!current.pin;copy.style.margin='8px 0';copy.onclick=async()=>{
+  try{await navigator.clipboard.writeText(current.pin);copy.textContent='Copied'}
+  catch(e){window.prompt('Copy PIN',current.pin)}
+ };
+ const renew=document.createElement('button');renew.className='secondary';renew.type='button';renew.textContent='Generate new PIN';
+ renew.style.marginLeft='8px';let renewRequested=false;
+ renew.onclick=()=>{renewRequested=true;renew.textContent='New PIN requested · Save to apply';status.textContent='';};
+ const durationLabel=document.createElement('label');durationLabel.textContent='PIN validity';durationLabel.style.display='block';
+ const duration=document.createElement('select');duration.style.cssText='width:100%;max-width:260px;margin:6px 0 10px';
+ [1,7,14,30,60,90,180,365].forEach(days=>{const item=document.createElement('option');item.value=String(days);
+  item.textContent=days===1?'1 day':days+' days';duration.append(item)});
+ duration.value=String(current.pin_days||14);
+ pinArea.append(pinText,pinValue,expires,copy,renew,durationLabel,duration);
+ const togglePinArea=()=>{pinArea.hidden=!requirePin.checked};requirePin.addEventListener('change',togglePinArea);
+ wrap.append(pinArea);togglePinArea();
+ const allowDownloads=option('Allow clip downloads',current.allow_downloads,'Turning this off blocks direct downloads and ZIPs, but keeps playback available.');
  const save=document.createElement('button');save.type='button';save.textContent='Save';
  const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Close';cancel.style.marginLeft='8px';
  cancel.onclick=()=>wrap.remove();
- save.onclick=async()=>{save.disabled=true;status.textContent='Saving…';
-   try{await api('/api/admin/projects/'+encodeURIComponent(projectId)+'/review-settings',{
-     method:'PATCH',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({allow_downloads:check.checked})
-   });await load();status.textContent='Saved';wrap.remove()}
-   catch(err){status.textContent=err.message||'Save failed';save.disabled=false}
+ save.onclick=async()=>{
+  const changingAccess=requirePin.checked===current.public_review;
+  if(changingAccess&&!confirm(requirePin.checked?
+   'Enable PIN protection? Current review sessions will be signed out.':
+   'Disable PIN protection? Anyone with the review link can view clips. Current sessions will be signed out.'))return;
+  if(renewRequested&&!changingAccess&&!confirm('Generate a new PIN? The previous PIN and existing review sessions will stop working.'))return;
+  save.disabled=true;status.textContent='Saving…';
+  try{
+   await api('/api/admin/projects/'+encodeURIComponent(projectId)+'/review-settings',{
+    method:'PATCH',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({allow_downloads:allowDownloads.checked,public_review:!requirePin.checked,
+     pin_days:Number(duration.value),renew_pin:renewRequested})
+   });
+   await load();wrap.remove();await projectReviewSettings(projectId);
+   const updated=document.querySelector('.project-review-settings-popover');
+   const notice=document.createElement('p');notice.className='hint';notice.textContent='Settings saved.';
+   if(updated)updated.prepend(notice);
+  }catch(err){status.textContent=err.message||'Save failed';save.disabled=false}
  };
- wrap.append(heading,label,help,save,cancel,status);
- document.querySelector('#projects').prepend(wrap);
- check.focus();
+ wrap.append(save,cancel,status);requirePin.focus();
 }
 async function deleteProject(projectId){
  const project=allProjects.find(p=>p.id===projectId);if(!project)return;
