@@ -39,6 +39,69 @@ class MainActivity : Activity() {
     private val pickFolder=4101
     private val pickManual=4102
     private val prefs by lazy { getSharedPreferences("fieldlink",MODE_PRIVATE) }
+    // Only PIN-protected review links are cached: never store a 24h PIN-free bearer URL.
+    private var cachedQrProject=""
+    private var cachedQrUrl=""
+    private var cachedQrBitmap:Bitmap?=null
+    @Volatile private var qrFetchInFlight=false
+    private fun makeQrBitmap(url:String):Bitmap {
+        val size=576
+        val matrix=MultiFormatWriter().encode(url,BarcodeFormat.QR_CODE,size,size)
+        val pixels=IntArray(size*size) { i ->
+            if(matrix[i%size,i/size]) Color.BLACK else Color.WHITE
+        }
+        return Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888).apply {
+            setPixels(pixels,0,size,0,0,size,size)
+        }
+    }
+    private fun prefetchReviewQr() {
+        val pid=prefs.getString("project","").orEmpty()
+        val base=prefs.getString("server","").orEmpty().trimEnd('/')
+        val device=prefs.getString("token","").orEmpty()
+        if(pid.isBlank() || !base.startsWith("https://") || device.isBlank()) return
+        val key="$base|$pid"
+        if(key==cachedQrProject && cachedQrBitmap!=null || qrFetchInFlight) return
+        val savedKey=prefs.getString("qr_project_key","").orEmpty()
+        val savedUrl=prefs.getString("qr_project_url","").orEmpty()
+        if(savedKey==key && savedUrl.startsWith("$base/r/") && '#' !in savedUrl) {
+            if(cachedQrProject!=key || cachedQrBitmap==null) {
+                Thread {
+                    try {
+                        val bitmap=makeQrBitmap(savedUrl)
+                        runOnUiThread {
+                            if(prefs.getString("project","")==pid) {
+                                cachedQrProject=key;cachedQrUrl=savedUrl;cachedQrBitmap=bitmap
+                            }
+                        }
+                    }catch(_:Exception){}
+                }.start()
+            }
+            return
+        }
+        qrFetchInFlight=true
+        Thread {
+            try {
+                val req=Request.Builder()
+                    .url("$base/api/device/projects/${Uri.encode(pid)}/share?pinless=false")
+                    .header("X-Device-Token",device).get().build()
+                val result=OkHttpClient().newCall(req).execute().use { response ->
+                    if(!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
+                    JSONObject(response.body?.string() ?: "{}")
+                }
+                val url=result.getString("url")
+                if(!url.startsWith("$base/r/") || '#' in url) return@Thread
+                val bitmap=makeQrBitmap(url)
+                runOnUiThread {
+                    if(prefs.getString("project","")==pid &&
+                        prefs.getString("server","").orEmpty().trimEnd('/')==base) {
+                        cachedQrProject=key;cachedQrUrl=url;cachedQrBitmap=bitmap
+                        prefs.edit().putString("qr_project_key",key)
+                            .putString("qr_project_url",url).apply()
+                    }
+                }
+            }catch(_:Exception){}finally{qrFetchInFlight=false}
+        }.start()
+    }
     private lateinit var server:EditText
     private lateinit var project:EditText
     private lateinit var token:EditText
