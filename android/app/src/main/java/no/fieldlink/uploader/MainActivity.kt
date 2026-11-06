@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     // Only PIN-protected review links are cached: never store a 24h PIN-free bearer URL.
     private var cachedQrProject=""
     private var cachedQrUrl=""
+    private var cachedQrPublic=false
     private var cachedQrBitmap:Bitmap?=null
     @Volatile private var qrFetchInFlight=false
     private fun makeQrBitmap(url:String):Bitmap {
@@ -71,6 +72,7 @@ class MainActivity : Activity() {
                         runOnUiThread {
                             if(prefs.getString("project","")==pid) {
                                 cachedQrProject=key;cachedQrUrl=savedUrl;cachedQrBitmap=bitmap
+                                cachedQrPublic=prefs.getBoolean("qr_project_public",false)
                             }
                         }
                     }catch(_:Exception){}
@@ -82,7 +84,7 @@ class MainActivity : Activity() {
         Thread {
             try {
                 val req=Request.Builder()
-                    .url("$base/api/device/projects/${Uri.encode(pid)}/share?pinless=false")
+                    .url("$base/api/device/projects/${Uri.encode(pid)}/share")
                     .header("X-Device-Token",device).get().build()
                 val result=OkHttpClient().newCall(req).execute().use { response ->
                     if(!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
@@ -95,8 +97,10 @@ class MainActivity : Activity() {
                     if(prefs.getString("project","")==pid &&
                         prefs.getString("server","").orEmpty().trimEnd('/')==base) {
                         cachedQrProject=key;cachedQrUrl=url;cachedQrBitmap=bitmap
+                        cachedQrPublic=result.optBoolean("public_review",false)
                         prefs.edit().putString("qr_project_key",key)
-                            .putString("qr_project_url",url).apply()
+                            .putString("qr_project_url",url)
+                            .putBoolean("qr_project_public",cachedQrPublic).apply()
                     }
                 }
             }catch(_:Exception){}finally{qrFetchInFlight=false}
@@ -798,33 +802,23 @@ class MainActivity : Activity() {
             .setView(scroll).setPositiveButton("Close",null).show()
     }
 
-    private fun showQrDialog(url:String,pinless:Boolean,projectName:String,bitmap:Bitmap) {
+    private fun showQrDialog(url:String,isPublic:Boolean,projectName:String,bitmap:Bitmap) {
         val image=ImageView(this).apply {
             setImageBitmap(bitmap)
             setPadding(dp(8),dp(8),dp(8),dp(8))
             adjustViewBounds=true
             setBackgroundColor(Color.WHITE)
         }
-        var shareDialog:AlertDialog?=null
         val layout=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
             setPadding(dp(18),dp(4),dp(18),dp(5))
-            addView(text(if(pinless) "PIN-free access · expires after 24 hours" else
-                "Recipient enters the project PIN",11f,muted))
+            addView(text(if(isPublic) "PUBLIC REVIEW · NO PIN" else
+                "PRIVATE REVIEW · PROJECT PIN REQUIRED",11f,if(isPublic) accent else muted))
             addView(image,LinearLayout.LayoutParams(dp(280),dp(280)).apply {
                 gravity=android.view.Gravity.CENTER_HORIZONTAL
             })
-            addView(Switch(this@MainActivity).apply {
-                text="Open without PIN · 24h"
-                textSize=12f
-                setTextColor(Color.WHITE)
-                isChecked=pinless
-                setPadding(0,dp(5),0,0)
-                setOnCheckedChangeListener { _,enabled ->
-                    shareDialog?.dismiss()
-                    showProjectShare(enabled)
-                }
-            })
+            addView(text("Access follows the project settings. This QR code does not expire.",
+                11f,muted))
         }
         AlertDialog.Builder(this).setTitle("Share · $projectName")
             .setView(layout)
@@ -835,15 +829,13 @@ class MainActivity : Activity() {
                 },"Share OFFSET project"))
             }
             .setNegativeButton("Close",null)
-            .create().also { dialog ->
-                shareDialog=dialog
-                dialog.show()
+            .show().also { dialog ->
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.isAllCaps=false
                 dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.isAllCaps=false
             }
     }
 
-    private fun showProjectShare(pinless:Boolean=false) {
+    private fun showProjectShare() {
         val base=normalizedServerUrl(server.text.toString())
         val pid=project.text.toString().trim()
         val device=token.text.toString().trim()
@@ -854,26 +846,24 @@ class MainActivity : Activity() {
         }
         val key="$base|$pid"
         val projectName=prefs.getString("project_name","Project").orEmpty()
-        if(!pinless) {
-            val ready=if(cachedQrProject==key) cachedQrBitmap else null
-            if(ready!=null && cachedQrUrl.isNotBlank()) {
-                showQrDialog(cachedQrUrl,false,projectName,ready)
-                return
-            }
-            val saved=prefs.getString("qr_project_url","").orEmpty()
-            if(prefs.getString("qr_project_key","")==key &&
-                saved.startsWith("$base/r/") && '#' !in saved) {
-                // Offline fallback: saved standard link is still PIN-protected.
-                val bitmap=makeQrBitmap(saved)
-                cachedQrProject=key;cachedQrUrl=saved;cachedQrBitmap=bitmap
-                showQrDialog(saved,false,projectName,bitmap)
-                return
-            }
+        val bitmap=if(cachedQrProject==key) cachedQrBitmap else null
+        if(bitmap!=null && cachedQrUrl.isNotBlank()) {
+            showQrDialog(cachedQrUrl,cachedQrPublic,projectName,bitmap)
+            return
+        }
+        val saved=prefs.getString("qr_project_url","").orEmpty()
+        if(prefs.getString("qr_project_key","")==key &&
+            saved.startsWith("$base/r/") && '#' !in saved) {
+            val ready=makeQrBitmap(saved)
+            cachedQrProject=key;cachedQrUrl=saved;cachedQrBitmap=ready
+            cachedQrPublic=prefs.getBoolean("qr_project_public",false)
+            showQrDialog(saved,cachedQrPublic,projectName,ready)
+            return
         }
         Thread {
             try {
                 val request=Request.Builder()
-                    .url("$base/api/device/projects/${Uri.encode(pid)}/share?pinless=$pinless")
+                    .url("$base/api/device/projects/${Uri.encode(pid)}/share")
                     .header("X-Device-Token",device).get().build()
                 val result=OkHttpClient().newCall(request).execute().use { res ->
                     if(!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
@@ -881,15 +871,18 @@ class MainActivity : Activity() {
                 }
                 val url=result.getString("url")
                 val name=result.optString("name",projectName)
-                val bitmap=makeQrBitmap(url)
+                val isPublic=result.optBoolean("public_review",false)
+                val ready=makeQrBitmap(url)
                 runOnUiThread {
                     if(project.text.toString().trim()!=pid) return@runOnUiThread
-                    if(!pinless && url.startsWith("$base/r/") && '#' !in url) {
-                        cachedQrProject=key;cachedQrUrl=url;cachedQrBitmap=bitmap
+                    if(url.startsWith("$base/r/") && '#' !in url) {
+                        cachedQrProject=key;cachedQrUrl=url;cachedQrBitmap=ready
+                        cachedQrPublic=isPublic
                         prefs.edit().putString("qr_project_key",key)
-                            .putString("qr_project_url",url).apply()
+                            .putString("qr_project_url",url)
+                            .putBoolean("qr_project_public",isPublic).apply()
                     }
-                    showQrDialog(url,pinless,name,bitmap)
+                    showQrDialog(url,isPublic,name,ready)
                 }
             }catch(e:Exception) {
                 runOnUiThread {
