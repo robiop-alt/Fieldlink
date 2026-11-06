@@ -209,7 +209,7 @@ class MainActivity : Activity() {
             }
             runOnUiThread {
                 val label=TextView(this).apply {
-                    text=result;setTextColor(Color.WHITE);textSize=14f
+                    text=result;setTextColor(Color.BLACK);textSize=14f
                     setPadding(dp(18),dp(12),dp(18),dp(12))
                 }
                 AlertDialog.Builder(this).setTitle("Server upload history")
@@ -247,7 +247,7 @@ class MainActivity : Activity() {
         val message=listOf(summary,rows,explanation).filter { it.isNotBlank() }.joinToString("\n\n")
         val historyText=TextView(this).apply {
             text=message
-            setTextColor(Color.WHITE)
+            setTextColor(Color.BLACK)
             textSize=14f
             setPadding(dp(18),dp(12),dp(18),dp(12))
         }
