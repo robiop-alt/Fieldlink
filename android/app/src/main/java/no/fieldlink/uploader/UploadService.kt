@@ -251,75 +251,126 @@ class UploadService : Service() {
         }
     }
 
+    @androidx.media3.common.util.UnstableApi
     private fun upload(doc: DocumentFile, size: Long): Boolean {
         val base = sessionBase
         val project = sessionProject
         val token = sessionToken
+        val originalName = doc.name ?: "drone_clip.mp4"
         var uploadId = ledger.getUploadId(doc,project)
+        // Freeze the encoding choice at upload/init. Never switch bytes on resume.
+        val lowMode = if(uploadId!=null) prefs.getBoolean("upload_low_$uploadId",false)
+                      else prefs.getBoolean("low_data_mode",false)
+        val compressor=LowDataCompressor(this)
+        val lowFile=if(lowMode) compressor.fileFor(project,doc.uri,size,doc.lastModified()) else null
+        val sourceUri:Uri
+        val uploadSize:Long
+        val uploadName:String
+        if(lowFile!=null) {
+            val prepared=if(uploadId!=null) {
+                if(lowFile.isFile && lowFile.length()>0) lowFile else null
+            } else {
+                status("Compressing $originalName · Low Data Mode")
+                compressor.compress(doc.uri,lowFile,size)
+            }
+            if(prepared==null) {
+                status(if(uploadId!=null) "Low Data copy missing · keep upload queued"
+                    else "Low Data compression unavailable · original kept safe")
+                return false
+            }
+            sourceUri=Uri.fromFile(prepared)
+            uploadSize=prepared.length()
+            uploadName=originalName.substringBeforeLast('.')+"_LOW_DATA.mp4"
+        } else {
+            sourceUri=doc.uri
+            uploadSize=size
+            uploadName=originalName
+        }
         if (uploadId == null) {
-            val body = JSONObject().put("project_id", project).put("filename", doc.name ?: "drone_clip.mp4").put("total_size", size)
+            val body = JSONObject().put("project_id",project).put("filename",uploadName)
+                .put("total_size",uploadSize)
                 .toString().toRequestBody("application/json".toMediaType())
-            val response = execute(Request.Builder().url("$base/api/upload/init").header("X-Device-Token", token).post(body).build()) ?: return false
+            val response = execute(Request.Builder().url("$base/api/upload/init")
+                .header("X-Device-Token",token).post(body).build()) ?: return false
             uploadId = JSONObject(response).getString("upload_id")
+            // commit() persists before any chunk is transferred.
+            prefs.edit().putBoolean("upload_low_$uploadId",lowMode).commit()
             ledger.setUploadId(doc,project,uploadId)
         }
-        val state = execute(Request.Builder().url("$base/api/upload/$uploadId").header("X-Device-Token", token).get().build()) ?: return false
+        val state = execute(Request.Builder().url("$base/api/upload/$uploadId")
+            .header("X-Device-Token",token).get().build()) ?: return false
         val initialState=JSONObject(state)
-        if (initialState.optString("status")=="ready") {
-            return verifyCompleted(doc,size,initialState)
+        if(initialState.optString("status")=="ready") {
+            return verifyCompleted(doc,sourceUri,uploadSize,initialState,uploadId,lowFile)
         }
-        var offset = initialState.getLong("received")
-        if (offset<0 || offset>size || initialState.optLong("total",size)!=size) {
-            status("Upload state mismatch · manual check needed")
+        var offset=initialState.getLong("received")
+        if(offset<0 || offset>uploadSize || initialState.optLong("total",uploadSize)!=uploadSize) {
+            status("Upload state mismatch · keeping clip queued")
             return false
         }
-        val chunkSize = 4 * 1024 * 1024
-        contentResolver.openInputStream(doc.uri)?.use { input ->
-            var skipped = 0L
-            while (skipped < offset) {
-                val n = input.skip(offset - skipped)
-                if (n <= 0) { if (input.read() == -1) return false else skipped++ } else skipped += n
+        val chunkSize=4*1024*1024
+        contentResolver.openInputStream(sourceUri)?.use { input ->
+            var skipped=0L
+            while(skipped<offset) {
+                val n=input.skip(offset-skipped)
+                if(n<=0) { if(input.read()==-1) return false else skipped++ } else skipped+=n
             }
-            while (offset < size && running) {
-                val len = minOf(chunkSize.toLong(), size - offset).toInt()
-                val temp = File(cacheDir, "fl_${uploadId}_$offset.tmp")
-                FileOutputStream(temp).use { out ->
-                    val buf = ByteArray(64 * 1024); var remaining = len
-                    while (remaining > 0) {
-                        val n = input.read(buf, 0, minOf(buf.size, remaining))
-                        if (n < 0) break
-                        out.write(buf, 0, n); remaining -= n
+            while(offset<uploadSize && running) {
+                val len=minOf(chunkSize.toLong(),uploadSize-offset).toInt()
+                val temp=File(cacheDir,"fl_${uploadId}_$offset.tmp")
+                try {
+                    FileOutputStream(temp).use { out ->
+                        val buf=ByteArray(64*1024);var remaining=len
+                        while(remaining>0) {
+                            val n=input.read(buf,0,minOf(buf.size,remaining))
+                            if(n<0) break
+                            out.write(buf,0,n);remaining-=n
+                        }
                     }
-                }
-                if (temp.length() != len.toLong()) { temp.delete(); return false }
-                val part = temp.asRequestBody("application/octet-stream".toMediaType())
-                val multipart = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("chunk", "chunk.bin", part).build()
-                val req = Request.Builder().url("$base/api/upload/$uploadId/chunk").header("X-Device-Token", token).header("X-Offset", offset.toString()).put(multipart).build()
-                val result = execute(req) ?: run { temp.delete(); return false }
-                offset = JSONObject(result).getLong("received"); temp.delete()
-                status("Sender ${doc.name} · ${(offset * 100 / size)} %")
+                    if(temp.length()!=len.toLong()) return false
+                    val part=temp.asRequestBody("application/octet-stream".toMediaType())
+                    val multipart=MultipartBody.Builder().setType(MultipartBody.FORM)
+                        .addFormDataPart("chunk","chunk.bin",part).build()
+                    val req=Request.Builder().url("$base/api/upload/$uploadId/chunk")
+                        .header("X-Device-Token",token).header("X-Offset",offset.toString())
+                        .put(multipart).build()
+                    val response=execute(req) ?: return false
+                    val received=JSONObject(response).getLong("received")
+                    if(received!=offset+len) {
+                        status("Unexpected upload offset · rechecking on next attempt")
+                        return false
+                    }
+                    offset=received
+                    status("Sending $uploadName · ${(offset*100/uploadSize)} %")
+                } finally { temp.delete() }
             }
         } ?: return false
-        if (offset != size) return false
-        val localDigest=sha256(doc) ?: return false
-        val complete = execute(Request.Builder().url("$base/api/upload/$uploadId/complete")
+        if(offset!=uploadSize) return false
+        val localDigest=sha256(sourceUri) ?: return false
+        val complete=execute(Request.Builder().url("$base/api/upload/$uploadId/complete")
             .header("X-Device-Token",token).header("X-Content-SHA256",localDigest)
             .post("".toRequestBody(null)).build()) ?: return false
         val result=JSONObject(complete)
-        if(result.optString("status")!="ready" || result.optLong("size",-1)!=size ||
+        if(result.optString("status")!="ready" || result.optLong("size",-1)!=uploadSize ||
             !result.optString("sha256").equals(localDigest,true)) {
             status("Integrity check failed · keeping upload queued")
             return false
         }
-        ledger.clearUploadId(doc,project)
-        val clipId=result.optString("clip_id")
-        if(clipId.isNotBlank()) sendDjiThumbnail(doc,clipId)
+        finishVerifiedUpload(doc,uploadId,lowFile,result)
         return true
     }
 
-    private fun sha256(doc:DocumentFile):String? = try {
+    private fun finishVerifiedUpload(doc:DocumentFile,uploadId:String,lowFile:File?,result:JSONObject) {
+        ledger.clearUploadId(doc,sessionProject)
+        prefs.edit().remove("upload_low_$uploadId").apply()
+        lowFile?.delete()
+        val clipId=result.optString("clip_id")
+        if(clipId.isNotBlank()) sendDjiThumbnail(doc,clipId)
+    }
+
+    private fun sha256(uri:Uri):String? = try {
         val hash=MessageDigest.getInstance("SHA-256")
-        contentResolver.openInputStream(doc.uri)?.use { input ->
+        contentResolver.openInputStream(uri)?.use { input ->
             val bytes=ByteArray(1024*1024)
             while(true) {
                 val n=input.read(bytes)
@@ -330,15 +381,13 @@ class UploadService : Service() {
         }
     }catch(_:Exception) { null }
 
-    private fun verifyCompleted(doc:DocumentFile,size:Long,result:JSONObject):Boolean {
-        val localDigest=sha256(doc) ?: return false
+    private fun verifyCompleted(doc:DocumentFile,sourceUri:Uri,size:Long,
+        result:JSONObject,uploadId:String,lowFile:File?):Boolean {
+        val localDigest=sha256(sourceUri) ?: return false
         val safe=result.optString("status")=="ready" && result.optLong("total",-1)==size &&
             result.optString("sha256").equals(localDigest,true)
-        if(safe) {
-            ledger.clearUploadId(doc,sessionProject)
-            val clipId=result.optString("clip_id")
-            if(clipId.isNotBlank()) sendDjiThumbnail(doc,clipId)
-        } else status("Integrity check failed · keeping upload queued")
+        if(safe) finishVerifiedUpload(doc,uploadId,lowFile,result)
+        else status("Integrity check failed · keeping upload queued")
         return safe
     }
 
