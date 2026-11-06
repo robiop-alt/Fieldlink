@@ -369,7 +369,7 @@ def device_project_uploads(project_id:str, x_device_token:str=Header(default='')
         project=conn.execute('SELECT id FROM projects WHERE id=?',(project_id,)).fetchone()
         if not project: raise HTTPException(404,'Project not found')
         rows=conn.execute(
-            'SELECT id,filename,size,created FROM clips WHERE project_id=? AND status=? ORDER BY created DESC LIMIT 100',
+            'SELECT id,filename,size,created FROM clips WHERE project_id=? AND status=? ORDER BY filename ASC LIMIT 1000',
             (project_id,'ready')
         ).fetchall()
     return {'project_id':project_id,'clips':[dict(row) for row in rows]}
