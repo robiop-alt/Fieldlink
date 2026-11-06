@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="OffsetTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#B7F34D</item>
+        <item name="android:colorControlActivated">#B7F34D</item>
+        <item name="android:statusBarColor">#111416</item>
+        <item name="android:navigationBarColor">#111416</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:alertDialogTheme">@style/OffsetDialogTheme</item>
+    </style>
+    <style name="OffsetDialogTheme" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/offset_dialog_background</item>
+        <item name="android:colorAccent">#B7F34D</item>
+        <item name="android:textColorPrimary">#F4F7F6</item>
+        <item name="android:textColorSecondary">#B1BFC0</item>
+        <item name="android:windowMinWidthMajor">75%</item>
+        <item name="android:windowMinWidthMinor">88%</item>
+        <item name="android:backgroundDimAmount">0.65</item>
+    </style>
+</resources>
