@@ -38,6 +38,8 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Build debug APK
+        env:
+          OFFSET_DEFAULT_DEVICE_TOKEN: ${{ secrets.OFFSET_DEFAULT_DEVICE_TOKEN }}
         working-directory: android
         run: gradle assembleDebug
 
@@ -68,6 +70,7 @@ jobs:
         if: steps.signing.outputs.enabled == 'true' && github.ref == 'refs/heads/main'
         working-directory: android
         env:
+          OFFSET_DEFAULT_DEVICE_TOKEN: ${{ secrets.OFFSET_DEFAULT_DEVICE_TOKEN }}
           OFFSET_VERSION_CODE: ${{ github.run_number }}
           OFFSET_VERSION_NAME: 0.1.${{ github.run_number }}
           OFFSET_KEYSTORE_PATH: ${{ runner.temp }}/offset-release.jks
