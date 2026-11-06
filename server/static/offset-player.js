@@ -71,9 +71,15 @@
     const options=make('div','offset-player-options');
     const frameLabel=make('label',null,'Frame lines');
     const frameSelect=make('select','offset-player-frames-select');
-    [['off','Off'],['2.39','2.39:1'],['1.90','1.90:1'],['1.85','1.85:1'],['1.777778','16:9'],['1.333333','4:3'],['1','1:1'],['0.8','4:5'],['0.5625','9:16']].forEach(([value,text])=>{
+    [['off','Off'],['0.5625','9:16'],['0.8','4:5'],['1','1:1'],['1.333333','4:3'],['1.777778','16:9'],['1.85','1.85:1'],['2.00','2.00:1'],['2.20','2.20:1'],['2.39','2.39:1']].forEach(([value,text])=>{
       const opt=make('option',null,text);opt.value=value;frameSelect.append(opt);
     });
+    // Per-project setting in this browser, never attached to the media file.
+    const frameStorageKey='offset:framelines:'+encodeURIComponent(location.pathname.split('/').filter(Boolean).pop()||'');
+    try {
+      const saved=localStorage.getItem(frameStorageKey);
+      if(saved && [...frameSelect.options].some(option=>option.value===saved)) frameSelect.value=saved;
+    } catch (_) { /* Private browsing can disable storage. */ }
     frameLabel.append(frameSelect);
     const download=make('a','offset-player-download','Download clip ↓');
     options.append(frameLabel,download);
@@ -159,7 +165,10 @@
       else if(stage.requestFullscreen)stage.requestFullscreen().catch(()=>video.webkitEnterFullscreen?.());
       else video.webkitEnterFullscreen?.();
     });
-    listen(frameSelect,'change',updateFrames);
+    listen(frameSelect,'change',()=>{
+      try {localStorage.setItem(frameStorageKey,frameSelect.value)} catch (_) {}
+      updateFrames();
+    });
     listen(video,'timeupdate',updateTime);
     listen(video,'loadedmetadata',()=>{updateTime();updateFrames()});
     listen(video,'play',()=>{error.hidden=true;updateButtons()});
