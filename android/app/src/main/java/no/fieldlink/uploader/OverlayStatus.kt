@@ -44,14 +44,15 @@ class OverlayStatus(private val ctx: Context) {
         last.contains("failed",true)||last.contains("error",true)||
             last.contains("feil",true)||last.contains("mismatch",true)||
             last.contains("integrity",true) -> Color.rgb(255,104,106)
-        last.contains("network",true)||last.contains("venter",true)||
+        last.contains("battery",true)||last.contains("network",true)||last.contains("venter",true)||
             last.contains("waiting",true)||last.contains("blocked",true)||
             last.contains("paused",true) -> Color.rgb(255,194,93)
         else -> accent
     }
     private fun shortText():String {
-        val progress=Regex("""(\d{1,3})\s*%""").find(last)?.groupValues?.get(1)
+        val progress=if(last.contains("battery",true)) null else Regex("""(\d{1,3})\s*%""").find(last)?.groupValues?.get(1)
         return when {
+            last.contains("battery",true) -> "▰"
             progress!=null -> "↑ $progress%"
             last.contains("compress",true) -> "⇣"
             last.contains("sender",true)||last.contains("upload",true)||
@@ -64,6 +65,7 @@ class OverlayStatus(private val ctx: Context) {
         }
     }
     private fun readableStatus():String=when {
+        last.contains("battery",true) -> "Low battery · Uploads paused"
         last.contains("compress",true) -> "Compressing · Low Data Mode"
         last.contains("network",true) || last.contains("nett",true) -> "Waiting for network"
         last.contains("integrity",true) || last.contains("mismatch",true) ->
