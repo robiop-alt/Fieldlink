@@ -275,6 +275,15 @@ class UploadInit(BaseModel):
 
 @app.get('/')
 def home(): return FileResponse('static/admin.html')
+@app.get('/design-preview',include_in_schema=False)
+def controller_design_preview():
+    # Isolated browser-only demonstration: never exposes projects, credentials,
+    # controller files or production APIs.
+    return FileResponse('static/controller-preview.html',media_type='text/html',
+        headers={'Cache-Control':'no-store',
+                 'X-Robots-Tag':'noindex, nofollow, noarchive',
+                 'Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"})
+
 @app.get('/r/{slug}')
 def review(slug:str): return FileResponse('static/review.html')
 # Installable private iPhone web app. Manifest has no project PIN or credentials.
