@@ -190,6 +190,17 @@ class MainActivity : Activity() {
         val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay",v).apply() } }
         settings.addView(overlay)
+        val metadataReminder=Switch(this).apply {
+            text="Metadata access reminder"
+            setTextColor(Color.WHITE)
+            isChecked=prefs.getBoolean("metadata_reminder",true)
+            setOnCheckedChangeListener { _,checked ->
+                prefs.edit().putBoolean("metadata_reminder",checked).apply()
+            }
+        }
+        settings.addView(metadataReminder)
+        settings.addView(text("Show a small METADATA TAP prompt over DJI Pilot when screen capture access is inactive.",12f,muted))
+
         settings.addView(text("OVERLAY STYLE",12f,accent))
         val styles=android.widget.RadioGroup(this).apply {
             orientation=android.widget.RadioGroup.HORIZONTAL
@@ -261,6 +272,10 @@ class MainActivity : Activity() {
         dashboardView=ScrollView(this).apply { addView(root) }
         setContentView(dashboardView)
         showMediaLibraryPage()
+        if(intent?.getBooleanExtra("request_metadata_access",false)==true) {
+            showMetadataPermissionPrompt()
+            intent?.removeExtra("request_metadata_access")
+        }
         if(prefs.getBoolean("boot_resume_pending",false)) {
             prefs.edit().putBoolean("boot_resume_pending",false).apply()
             AlertDialog.Builder(this).setTitle("Resume OFFSET uploads?")
@@ -680,6 +695,22 @@ class MainActivity : Activity() {
                 }
             }
         }.start()
+    }
+
+    override fun onNewIntent(intent:Intent?) {
+        super.onNewIntent(intent)
+        if(intent?.getBooleanExtra("request_metadata_access",false)==true) {
+            showMetadataPermissionPrompt()
+        }
+    }
+
+    private fun showMetadataPermissionPrompt() {
+        AlertDialog.Builder(this)
+            .setTitle("Camera metadata access")
+            .setMessage("OFFSET needs your permission to read the DJI Pilot screen. Grant screen capture access for this session? This is optional and can be stopped at any time.")
+            .setNegativeButton("Not now",null)
+            .setPositiveButton("Grant access") { _,_ -> startMetadataCapture() }
+            .show()
     }
 
     private fun startMetadataCapture() {
