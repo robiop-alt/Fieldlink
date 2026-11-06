@@ -1,6 +1,7 @@
 package no.fieldlink.uploader
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -25,6 +26,9 @@ class OverlayStatus(private val ctx: Context) {
     private var header:TextView?=null
     private var details:TextView?=null
     private var projectLabel:TextView?=null
+    private var modeLabel:TextView?=null
+    private var waitingLabel:TextView?=null
+    private var actionLabel:TextView?=null
     private var params:WindowManager.LayoutParams?=null
     private var expanded=false
     private var last="Ready"
@@ -69,8 +73,36 @@ class OverlayStatus(private val ctx: Context) {
             visibility=if(expanded || (style=="classic" && prefs.getBoolean("overlay_show_status",true))) View.VISIBLE else View.GONE
         }
         projectLabel?.visibility=if((expanded || style=="classic") && prefs.getBoolean("overlay_show_project",false)) View.VISIBLE else View.GONE
+        val isManual=prefs.getString("upload_mode","auto")=="manual"
+        modeLabel?.apply {
+            text=if(isManual) "Manual mode" else "Auto upload"
+            setTextColor(if(isManual) Color.rgb(255,190,103) else accent)
+            visibility=if(expanded) View.VISIBLE else View.GONE
+        }
+        waitingLabel?.apply {
+            val project=prefs.getString("project","").orEmpty()
+            val waiting=try {
+                if(project.isBlank()) 0 else ProjectLedger(ctx).use { ledger ->
+                    val counts=ledger.counts(project)
+                    // Manual queue is included in pending, so avoid double-counting.
+                    counts.second
+                }
+            }catch(_:Exception) { 0 }
+            text="$waiting clips waiting · ${if(isManual) "Only selected clips upload" else "Monitoring new clips"}"
+            visibility=if(expanded) View.VISIBLE else View.GONE
+        }
+        actionLabel?.visibility=if(expanded) View.VISIBLE else View.GONE
         root?.background=drawable()
-        root?.let { view -> params?.let { p -> try {wm.updateViewLayout(view,p)}catch(_:Exception){} } }
+        root?.let { view -> params?.let { p ->
+            if(expanded) {
+                // Make room for the expanded card before placing it against the edge.
+                p.width=dp(272)
+            } else p.width=WindowManager.LayoutParams.WRAP_CONTENT
+            val screenWidth=ctx.resources.displayMetrics.widthPixels
+            p.x=if(prefs.getString("overlay_side","right")=="left") 0
+                else (screenWidth-if(expanded) dp(272) else dp(if(style=="minimal") 40 else 112)).coerceAtLeast(0)
+            try {wm.updateViewLayout(view,p)}catch(_:Exception){}
+        } }
     }
     fun show() {
         if(root!=null || Build.VERSION.SDK_INT<23 || !Settings.canDrawOverlays(ctx)) return
@@ -95,7 +127,31 @@ class OverlayStatus(private val ctx: Context) {
             textSize=11f
             setPadding(dp(12),0,dp(12),dp(10))
         }
-        layout.addView(label);layout.addView(detail);layout.addView(project)
+        val mode=TextView(ctx).apply {
+            textSize=13f
+            setTypeface(null,Typeface.BOLD)
+            setPadding(dp(12),dp(8),dp(12),dp(3))
+        }
+        val waiting=TextView(ctx).apply {
+            textSize=12f
+            setTextColor(Color.WHITE)
+            setPadding(dp(12),0,dp(12),dp(7))
+        }
+        val action=TextView(ctx).apply {
+            text="Open OFFSET  ›"
+            textSize=13f
+            setTypeface(null,Typeface.BOLD)
+            setTextColor(accent)
+            setPadding(dp(12),dp(8),dp(12),dp(12))
+            setOnClickListener {
+                try {
+                    ctx.startActivity(Intent(ctx,MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                }catch(_:Exception){}
+            }
+        }
+        layout.addView(label);layout.addView(mode);layout.addView(waiting)
+        layout.addView(detail);layout.addView(project);layout.addView(action)
         val display=ctx.resources.displayMetrics
         val savedSide=prefs.getString("overlay_side","right")
         val p=WindowManager.LayoutParams(
@@ -108,7 +164,8 @@ class OverlayStatus(private val ctx: Context) {
             x=if(savedSide=="left") 0 else (display.widthPixels-dp(60)).coerceAtLeast(0)
             y=prefs.getInt("overlay_y",dp(140)).coerceIn(dp(50),(display.heightPixels-dp(80)).coerceAtLeast(dp(50)))
         }
-        root=layout;header=label;details=detail;projectLabel=project;params=p
+        root=layout;header=label;details=detail;projectLabel=project
+        modeLabel=mode;waitingLabel=waiting;actionLabel=action;params=p
         expanded=style=="classic"
         var downX=0f;var downY=0f;var originX=0;var originY=0;var moved=false
         label.setOnTouchListener { _,event ->
@@ -151,7 +208,8 @@ class OverlayStatus(private val ctx: Context) {
     }
     fun hide() {
         val current=root
-        root=null;header=null;details=null;projectLabel=null;params=null
+        root=null;header=null;details=null;projectLabel=null
+        modeLabel=null;waitingLabel=null;actionLabel=null;params=null
         if(current!=null) try {wm.removeView(current)}catch(_:Exception){}
     }
 }
