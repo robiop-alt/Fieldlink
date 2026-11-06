@@ -59,7 +59,7 @@ class ControllerOverlayService : Service() {
         startForeground(3091,notification)
         val filter=IntentFilter(ACTION_UPDATE)
         if(Build.VERSION.SDK_INT>=33) registerReceiver(updates,filter,Context.RECEIVER_NOT_EXPORTED)
-        else @Suppress("DEPRECATION") registerReceiver(updates,filter)
+        else registerReceiver(updates,filter)
     }
     override fun onStartCommand(intent:Intent?, flags:Int, startId:Int):Int {
         if(!prefs.getBoolean("overlay",true) || Build.VERSION.SDK_INT<23 ||
