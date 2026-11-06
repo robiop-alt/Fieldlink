@@ -132,11 +132,11 @@ class MainActivity : Activity() {
         }
     private fun button(label:String, action:()->Unit)=Button(this).apply {
         text=label;isAllCaps=false;setTextColor(Color.WHITE)
-        textSize=12f;letterSpacing=0.025f
+        textSize=11f;letterSpacing=0.015f
         minHeight=0;minimumHeight=0;minWidth=0;minimumWidth=0
         elevation=0f
         background=rounded(Color.rgb(43,50,52),Color.rgb(70,80,81))
-        setPadding(dp(12),dp(7),dp(12),dp(7))
+        setPadding(dp(9),dp(5),dp(9),dp(5))
         setOnClickListener { action() }
     }
     private fun primaryButton(label:String, action:()->Unit)=button(label,action).apply {
@@ -460,6 +460,7 @@ class MainActivity : Activity() {
         project.setText(id)
         prefs.edit().putString("project",id).putString("project_name",name).apply()
         projectSummary.text="$name  ·  $id"
+        prefetchReviewQr()
         showMediaLibraryPage()
         if(change) {
             // The project selection was deliberate; resume it without extra taps.
@@ -944,19 +945,22 @@ class MainActivity : Activity() {
             12f,accent
         ))
         header.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
-        header.addView(button("Dashboard") { dashboardView?.let { setContentView(it) } })
+        header.addView(button("Settings") { dashboardView?.let { setContentView(it) } })
         root.addView(header)
         val nav=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        nav.addView(primaryButton("Manage projects") { showProjects() },
-            LinearLayout.LayoutParams(0,dp(42),1f).apply { rightMargin=dp(5) })
+        nav.addView(primaryButton("QR · Share") { showProjectShare() },
+            LinearLayout.LayoutParams(0,dp(33),1f).apply { rightMargin=dp(5) })
+        nav.addView(button("Projects") { showProjects() },
+            LinearLayout.LayoutParams(0,dp(33),1f).apply { rightMargin=dp(5) })
         nav.addView(button("Refresh") { showMediaLibraryPage() },
-            LinearLayout.LayoutParams(0,dp(42),1f))
+            LinearLayout.LayoutParams(0,dp(33),1f))
         root.addView(nav)
         val status=text("Loading media…",12f,muted)
         root.addView(status)
         val grid=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         root.addView(grid)
         setContentView(ScrollView(this).apply { addView(root) })
+        prefetchReviewQr()
         val base=normalizedServerUrl(server.text.toString())
         val secret=token.text.toString().trim()
         val cacheUri=savedCacheUri()
