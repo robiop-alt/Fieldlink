@@ -25,15 +25,20 @@ object PilotForeground {
         return mode==AppOpsManager.MODE_ALLOWED
     }
 
-    fun isPilotVisible(context:Context):Boolean {
+    private var foregroundPackage:String?=null
+    private var lastScan=0L
+
+    @Synchronized fun isPilotVisible(context:Context):Boolean {
         if(!permissionGranted(context)) return false
         return try {
             val stats=context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val now=System.currentTimeMillis()
-            // A brief history covers the recent launch and switch between apps.
-            val events=stats.queryEvents(now-180_000,now) ?: return false
+            // Start with longer history, then scan only new events. Pilot may remain
+            // foreground for hours without another activity-resumed event.
+            val from=if(lastScan==0L || lastScan>now) now-12*60*60*1000L else lastScan-1500L
+            val events=stats.queryEvents(from,now) ?: return false
             val event=UsageEvents.Event()
-            var foreground:String?=null
+            var foreground=foregroundPackage
             var lastAt=0L
             while(events.hasNextEvent()) {
                 events.getNextEvent(event)
@@ -49,6 +54,8 @@ object PilotForeground {
                     lastAt=event.timeStamp
                 }
             }
+            foregroundPackage=foreground
+            lastScan=now
             foreground in knownPilotPackages
         }catch(_:Exception) { false }
     }
