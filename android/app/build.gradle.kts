@@ -7,7 +7,27 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    defaultConfig { applicationId = "no.fieldlink.uploader"; minSdk = 29; targetSdk = 35; versionCode = 1; versionName = "0.1.0" }
+    defaultConfig {
+        applicationId = "no.fieldlink.uploader"
+        minSdk = 29
+        targetSdk = 35
+        versionCode = System.getenv("OFFSET_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("OFFSET_VERSION_NAME") ?: "0.1.0"
+    }
+    signingConfigs {
+        create("offsetRelease") {
+            storeFile = file(System.getenv("OFFSET_KEYSTORE_PATH") ?: "missing-release-keystore.jks")
+            storePassword = System.getenv("OFFSET_KEYSTORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("OFFSET_KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("OFFSET_KEY_PASSWORD") ?: ""
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("offsetRelease")
+        }
+    }
 }
 
 dependencies {
