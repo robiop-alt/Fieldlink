@@ -291,6 +291,27 @@ def device_app_update(x_device_token:str=Header(default='')):
     version_code=int(os.getenv('OFFSET_ANDROID_RELEASE_CODE','0'))
     version_name=os.getenv('OFFSET_ANDROID_RELEASE_VERSION','')
     apk_url=os.getenv('OFFSET_ANDROID_RELEASE_URL','')
+    # Public GitHub Releases work without manually updating Render variables.
+    # If the repository is private, configure an HTTPS release URL explicitly.
+    if not apk_url:
+        try:
+            import json
+            from urllib.request import Request as UrlRequest, urlopen
+            req=UrlRequest('https://api.github.com/repos/robiop-alt/Fieldlink/releases/latest',
+                           headers={'Accept':'application/vnd.github+json','User-Agent':'OFFSET-updates'})
+            with urlopen(req,timeout=5) as response:
+                release=json.load(response)
+            tag=release.get('tag_name','')
+            match=re.fullmatch(r'offset-android-(\\d+)',tag)
+            if match:
+                assets=release.get('assets',[])
+                asset=next((a for a in assets if a.get('name')=='OFFSET.apk'),None)
+                if asset:
+                    version_code=int(match.group(1))
+                    version_name=release.get('name',tag)
+                    apk_url=asset.get('browser_download_url','')
+        except Exception:
+            pass
     if not apk_url.startswith('https://'):
         apk_url=''
     return {'version_code':version_code,'version_name':version_name,'download_url':apk_url}
