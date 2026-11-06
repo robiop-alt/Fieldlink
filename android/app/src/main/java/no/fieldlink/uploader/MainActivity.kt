@@ -659,8 +659,19 @@ class MainActivity : Activity() {
                         progress.progress=((doneBytes*100)/bytesTotal).toInt().coerceIn(0,100)
                     }
                     try {
+                        var transferred=0L
+                        var lastTick=0L
                         val result=mirror.copy(document,pid,projectName,{
                             !sdBackupCancel && prefs.getString("project","")==pid
+                        },{ delta ->
+                            transferred+=delta
+                            val now=System.currentTimeMillis()
+                            if(now-lastTick>=500L) {
+                                lastTick=now
+                                val pct=(((doneBytes+transferred).coerceAtMost(bytesTotal))*100/bytesTotal)
+                                    .toInt().coerceIn(0,100)
+                                runOnUiThread { progress.progress=pct }
+                            }
                         })
                         if(result) {
                             copied++
