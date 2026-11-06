@@ -1369,7 +1369,7 @@ class MainActivity : Activity() {
                 val remoteByName=remote.associateBy { it.filename }
                 val localNames=clips.mapNotNull { it.file.name }.toSet()
                 val uploaded=clips.count { (it.file.name ?: "") in remoteByName }
-                status.text="${clips.size} local  ·  ${uploaded} uploaded  ·  ${queued.size} queued" +
+                status.text="${clips.size} local  ·  ${uploaded} uploaded  ·  ${ledger.pendingQueue(pid).size} waiting  ·  ${priorityUris.size} priority" +
                     if(cloudAvailable) "" else "\n$serverError"
                 val mode=Switch(this).apply {
                     text="Auto upload (off = selected clips only)"
@@ -1593,7 +1593,7 @@ class MainActivity : Activity() {
         dialog.show()
     }
 
-    private fun showUploadQueue() {
+    private fun showUploadQueue(searchTerm:String="") {
         val pid=prefs.getString("project","").orEmpty()
         if(pid.isBlank()){
             showOffsetError("Upload queue","Choose a project first.")
@@ -1610,10 +1610,35 @@ class MainActivity : Activity() {
         layout.addView(text("${queue.size} waiting · ${urgent} prioritized · active upload finishes first",
             12f,Color.DKGRAY))
         var queueDialog:AlertDialog?=null
+        layout.addView(button(if(searchTerm.isBlank())"Find clip by name" else "Filter: $searchTerm · Change") {
+            val field=EditText(this).apply {
+                hint="DJI filename"
+                setSingleLine(true)
+                setText(searchTerm)
+                setSelectAllOnFocus(true)
+            }
+            AlertDialog.Builder(this).setTitle("Find clip in queue")
+                .setView(field)
+                .setNegativeButton("Cancel",null)
+                .setPositiveButton("Filter") { _,_ ->
+                    queueDialog?.dismiss()
+                    showUploadQueue(field.text.toString().trim())
+                }.show()
+        })
+        if(searchTerm.isNotBlank())layout.addView(button("Show all waiting clips") {
+            queueDialog?.dismiss()
+            showUploadQueue()
+        })
         if(queue.isEmpty())layout.addView(text(
             "No clips waiting yet. New DJI clips appear when OFFSET discovers them.",
             12f,Color.DKGRAY))
-        for(item in queue.take(150)){
+        val shown=if(searchTerm.isBlank())queue.take(150) else queue.filter { item ->
+            val name=try { DocumentFile.fromSingleUri(this,Uri.parse(item.uri))?.name.orEmpty() }
+                catch(_:Exception){ "" }
+            name.contains(searchTerm,ignoreCase=true)
+        }.take(150)
+        if(shown.isEmpty() && queue.isNotEmpty())layout.addView(text("No matching clips.",12f,Color.DKGRAY))
+        for(item in shown){
             val file=try { DocumentFile.fromSingleUri(this,Uri.parse(item.uri)) }catch(_:Exception){null}
             val name=file?.name ?: "Unavailable clip"
             val line=LinearLayout(this).apply {
@@ -1631,12 +1656,12 @@ class MainActivity : Activity() {
                     showOffsetError("Priority unavailable","The clip is no longer pending in this project.")
                 }
                 queueDialog?.dismiss()
-                showUploadQueue()
+                showUploadQueue(searchTerm)
             })
             if(item.priority)line.addView(button("Clear") {
                 ledger.clearPriority(item.uri,pid)
                 queueDialog?.dismiss()
-                showUploadQueue()
+                showUploadQueue(searchTerm)
             })
             if(item.manual)line.addView(button("Remove") {
                 // Removing a manually queued clip still requires operator intent.
@@ -1645,7 +1670,7 @@ class MainActivity : Activity() {
                     "Remove") {
                     ledger.removeFromQueue(item.uri,pid)
                     queueDialog?.dismiss()
-                    showUploadQueue()
+                    showUploadQueue(searchTerm)
                 }
             })
             layout.addView(line)
