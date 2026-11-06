@@ -16,6 +16,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import java.util.concurrent.TimeUnit
 import android.os.Build
@@ -56,15 +57,30 @@ class MainActivity : Activity() {
             if(secret) inputType=129
         }
     }
+    private fun rounded(fill:Int,stroke:Int=fill,radius:Int=12):GradientDrawable =
+        GradientDrawable().apply {
+            shape=GradientDrawable.RECTANGLE
+            setColor(fill)
+            cornerRadius=dp(radius).toFloat()
+            setStroke(dp(1),stroke)
+        }
     private fun button(label:String, action:()->Unit)=Button(this).apply {
-        text=label;isAllCaps=false;setTextColor(bg);setBackgroundColor(accent)
-        textSize=12f;minHeight=0;minimumHeight=0
-        setPadding(dp(8),dp(5),dp(8),dp(5))
+        text=label;isAllCaps=false;setTextColor(Color.WHITE)
+        textSize=12f;letterSpacing=0.025f
+        minHeight=0;minimumHeight=0;minWidth=0;minimumWidth=0
+        elevation=0f
+        background=rounded(Color.rgb(43,50,52),Color.rgb(70,80,81))
+        setPadding(dp(12),dp(7),dp(12),dp(7))
         setOnClickListener { action() }
     }
+    private fun primaryButton(label:String, action:()->Unit)=button(label,action).apply {
+        setTextColor(bg)
+        background=rounded(accent,accent)
+        setTypeface(typeface,android.graphics.Typeface.BOLD)
+    }
     private fun card(title:String):LinearLayout = LinearLayout(this).apply {
-        orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(14),dp(18),dp(14));setBackgroundColor(panel)
-        addView(text(title,18f))
+        orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(14),dp(18),dp(14));background=rounded(panel,Color.rgb(57,65,67))
+        addView(text(title,15f))
     }
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,7 +96,7 @@ class MainActivity : Activity() {
         config.addView(button("Test connection") { testConnection() })
         projectSummary=text("PROJECT  ·  ${prefs.getString("project_name","")?.takeIf { it.isNotBlank() } ?: project.text.toString().ifBlank { "NOT SET" }}  ${project.text.toString()}",14f,accent)
         root.addView(projectSummary)
-        root.addView(button("PROJECTS  ·  SELECT / CREATE") { showProjects() })
+        root.addView(primaryButton("Manage projects") { showProjects() })
         fun compactRow(left:Button,right:Button):LinearLayout = LinearLayout(this).apply {
             orientation=LinearLayout.HORIZONTAL
             val lp=LinearLayout.LayoutParams(0,dp(43),1f).apply { setMargins(dp(2),dp(2),dp(2),dp(2)) }
@@ -88,8 +104,8 @@ class MainActivity : Activity() {
             addView(right,LinearLayout.LayoutParams(lp))
         }
         root.addView(compactRow(
-            button("START UPLOAD") { saveAndStart() },
-            button("STOP UPLOAD") { stopService(Intent(this,UploadService::class.java));folderLabel.text="Uploader stopped" }
+            primaryButton("Start upload") { saveAndStart() },
+            button("Stop upload") { stopService(Intent(this,UploadService::class.java));folderLabel.text="Uploader stopped" }
         ))
         root.addView(compactRow(
             button("Server history") { showServerUploadHistory() },
@@ -202,16 +218,16 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     val names=Array(result.length()) { i ->
                         val item=result.getJSONObject(i)
-                        "${item.optString("name")}  ·  ${item.optString("id")}  (${item.optInt("clips")} clips)"
+                        "${if(item.optString("id")==project.text.toString().trim()) "● " else ""}${item.optString("name")}  ·  ${item.optString("id")}  ·  ${item.optInt("clips")} clips"
                     }
-                    AlertDialog.Builder(this).setTitle("Projects")
+                    AlertDialog.Builder(this).setTitle("Manage projects")
                         .setItems(names) { _,index ->
                             val item=result.getJSONObject(index)
                             val id=item.getString("id")
                             val name=item.optString("name","Project")
                             val count=item.optInt("clips")
                             AlertDialog.Builder(this).setTitle(name)
-                                .setMessage("Project ID: $id\\n$count uploaded clips")
+                                .setMessage("Project ID: $id\\nStatus: ${if(id==project.text.toString().trim()) "ACTIVE" else "Available"}\\nUploaded clips: $count")
                                 .setPositiveButton("Select") { _,_ -> activateProject(id,name) }
                                 .setNeutralButton("Delete") { _,_ -> confirmDeleteProject(id,name,count) }
                                 .setNegativeButton("Back") { _,_ -> showProjects() }
