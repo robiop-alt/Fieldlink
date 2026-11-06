@@ -176,7 +176,38 @@ class UploadService : Service() {
         if (offset != size) return false
         val complete = execute(Request.Builder().url("$base/api/upload/$uploadId/complete").header("X-Device-Token", token).post("".toRequestBody(null)).build()) ?: return false
         ledger.clearUploadId(doc,project)
-        return JSONObject(complete).optString("status") == "ready"
+        val result=JSONObject(complete)
+        if(result.optString("status")=="ready") {
+            val clipId=result.optString("clip_id")
+            if(clipId.isNotBlank()) sendDjiThumbnail(doc,clipId)
+            return true
+        }
+        return false
+    }
+
+    private fun sendDjiThumbnail(video: DocumentFile, clipId: String) {
+        try {
+            val tree=prefs.getString("tree_uri",null)?.let(Uri::parse) ?: return
+            val root=DocumentFile.fromTreeUri(this,tree) ?: return
+            val thumbs=root.findFile(".thumbnail") ?: return
+            val stem=(video.name ?: return).substringBeforeLast('.')
+            val jpeg=thumbs.listFiles().firstOrNull {
+                it.isFile && it.name?.substringBeforeLast('.')?.equals(stem,true)==true &&
+                    (it.name?.endsWith(".JPEG",true)==true || it.name?.endsWith(".JPG",true)==true)
+            } ?: return
+            val data=contentResolver.openInputStream(jpeg.uri)?.use { stream ->
+                val bytes=stream.readBytes()
+                if(bytes.size>2*1024*1024 || bytes.size<4) return
+                bytes
+            } ?: return
+            val body=data.toRequestBody("image/jpeg".toMediaType())
+            val multipart=MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("image",jpeg.name ?: "thumbnail.jpg",body).build()
+            execute(Request.Builder().url("$sessionBase/api/device/clips/$clipId/thumbnail")
+                .header("X-Device-Token",sessionToken).post(multipart).build())
+        } catch (_:Exception) {
+            // Thumbnail is optional; never mark an otherwise successful video upload failed.
+        }
     }
 
     private fun execute(request: Request): String? {
