@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -45,3 +47,46 @@ jobs:
           name: offset-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Prepare signing credentials
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.OFFSET_ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.OFFSET_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.OFFSET_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.OFFSET_ANDROID_KEY_PASSWORD }}
+        run: |
+          if [[ -n "$KEYSTORE_BASE64" && -n "$STORE_PASSWORD" && -n "$KEY_ALIAS" && -n "$KEY_PASSWORD" ]]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/offset-release.jks"
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Signed release skipped until all four signing secrets are configured."
+          fi
+
+      - name: Build signed release APK
+        if: steps.signing.outputs.enabled == 'true' && github.ref == 'refs/heads/main'
+        working-directory: android
+        env:
+          OFFSET_VERSION_CODE: ${{ github.run_number }}
+          OFFSET_VERSION_NAME: 0.1.${{ github.run_number }}
+          OFFSET_KEYSTORE_PATH: ${{ runner.temp }}/offset-release.jks
+          OFFSET_KEYSTORE_PASSWORD: ${{ secrets.OFFSET_ANDROID_KEYSTORE_PASSWORD }}
+          OFFSET_KEY_ALIAS: ${{ secrets.OFFSET_ANDROID_KEY_ALIAS }}
+          OFFSET_KEY_PASSWORD: ${{ secrets.OFFSET_ANDROID_KEY_PASSWORD }}
+        run: gradle assembleRelease
+
+      - name: Publish Android release
+        if: steps.signing.outputs.enabled == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "offset-android-${{ github.run_number }}" \
+            android/app/build/outputs/apk/release/app-release.apk#OFFSET.apk \
+            --title "OFFSET Android 0.1.${{ github.run_number }}" \
+            --notes "Signed OFFSET Android controller update (build ${{ github.run_number }})." \
+            --latest
+
+      - name: Remove temporary signing file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/offset-release.jks"
