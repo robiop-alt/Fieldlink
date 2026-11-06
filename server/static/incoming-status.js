@@ -20,7 +20,8 @@
       lastUploading=nowUploading;
       if(completed && typeof load==='function') {
         const video=document.querySelector('.offset-featured-video');
-        if(!video || video.paused) load().catch(()=>{});
+        // Don't interrupt a clip the director is reviewing, even if paused.
+        if(!video || (!video.currentTime && video.paused)) load().catch(()=>{});
       }
       const serialized=JSON.stringify(clips);
       if(serialized===previous)return;
@@ -30,9 +31,11 @@
       panel.innerHTML='<div class="offset-incoming-head"><strong>Incoming rushes</strong><span>'+clips.length+' on the way · Updates automatically</span></div>'+
         '<div class="offset-incoming-grid">'+clips.map(clip=>{
           const name=escape(clip.filename);
-          const uploading=clip.status==='uploading';
           const percent=Math.max(0,Math.min(100,Number(clip.percent)||0));
-          const status=uploading?'Uploading '+percent+'%':'Queued · waiting to upload';
+          const status=clip.status==='processing'?'Processing · nearly ready':
+            clip.status==='reconnecting'?'Waiting for controller to reconnect':
+            clip.status==='uploading'?'Uploading '+percent+'%':
+            'Queued · waiting to upload';
           const thumbUrl='/api/review/'+encodeURIComponent(location.pathname.split('/').pop())+
             '/incoming-thumbnail?session='+encodeURIComponent(token)+'&filename='+encodeURIComponent(clip.filename);
           return '<article class="offset-incoming-card" aria-label="'+name+' '+status+'">'+
