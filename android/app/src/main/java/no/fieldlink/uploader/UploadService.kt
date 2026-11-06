@@ -137,7 +137,7 @@ class UploadService : Service() {
     private fun djiSequenceKey(filename:String):String {
         val name=filename.uppercase()
         // Match reel and clip numbers, preserving order across different reels.
-        val match=Regex("""^D(\\d+)C(\\d+)""").find(name)
+        val match=Regex("""^D(\d+)C(\d+)""").find(name)
         if(match!=null) {
             val reel=match.groupValues[1].padStart(12,'0')
             val clip=match.groupValues[2].padStart(12,'0')
