@@ -64,7 +64,7 @@ def test_admin_pin_visibility_duration_and_expiration(project):
     url=f'/api/admin/projects/{pid}/review-settings'
     assert client.get(url).status_code==401
     setting=client.get(url,headers=headers).json()
-    assert setting['legacy_pin'] is True
+    assert setting['legacy_pin'] is False
     assert setting['pin'] is None
     enabled=client.patch(url,headers=headers,json={
         'allow_downloads':True,'public_review':False,'pin_days':14
@@ -94,3 +94,21 @@ def test_admin_pin_visibility_duration_and_expiration(project):
     assert renewed['pin'] and renewed['pin']!=pin
     assert client.get(url,headers=headers).json()['pin_days']==7
     assert client.post(f'/api/review/{slug}/unlock',json={'pin':renewed['pin']}).status_code==200
+
+def test_legacy_pin_can_be_renewed_for_admin_display(project):
+    client,pid,slug=project
+    headers={'X-Admin-Key':'test-admin-key'}
+    url=f'/api/admin/projects/{pid}/review-settings'
+    with backend.db() as c:
+        c.execute("UPDATE projects SET public_review=0,pin_secret='',pin_hash=?,pin_expires_at=0 WHERE id=?",
+                  (backend.pin_digest('987654'),pid))
+    current=client.get(url,headers=headers).json()
+    assert current['legacy_pin'] is True and current['pin'] is None
+    assert client.post(f'/api/review/{slug}/unlock',json={'pin':'987654'}).status_code==200
+    # Editing downloads must never implicitly replace the unrecoverable legacy PIN.
+    saved=client.patch(url,headers=headers,json={'allow_downloads':False}).json()
+    assert saved['pin'] is None
+    assert client.post(f'/api/review/{slug}/unlock',json={'pin':'987654'}).status_code==200
+    renewed=client.patch(url,headers=headers,json={'allow_downloads':False,'renew_pin':True}).json()
+    assert renewed['pin'] and renewed['pin']!='987654'
+    assert client.get(url,headers=headers).json()['pin']==renewed['pin']
