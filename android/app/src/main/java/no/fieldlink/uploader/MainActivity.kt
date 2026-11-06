@@ -293,7 +293,7 @@ class MainActivity : Activity() {
         // folder automatically when the user opens OFFSET after boot.
         val bootPending=prefs.getBoolean("boot_resume_pending",false)
         if(prefs.getBoolean("start_on_boot",true)) {
-            root.post { resumeSavedUploader() }
+            window.decorView.post { resumeSavedUploader() }
         } else if(bootPending) {
             prefs.edit().putBoolean("boot_resume_pending",false).apply()
         }
