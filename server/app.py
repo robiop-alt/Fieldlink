@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSO
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
-import os, sqlite3, secrets, hashlib, hmac, time, uuid, re, mimetypes, subprocess, threading
+import os, sqlite3, secrets, hashlib, hmac, time, uuid, re, mimetypes, subprocess, threading, base64
 from urllib.parse import urlsplit
 from db_persistence import DurableConnection, restore
 
@@ -54,6 +54,12 @@ def ensure_project_access_schema():
             c.execute('ALTER TABLE projects ADD COLUMN allow_downloads INTEGER NOT NULL DEFAULT 1')
         if 'access_nonce' not in columns:
             c.execute("ALTER TABLE projects ADD COLUMN access_nonce TEXT NOT NULL DEFAULT ''")
+        if 'pin_secret' not in columns:
+            c.execute("ALTER TABLE projects ADD COLUMN pin_secret TEXT NOT NULL DEFAULT ''")
+        if 'pin_days' not in columns:
+            c.execute('ALTER TABLE projects ADD COLUMN pin_days INTEGER NOT NULL DEFAULT 14')
+        if 'pin_expires_at' not in columns:
+            c.execute('ALTER TABLE projects ADD COLUMN pin_expires_at INTEGER NOT NULL DEFAULT 0')
 ensure_project_access_schema()
 
 # Editable public website copy; changes are stored in the durable project database.
@@ -203,6 +209,20 @@ def admin_me(request:Request):
 def require_device(key):
     if not DEVICE or not hmac.compare_digest(key or '', DEVICE): raise HTTPException(401,'Uploader authentication required')
 def pin_digest(pin): return hashlib.sha256((pin+SECRET).encode()).hexdigest()
+PIN_ALLOWED_DAYS={1,7,14,30,60,90,180,365}
+def protect_pin(pin):
+    salt=secrets.token_bytes(16)
+    mask=hmac.new(SECRET.encode(),salt,hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(salt+bytes(a^b for a,b in zip(pin.encode(),mask))).decode()
+def reveal_pin(value):
+    if not value: return None
+    try:
+        raw=base64.urlsafe_b64decode(value)
+        mask=hmac.new(SECRET.encode(),raw[:16],hashlib.sha256).digest()
+        pin=bytes(a^b for a,b in zip(raw[16:],mask)).decode()
+        return pin if re.fullmatch(r'[0-9]{6}',pin) else None
+    except Exception: return None
+
 def session_token(project_id, expiry):
     # Bind review sessions to the project's current access generation.
     # The empty nonce preserves old sessions on untouched projects.
