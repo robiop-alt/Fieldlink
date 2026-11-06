@@ -23,6 +23,15 @@ class BootReceiver : BroadcastReceiver() {
         if (intent?.action != Intent.ACTION_BOOT_COMPLETED) return
         val prefs=context.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
         if (!prefs.getBoolean("start_on_boot",false)) return
+        // The lightweight status pill is independent of the uploader, so it
+        // can appear immediately after boot, before DJI Pilot 2 starts.
+        if(prefs.getBoolean("overlay",true) && Build.VERSION.SDK_INT>=23 &&
+            android.provider.Settings.canDrawOverlays(context)) {
+            try { ControllerOverlayService.launch(context) } catch (_:Exception) {
+                // DJI firmware may restrict background startup.
+            }
+        }
+
 
         val server=prefs.getString("server","").orEmpty()
         val token=prefs.getString("token","").orEmpty()
@@ -36,15 +45,6 @@ class BootReceiver : BroadcastReceiver() {
         if (context.contentResolver.persistedUriPermissions.none {
                 it.uri==treeUri && it.isReadPermission
             }) return
-
-        // The lightweight status pill is independent of the uploader, so it
-        // can appear immediately after boot, before DJI Pilot 2 starts.
-        if(prefs.getBoolean("overlay",true) && Build.VERSION.SDK_INT>=23 &&
-            android.provider.Settings.canDrawOverlays(context)) {
-            try { ControllerOverlayService.launch(context) } catch (_:Exception) {
-                // DJI firmware may restrict background startup.
-            }
-        }
 
         if (Build.VERSION.SDK_INT < 35) {
             try {
