@@ -33,3 +33,43 @@
  .offset-player-seek{min-width:calc(100% - 8px);order:2}
  .offset-player-options{margin-top:8px}
 }
+
+/* The video, frame guides and controls must share the fullscreen surface.
+   Safari on iPhone may not support Element.requestFullscreen, so we keep
+   video inline and use a viewport overlay instead of native video fullscreen. */
+.offset-player:fullscreen,
+.offset-player:-webkit-full-screen,
+.offset-player.offset-player-theater{
+ position:fixed!important;inset:0!important;width:100%!important;height:100%!important;
+ max-width:none!important;max-height:none!important;margin:0!important;
+ padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right))
+ max(10px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))!important;
+ border:0!important;border-radius:0!important;background:#080b0c!important;
+ z-index:2147483000;display:flex;flex-direction:column;box-sizing:border-box;
+ overflow:auto;
+}
+.offset-player.offset-player-theater{height:100dvh!important}
+body.offset-theater-open{overflow:hidden!important}
+.offset-player:fullscreen .offset-player-head,
+.offset-player:-webkit-full-screen .offset-player-head,
+.offset-player.offset-player-theater .offset-player-head{flex:0 0 auto;margin-bottom:7px}
+.offset-player:fullscreen .offset-player-stage,
+.offset-player:-webkit-full-screen .offset-player-stage,
+.offset-player.offset-player-theater .offset-player-stage{
+ flex:1 1 auto;min-height:0;aspect-ratio:auto;border-radius:4px
+}
+.offset-player:fullscreen .offset-player-controls,
+.offset-player:-webkit-full-screen .offset-player-controls,
+.offset-player.offset-player-theater .offset-player-controls{flex:0 0 auto;padding-top:7px}
+.offset-player:fullscreen .offset-player-options,
+.offset-player:-webkit-full-screen .offset-player-options,
+.offset-player.offset-player-theater .offset-player-options{flex:0 0 auto;margin-top:5px}
+.offset-player:fullscreen .offset-player-frames,
+.offset-player:-webkit-full-screen .offset-player-frames,
+.offset-player.offset-player-theater .offset-player-frames{z-index:2}
+@media(orientation:landscape) and (max-height:550px){
+ .offset-player:fullscreen .offset-player-head,
+ .offset-player.offset-player-theater .offset-player-head{display:none}
+ .offset-player:fullscreen .offset-player-options,
+ .offset-player.offset-player-theater .offset-player-options{margin-top:2px}
+}
