@@ -455,50 +455,70 @@ class MainActivity : Activity() {
 
     private fun confirmDeleteProject(id:String,name:String,count:Int) {
         val confirmation=field("Type DELETE","")
-        val body=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),0)
-            addView(text("Permanently delete $name ($id)?\\n$count uploaded clips will also be deleted.",14f,Color.BLACK))
-            if(count>0) addView(confirmation)
+        val container=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(20),dp(8),dp(20),dp(6))
         }
-        AlertDialog.Builder(this).setTitle("Delete project")
-            .setView(body).setNegativeButton("Cancel",null)
-            .setPositiveButton("Delete") { _,_ ->
+        container.addView(text("●  PERMANENT ACTION",11f,Color.rgb(255,174,106)).apply {
+            letterSpacing=0.08f
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        container.addView(text("Delete project?",20f,Color.WHITE).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        container.addView(text("Permanently remove $name ($id) and $count uploaded clips. This cannot be undone.",
+            14f,Color.rgb(207,218,218)))
+        if(count>0) {
+            container.addView(text("Type DELETE to confirm",12f,muted))
+            container.addView(confirmation)
+        }
+        val dialog=AlertDialog.Builder(this).setView(container)
+            .setNegativeButton("Cancel",null)
+            .setPositiveButton("Delete",null)
+            .create()
+        dialog.setOnShowListener {
+            val delete=dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            delete.isAllCaps=false
+            delete.setTextColor(Color.WHITE)
+            delete.background=rounded(Color.rgb(159,57,57),Color.rgb(159,57,57),8)
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).isAllCaps=false
+            delete.setOnClickListener {
                 if(count>0 && confirmation.text.toString().trim()!="DELETE") {
-                    AlertDialog.Builder(this).setMessage("Deletion cancelled. Type DELETE to confirm.")
-                        .setPositiveButton("OK",null).show()
-                } else {
-                    val base=server.text.toString().trim().trimEnd('/')
-                    val device=token.text.toString().trim()
-                    Thread {
-                        val error=try {
-                            val req=Request.Builder()
-                                .url("$base/api/device/projects/${Uri.encode(id)}?confirm_clips=${count>0}")
-                                .header("X-Device-Token",device).delete().build()
-                            OkHttpClient().newCall(req).execute().use { response ->
-                                if(response.isSuccessful) null
-                                else "Server HTTP ${response.code}: ${response.body?.string()?.take(200)}"
-                            }
-                        }catch(e:Exception) { e.localizedMessage ?: "Network error" }
-                        runOnUiThread {
-                            if(error==null) {
-                                if(project.text.toString().trim()==id) {
-                                    stopService(Intent(this,UploadService::class.java))
-                                    project.setText("")
-                                    prefs.edit().remove("project").remove("project_name").apply()
-                                    projectSummary.text="PROJECT  ·  NOT SET"
-                                }
-                                AlertDialog.Builder(this).setTitle("Project deleted")
-                                    .setMessage("$name has been deleted.")
-                                    .setPositiveButton("OK") { _,_ -> showProjects() }.show()
-                            } else {
-                                showOffsetError("Couldn't delete project",
-                                    "The project was not deleted. Check your connection and try again.",
-                                    error)
-                            }
-                        }
-                    }.start()
+                    confirmation.error="Type DELETE to confirm"
+                    return@setOnClickListener
                 }
-            }.show()
+                dialog.dismiss()
+                        val base=server.text.toString().trim().trimEnd('/')
+                        val device=token.text.toString().trim()
+                        Thread {
+                            val error=try {
+                                val req=Request.Builder()
+                                    .url("$base/api/device/projects/${Uri.encode(id)}?confirm_clips=${count>0}")
+                                    .header("X-Device-Token",device).delete().build()
+                                OkHttpClient().newCall(req).execute().use { response ->
+                                    if(response.isSuccessful) null
+                                    else "Server HTTP ${response.code}: ${response.body?.string()?.take(200)}"
+                                }
+                            }catch(e:Exception) { e.localizedMessage ?: "Network error" }
+                            runOnUiThread {
+                                if(error==null) {
+                                    if(project.text.toString().trim()==id) {
+                                        stopService(Intent(this,UploadService::class.java))
+                                        project.setText("")
+                                        prefs.edit().remove("project").remove("project_name").apply()
+                                        projectSummary.text="PROJECT  ·  NOT SET"
+                                    }
+                                    showProjects()
+                                } else {
+                                    showOffsetError("Couldn't delete project",
+                                        "The project was not deleted. Check your connection and try again.",
+                                        error)
+                                }
+                            }
+                        }.start()
+            }
+        }
+        dialog.show()
     }
 
     private fun createProjectDialog() {
