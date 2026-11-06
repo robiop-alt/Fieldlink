@@ -336,7 +336,13 @@ class MainActivity : Activity() {
         ))
 
         val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
-            setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay",v).apply() } }
+            setOnCheckedChangeListener { _,enabled ->
+                prefs.edit().putBoolean("overlay",enabled).apply()
+                if(!enabled) stopService(Intent(this@MainActivity,ControllerOverlayService::class.java))
+                else if(Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this@MainActivity)) {
+                    try { ControllerOverlayService.launch(this@MainActivity) }catch(_:Exception){}
+                }
+            } }
         settings.addView(overlay)
         val pilotOnly=Switch(this).apply {
             text="Show pill only in DJI Pilot 2"
