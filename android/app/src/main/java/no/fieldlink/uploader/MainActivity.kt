@@ -171,16 +171,11 @@ class MainActivity : Activity() {
 
     private fun showUploadHistory() {
         val pid=project.text.toString().trim()
-        if(pid.isBlank()) {
-            AlertDialog.Builder(this).setMessage("Enter a project ID first.")
-                .setPositiveButton("OK",null).show()
-            return
-        }
         val ledger=ProjectLedger(this)
-        val events=ledger.history(pid)
-        val (done,pending,quarantined)=ledger.counts(pid)
-        val summary="$done completed · $pending pending · $quarantined quarantined"
-        val rows=events.joinToString("\\n\\n") { event ->
+        val events=if(pid.isBlank()) emptyList() else ledger.history(pid)
+        val (done,pending,quarantined)=if(pid.isBlank()) Triple(0,0,0) else ledger.counts(pid)
+        val summary="Project: ${if(pid.isBlank()) "(not selected)" else pid}\n$done completed · $pending pending · $quarantined quarantined"
+        val rows=events.joinToString("\n\n") { event ->
             val label=when(event.status) {
                 "done" -> "✓ Completed"
                 "started" -> "↑ Starting"
@@ -189,18 +184,25 @@ class MainActivity : Activity() {
             }
             val date=DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT)
                 .format(Date(event.created))
-            "$label · $date\\n${event.filename}\\n${event.detail}"
-        }.replace("\\n","\n")
-        val message=if(rows.isEmpty()) "$summary\\n\\nNo uploads recorded yet."
-            else "$summary\\n\\n$rows"
+            "$label · $date\n${event.filename}\n${event.detail}"
+        }
+        val explanation=when {
+            pid.isBlank() -> "Enter a project ID in Connection & project to view its local history."
+            events.isEmpty() && (done+pending+quarantined)>0 ->
+                "No upload events recorded for this project yet. The counters above show locally tracked files. Events are saved when the uploader processes files."
+            events.isEmpty() ->
+                "No local upload events for this project. History is stored on this controller, not downloaded from the server. Confirm the project ID and start an upload to generate events."
+            else -> ""
+        }
+        val message=listOf(summary,rows,explanation).filter { it.isNotBlank() }.joinToString("\n\n")
         val historyText=TextView(this).apply {
-            text=message.replace("\\n","\n")
+            text=message
             setTextColor(Color.WHITE)
             textSize=14f
             setPadding(dp(18),dp(12),dp(18),dp(12))
         }
         val scroll=ScrollView(this).apply { addView(historyText) }
-        AlertDialog.Builder(this).setTitle("Upload history")
+        AlertDialog.Builder(this).setTitle("Upload history · local")
             .setView(scroll).setPositiveButton("Close",null).show()
     }
 
