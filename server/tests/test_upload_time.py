@@ -3,10 +3,13 @@ import time
 import uuid
 from fastapi.testclient import TestClient
 import app as backend
+import db_persistence
 
 client=TestClient(backend.app)
 
-def test_review_returns_verified_upload_timestamp():
+def test_review_returns_verified_upload_timestamp(monkeypatch):
+    # Test rows are temporary; production persistence correctly requires R2.
+    monkeypatch.setattr(db_persistence, 'snapshot', lambda *_: None)
     project_id=uuid.uuid4().hex
     slug=uuid.uuid4().hex
     clip_id=uuid.uuid4().hex
