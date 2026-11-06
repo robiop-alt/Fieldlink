@@ -1,7 +1,7 @@
 import SwiftUI
 import WebKit
 
-struct SavedProject: Identifiable, Codable, Equatable {
+struct SavedProject: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var title: String
     var url: String
