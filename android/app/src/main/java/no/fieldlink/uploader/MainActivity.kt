@@ -81,6 +81,42 @@ class MainActivity : Activity() {
         background=rounded(accent,accent)
         setTypeface(typeface,android.graphics.Typeface.BOLD)
     }
+    private fun showOffsetError(title:String, message:String, detail:String?=null, actionLabel:String?=null, action:(()->Unit)?=null) {
+        val header=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(20),dp(8),dp(20),dp(4))
+        }
+        header.addView(text("●  ATTENTION",11f,Color.rgb(255,188,100)).apply {
+            letterSpacing=0.10f
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        header.addView(text(title,20f,Color.WHITE).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        header.addView(text(message,14f,Color.rgb(204,216,215)).apply {
+            setLineSpacing(dp(3).toFloat(),1f)
+        })
+        val builder=AlertDialog.Builder(this)
+            .setView(header)
+            .setNegativeButton("Close",null)
+        if(actionLabel!=null && action!=null) builder.setPositiveButton(actionLabel) { _,_ -> action() }
+        val technical=detail?.takeIf { it.isNotBlank() }
+        if(technical!=null) builder.setNeutralButton("Details") { _,_ ->
+            AlertDialog.Builder(this).setTitle("Technical details")
+                .setMessage(technical.take(1500))
+                .setPositiveButton("Close",null).show()
+        }
+        builder.show().also { dialog ->
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+                setTextColor(bg)
+                background=rounded(accent,accent,8)
+                isAllCaps=false
+                setPadding(dp(12),0,dp(12),0)
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.isAllCaps=false
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.isAllCaps=false
+        }
+    }
     private fun card(title:String):LinearLayout = LinearLayout(this).apply {
         orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(14),dp(18),dp(14));background=rounded(panel,Color.rgb(57,65,67))
         addView(text(title,15f))
@@ -374,9 +410,9 @@ class MainActivity : Activity() {
                 }
             }catch(e:Exception) {
                 runOnUiThread {
-                    AlertDialog.Builder(this).setTitle("Projects unavailable")
-                        .setMessage(e.localizedMessage ?: "Check your connection.")
-                        .setPositiveButton("OK",null).show()
+                    showOffsetError("Projects unavailable",
+                        "Could not contact the project server. Check Wi-Fi and try again.",
+                        e.localizedMessage, "Retry") { showProjects() }
                 }
             }
         }.start()
@@ -420,8 +456,9 @@ class MainActivity : Activity() {
                                     .setMessage("$name has been deleted.")
                                     .setPositiveButton("OK") { _,_ -> showProjects() }.show()
                             } else {
-                                AlertDialog.Builder(this).setTitle("Delete failed")
-                                    .setMessage(error).setPositiveButton("OK",null).show()
+                                showOffsetError("Couldn't delete project",
+                                    "The project was not deleted. Check your connection and try again.",
+                                    error)
                             }
                         }
                     }.start()
@@ -465,9 +502,9 @@ class MainActivity : Activity() {
                             }
                         }catch(e:Exception) {
                             runOnUiThread {
-                                AlertDialog.Builder(this).setTitle("Could not create project")
-                                    .setMessage(e.localizedMessage ?: "Check connection.")
-                                    .setPositiveButton("OK",null).show()
+                                showOffsetError("Project not created",
+                                    "Check your connection to the server, then try again.",
+                                    e.localizedMessage)
                             }
                         }
                     }.start()
@@ -510,9 +547,9 @@ class MainActivity : Activity() {
                 }
             }catch(e:Exception) {
                 runOnUiThread {
-                    AlertDialog.Builder(this).setTitle("Update check failed")
-                        .setMessage(e.localizedMessage ?: "Check your connection.")
-                        .setPositiveButton("OK",null).show()
+                    showOffsetError("Couldn't check updates",
+                        "Check your internet connection and try again later.",
+                        e.localizedMessage)
                 }
             }
         }.start()
@@ -704,9 +741,9 @@ class MainActivity : Activity() {
                 }
             } catch(e:Exception) {
                 runOnUiThread {
-                    AlertDialog.Builder(this).setTitle("Could not retrieve project link")
-                        .setMessage(e.message ?: "Unknown error")
-                        .setPositiveButton("OK",null).show()
+                    showOffsetError("Share link unavailable",
+                        "We couldn't generate a project link. Check your connection and try again.",
+                        e.message)
                 }
             }
         }.start()
@@ -968,8 +1005,9 @@ class MainActivity : Activity() {
                         if(error==null) {
                             ProjectLedger(this).logEvent(pid,name,"removed","Deleted cloud proxy from review")
                             showMediaLibraryPage()
-                        }else AlertDialog.Builder(this).setTitle("Deletion failed")
-                            .setMessage(error).setPositiveButton("OK",null).show()
+                        }else showOffsetError("Clip not removed",
+                            "The proxy is still in the review project. Check your connection and try again.",
+                            error)
                     }
                 }.start()
             }.show()
@@ -1173,9 +1211,9 @@ class MainActivity : Activity() {
                 refreshFolderLabel()
                 showMediaLibraryPage()
             }catch(e:Exception) {
-                AlertDialog.Builder(this).setTitle("Folder permission not saved")
-                    .setMessage(e.localizedMessage ?: "Please choose CACHE_VIDEO again.")
-                    .setPositiveButton("OK",null).show()
+                showOffsetError("CACHE_VIDEO access needed",
+                    "Android didn't remember access to the selected folder. Select CACHE_VIDEO once more.",
+                    e.localizedMessage, "Choose folder") { chooseFolder() }
             }
         }
     }
