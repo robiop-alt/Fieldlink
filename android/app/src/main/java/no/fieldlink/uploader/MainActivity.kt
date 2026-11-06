@@ -322,6 +322,7 @@ class MainActivity : Activity() {
             button("Local history") { showUploadHistory() }
         ))
         tools.addView(button("Camera metadata") { startMetadataCapture() })
+        tools.addView(button("Run diagnostics") { runDiagnostics() })
         val moreTools=button("More tools") {
             val parent=tools.parent
             if(parent is ViewGroup) parent.removeView(tools)
@@ -497,6 +498,55 @@ class MainActivity : Activity() {
             prefs.edit().putBoolean("boot_resume_pending",false).apply()
         }
     }
+    private fun runDiagnostics() {
+        val base=normalizedServerUrl(server.text.toString())
+        val device=token.text.toString().trim()
+        val pid=project.text.toString().trim()
+        val local=mutableListOf<String>()
+        val folderReady=cacheAccessOk()
+        local.add(if(folderReady) "✓ DJI cache access" else "✕ DJI cache permission missing")
+        val auto=prefs.getBoolean("start_on_boot",true)
+        local.add(if(auto) "✓ Auto-resume enabled" else "· Auto-resume disabled")
+        val overlayEnabled=prefs.getBoolean("overlay",true)
+        val overlayAllowed=Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this)
+        local.add(when {
+            !overlayEnabled -> "· Status pill disabled"
+            overlayAllowed -> "✓ Status pill permission"
+            else -> "✕ Status pill permission missing"
+        })
+        val space=filesDir.usableSpace
+        local.add(if(space >= 150L*1024*1024) "✓ Local working space"
+                  else "✕ Local working space low")
+        local.add(if(pid.isNotBlank()) "✓ Project selected" else "✕ No project selected")
+        val heading="OFFSET diagnostics"
+        if(!base.startsWith("https://") || device.isBlank()) {
+            showOffsetError(heading,local.joinToString("\n")+
+                "\n✕ Connection not configured","Server or device token missing")
+            return
+        }
+        // One read-only network call; never create/upload a test clip in diagnostics.
+        Thread {
+            val result=try {
+                val req=Request.Builder().url("$base/api/device/projects")
+                    .header("X-Device-Token",device).get().build()
+                OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS)
+                    .readTimeout(15,TimeUnit.SECONDS).build().newCall(req).execute().use { response ->
+                        when(response.code) {
+                            in 200..299 -> "✓ Server reachable · Device authorized"
+                            401,403 -> "✕ Device token rejected by server"
+                            else -> "✕ Server returned HTTP ${response.code}"
+                        }
+                    }
+            }catch(e:Exception) { "✕ Server unreachable · check network" }
+            runOnUiThread {
+                AlertDialog.Builder(this).setTitle(heading)
+                    .setMessage((local+result).joinToString("\n")+
+                        "\n\nChecks are read-only. No test footage was uploaded.")
+                    .setPositiveButton("Close",null).show()
+            }
+        }.start()
+    }
+
     private fun showConnectionSettings() {
         val body=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
