@@ -20,7 +20,7 @@ function renderProjects(){
  $('project-total').textContent='('+allProjects.length+')';
  const totals=allProjects.reduce((a,p)=>({clips:a.clips+Number(p.clips||0),bytes:a.bytes+Number(p.storage_bytes||0)}),{clips:0,bytes:0});
  $('projects-summary').textContent=allProjects.length+' projects · '+totals.clips+' clips · '+formatBytes(totals.bytes)+' stored';
- $('projects').innerHTML=rows.length?`<div class="project-table-wrap"><table class="project-table"><thead><tr><th>PROJECT</th><th>CREATED</th><th>CLIPS</th><th>STORAGE</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody>`+rows.map(p=>`<tr><td><strong>${esc(p.name)}</strong><div class="hint">ID: <code>${esc(p.id)}</code></div></td><td>${new Date(p.created*1000).toLocaleDateString('en-GB')}</td><td>${Number(p.clips||0)}</td><td>${formatBytes(Number(p.storage_bytes||0))}</td><td>${p.public_review?'Link access':'PIN protected'}</td><td><div class="project-actions"><a href="/r/${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">Review</a><button type="button" class="secondary" data-rename-id="${esc(p.id)}">Rename</button><button type="button" class="secondary delete-project" data-delete-id="${esc(p.id)}">Delete</button></div></td></tr>`).join('')+'</tbody></table></div>':(q?'No matching projects.':'No projects yet.');
+ $('projects').innerHTML=rows.length?`<div class="project-table-wrap"><table class="project-table"><thead><tr><th>PROJECT</th><th>CREATED</th><th>CLIPS</th><th>STORAGE</th><th>ACCESS</th><th>DOWNLOADS</th><th>ACTIONS</th></tr></thead><tbody>`+rows.map(p=>`<tr><td><strong>${esc(p.name)}</strong><div class="hint">ID: <code>${esc(p.id)}</code></div></td><td>${new Date(p.created*1000).toLocaleDateString('en-GB')}</td><td>${Number(p.clips||0)}</td><td>${formatBytes(Number(p.storage_bytes||0))}</td><td>${p.public_review?'Link access':'PIN protected'}</td><td>${p.allow_downloads?'Allowed':'Disabled'}</td><td><div class="project-actions"><button type="button" class="secondary" data-review-settings-id="${esc(p.id)}">Settings</button><a href="/r/${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">Review</a><button type="button" class="secondary" data-rename-id="${esc(p.id)}">Rename</button><button type="button" class="secondary delete-project" data-delete-id="${esc(p.id)}">Delete</button></div></td></tr>`).join('')+'</tbody></table></div>':(q?'No matching projects.':'No projects yet.');
 }
 async function renameProject(projectId){
  const project=allProjects.find(p=>p.id===projectId);if(!project)return;
@@ -31,6 +31,32 @@ async function renameProject(projectId){
  catch(e){alert(e.message||'Could not rename project')}
 }
 
+async function projectReviewSettings(projectId){
+ const p=allProjects.find(item=>item.id===projectId);if(!p)return;
+ const wrap=document.createElement('div');
+ wrap.style.cssText='padding:12px 18px;background:#14181c;border:1px solid #35413d;border-radius:10px;margin-top:10px';
+ const heading=document.createElement('strong');heading.textContent=p.name+' · Review settings';
+ const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px;margin:14px 0';
+ const check=document.createElement('input');check.type='checkbox';check.checked=!!p.allow_downloads;
+ check.style.cssText='width:18px;height:18px;margin:0;accent-color:#b7f34d';
+ label.append(check,document.createTextNode('Allow clip downloads'));
+ const help=document.createElement('p');help.className='hint';
+ help.textContent='Off hides download actions and blocks direct download and ZIP endpoints. Viewers can still watch clips.';
+ const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
+ const save=document.createElement('button');save.type='button';save.textContent='Save';
+ const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Close';cancel.style.marginLeft='8px';
+ cancel.onclick=()=>wrap.remove();
+ save.onclick=async()=>{save.disabled=true;status.textContent='Saving…';
+   try{await api('/api/admin/projects/'+encodeURIComponent(projectId)+'/review-settings',{
+     method:'PATCH',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({allow_downloads:check.checked})
+   });await load();status.textContent='Saved';wrap.remove()}
+   catch(err){status.textContent=err.message||'Save failed';save.disabled=false}
+ };
+ wrap.append(heading,label,help,save,cancel,status);
+ document.querySelector('#projects').prepend(wrap);
+ check.focus();
+}
 async function deleteProject(projectId){
  const project=allProjects.find(p=>p.id===projectId);if(!project)return;
  const count=Number(project.clips)||0;
@@ -45,7 +71,7 @@ async function deleteProject(projectId){
   await load();
  }catch(e){alert(typeof e.message==='string'&&e.message!=='[object Object]'?e.message:'Unable to delete project. Please try again.')}
 }
-$('projects').addEventListener('click',e=>{const button=e.target.closest('button[data-delete-id]');if(button)deleteProject(button.dataset.deleteId);const rename=e.target.closest('button[data-rename-id]');if(rename)renameProject(rename.dataset.renameId)});
+$('projects').addEventListener('click',e=>{const button=e.target.closest('button[data-delete-id]');if(button)deleteProject(button.dataset.deleteId);const rename=e.target.closest('button[data-rename-id]');if(rename)renameProject(rename.dataset.renameId);const settings=e.target.closest('button[data-review-settings-id]');if(settings)projectReviewSettings(settings.dataset.reviewSettingsId)});
 $('project-search').oninput=renderProjects;
 $('refresh').onclick=load;async function load(){try{allProjects=await api('/api/admin/projects');renderProjects()}catch(e){$('projects').textContent=e.message}}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}loadSiteCopy();fetch('/api/admin/me',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d)setSignedIn(d.username)}).catch(()=>{});

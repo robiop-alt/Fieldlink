@@ -3,7 +3,7 @@
   let destroy = null;
   const elapsed = n => Number.isFinite(n) ? `${Math.floor(n/60).toString().padStart(2,'0')}:${Math.floor(n%60).toString().padStart(2,'0')}` : '--:--';
 
-  window.initOffsetPlayer = function (clips, base, auth) {
+  window.initOffsetPlayer = function (clips, base, auth, allowDownloads=true) {
     if (destroy) destroy();
     const list = document.getElementById('clips');
     const host = document.getElementById('review-player-host');
@@ -82,7 +82,8 @@
     } catch (_) { /* Private browsing can disable storage. */ }
     frameLabel.append(frameSelect);
     const download=make('a','offset-player-download','Download clip ↓');
-    options.append(frameLabel,download);
+    options.append(frameLabel);
+    if(allowDownloads) options.append(download);
     player.append(head,stage,controls,options,error);
     host.append(player);
 
