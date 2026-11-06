@@ -160,10 +160,46 @@
       const total=duration();
       if(Number.isFinite(total))video.currentTime=total*(Number(seek.value)/1000);
     });
-    listen(fullscreen,'click',()=>{
-      if(document.fullscreenElement)document.exitFullscreen?.();
-      else if(stage.requestFullscreen)stage.requestFullscreen().catch(()=>video.webkitEnterFullscreen?.());
-      else video.webkitEnterFullscreen?.();
+    // Fullscreen the whole OFFSET player, never the <video> element itself:
+    // native iOS video fullscreen hides HTML frame guides and custom controls.
+    // On Safari versions without element fullscreen, use an inline viewport
+    // takeover so the guides stay composited above the playing video.
+    const isFullscreen=()=>document.fullscreenElement===player ||
+      player.classList.contains('offset-player-theater');
+    const updateFullscreenButton=()=>{
+      const active=isFullscreen();
+      fullscreen.textContent=active?'⤢':'⛶';
+      fullscreen.title=active?'Exit fullscreen':'Fullscreen with frame lines';
+      fullscreen.setAttribute('aria-label',fullscreen.title);
+      requestAnimationFrame(updateFrames);
+    };
+    const exitTheater=()=>{
+      player.classList.remove('offset-player-theater');
+      document.body.classList.remove('offset-theater-open');
+      updateFullscreenButton();
+    };
+    const enterTheater=()=>{
+      player.classList.add('offset-player-theater');
+      document.body.classList.add('offset-theater-open');
+      updateFullscreenButton();
+    };
+    listen(fullscreen,'click',async()=>{
+      if(player.classList.contains('offset-player-theater')){exitTheater();return}
+      if(document.fullscreenElement){await document.exitFullscreen?.();return}
+      // iOS can delegate video fullscreen to the native player, which
+      // cannot display HTML overlays. Always use inline theater on iOS.
+      const ios=/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+      if(!ios && player.requestFullscreen){
+        try{await player.requestFullscreen();updateFullscreenButton();return}
+        catch(_){/* Element fullscreen unavailable: use inline theater. */ }
+      }
+      enterTheater();
+    });
+    listen(document,'fullscreenchange',updateFullscreenButton);
+    listen(document,'webkitfullscreenchange',updateFullscreenButton);
+    listen(document,'keydown',event=>{
+      if(event.key==='Escape' && player.classList.contains('offset-player-theater'))exitTheater();
     });
     listen(frameSelect,'change',()=>{
       try {localStorage.setItem(frameStorageKey,frameSelect.value)} catch (_) {}
@@ -177,6 +213,18 @@
     listen(video,'error',()=>{loading=false;error.hidden=false;updateButtons()});
     listen(video,'playing',()=>{loading=false;error.hidden=true});
     listen(window,'resize',updateFrames);
+    listen(window,'orientationchange',()=>requestAnimationFrame(updateFrames));
+    // Fullscreen changes available space without a window resize on some
+    // browsers; observe the real video stage, not only the outer viewport.
+    const frameObserver=typeof ResizeObserver!=='undefined'
+      ? new ResizeObserver(()=>updateFrames()) : null;
+    frameObserver?.observe(stage);
+    listen(video,'webkitbeginfullscreen',()=>{
+      // A browser-native video surface cannot contain HTML frame guides.
+      // Return to inline playback whenever that native surface appears.
+      try {video.webkitExitFullscreen?.()} catch(_){}
+      if(!isFullscreen()) enterTheater();
+    });
 
     cards.forEach((card,i)=>{
       const old=card.querySelector('.offset-video-stage');
@@ -197,6 +245,9 @@
     });
     choose(0,false);
     destroy=()=>{
+      frameObserver?.disconnect();
+      if(player.classList.contains('offset-player-theater'))exitTheater();
+      if(document.fullscreenElement===player)document.exitFullscreen?.().catch(()=>{});
       video.pause();video.removeAttribute('src');video.load();
       listeners.forEach(([el,name,fn])=>el.removeEventListener(name,fn));
       host.replaceChildren();

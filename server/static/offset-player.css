@@ -6,7 +6,7 @@
 .offset-player-counter{font-size:12px;color:#a5b4b5;white-space:nowrap}
 .offset-player-stage{position:relative;width:100%;aspect-ratio:16/9;background:#050707;overflow:hidden;border-radius:9px;display:flex;justify-content:center;align-items:center}
 .offset-featured-video{display:block;width:100%;height:100%;object-fit:contain;background:#050707}
-.offset-player-frames{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:1.5px solid rgba(255,255,255,.92);box-shadow:0 0 0 100vmax rgba(0,0,0,.75),inset 0 0 0 1px rgba(0,0,0,.6);pointer-events:none}
+.offset-player-frames{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:1px solid #000;box-shadow:0 0 0 100vmax rgba(0,0,0,.75);pointer-events:none}
 .offset-player-frames[hidden]{display:none}
 .offset-player-controls{display:flex;align-items:center;gap:7px;padding-top:12px}
 .offset-player-controls button,.offset-player-btn{flex:0 0 auto;min-width:38px;min-height:38px;padding:6px 10px!important;border:1px solid #475458;border-radius:8px;background:#252e32;color:#e9f0ef;cursor:pointer}
@@ -32,4 +32,44 @@
  .offset-player-controls button{min-width:33px;min-height:35px}
  .offset-player-seek{min-width:calc(100% - 8px);order:2}
  .offset-player-options{margin-top:8px}
+}
+
+/* The video, frame guides and controls must share the fullscreen surface.
+   Safari on iPhone may not support Element.requestFullscreen, so we keep
+   video inline and use a viewport overlay instead of native video fullscreen. */
+.offset-player:fullscreen,
+.offset-player:-webkit-full-screen,
+.offset-player.offset-player-theater{
+ position:fixed!important;inset:0!important;width:100%!important;height:100%!important;
+ max-width:none!important;max-height:none!important;margin:0!important;
+ padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right))
+ max(10px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))!important;
+ border:0!important;border-radius:0!important;background:#080b0c!important;
+ z-index:2147483000;display:flex;flex-direction:column;box-sizing:border-box;
+ overflow:auto;
+}
+.offset-player.offset-player-theater{height:100dvh!important}
+body.offset-theater-open{overflow:hidden!important}
+.offset-player:fullscreen .offset-player-head,
+.offset-player:-webkit-full-screen .offset-player-head,
+.offset-player.offset-player-theater .offset-player-head{flex:0 0 auto;margin-bottom:7px}
+.offset-player:fullscreen .offset-player-stage,
+.offset-player:-webkit-full-screen .offset-player-stage,
+.offset-player.offset-player-theater .offset-player-stage{
+ flex:1 1 auto;min-height:0;aspect-ratio:auto;border-radius:4px
+}
+.offset-player:fullscreen .offset-player-controls,
+.offset-player:-webkit-full-screen .offset-player-controls,
+.offset-player.offset-player-theater .offset-player-controls{flex:0 0 auto;padding-top:7px}
+.offset-player:fullscreen .offset-player-options,
+.offset-player:-webkit-full-screen .offset-player-options,
+.offset-player.offset-player-theater .offset-player-options{flex:0 0 auto;margin-top:5px}
+.offset-player:fullscreen .offset-player-frames,
+.offset-player:-webkit-full-screen .offset-player-frames,
+.offset-player.offset-player-theater .offset-player-frames{z-index:2}
+@media(orientation:landscape) and (max-height:550px){
+ .offset-player:fullscreen .offset-player-head,
+ .offset-player.offset-player-theater .offset-player-head{display:none}
+ .offset-player:fullscreen .offset-player-options,
+ .offset-player.offset-player-theater .offset-player-options{margin-top:2px}
 }
