@@ -391,6 +391,40 @@ class MainActivity : Activity() {
             "On (default): pause uploading below 20% controller battery. Resume automatically at 25%. Queued clips and upload progress are preserved.",
             11f,muted
         ))
+        // Small, persisted controls: all evaluated live by the uploader.
+        fun operationToggle(title:String,key:String,default:Boolean,help:String) {
+            val control=Switch(this).apply {
+                text=title
+                textSize=13f
+                setTextColor(Color.WHITE)
+                isChecked=prefs.getBoolean(key,default)
+                setOnCheckedChangeListener { _,enabled ->
+                    prefs.edit().putBoolean(key,enabled).apply()
+                }
+            }
+            settings.addView(control)
+            settings.addView(text(help,11f,muted))
+        }
+        settings.addView(text("UPLOAD",12f,accent))
+        operationToggle("Wi-Fi only","wifi_only",false,
+            "Pause cloud uploads when Wi-Fi is unavailable. SD copying still runs offline.")
+        operationToggle("Upload only while charging","charging_only",false,
+            "Cloud transfers wait for external power. Current upload offset is preserved.")
+        operationToggle("Critical error notifications","error_alerts",true,
+            "Notify once for important recurring failures; normal clip uploads stay quiet.")
+
+        settings.addView(text("SD CARD",12f,accent))
+        operationToggle("Show SD backup status","sd_backup_status",true,
+            "Enable the compact SD status view with copied clip count and free space when available.")
+        settings.addView(button("SD backup status") { showSdBackupStatus() })
+
+        settings.addView(text("ADVANCED",12f,accent))
+        operationToggle("Startup health check","startup_health_check",true,
+            "Quietly verify cache, project and server at startup; only warn if action is needed.")
+        operationToggle("Adaptive upload speed","adaptive_speed",false,
+            "Gently slow upload chunks while DJI Pilot is visible or the controller is warm.")
+        operationToggle("Smart recovery","smart_recovery",true,
+            "Retry transient errors with backoff and resume from server-confirmed bytes. Never discard originals.")
         val startOnBoot=Switch(this).apply {
             text="Start on boot"
             setTextColor(Color.WHITE)
@@ -538,6 +572,33 @@ class MainActivity : Activity() {
             prefs.edit().putBoolean("boot_resume_pending",false).apply()
         }
     }
+    private fun showSdBackupStatus() {
+        val pid=prefs.getString("project","").orEmpty()
+        if(!prefs.getBoolean("sd_backup_status",true)) {
+            AlertDialog.Builder(this).setTitle("SD backup status")
+                .setMessage("Enable SD backup status in Upload preferences.")
+                .setPositiveButton("Close",null).show()
+            return
+        }
+        val events=if(pid.isBlank()) emptyList() else ProjectLedger(this).history(pid,500)
+        val copied=events.count { it.status=="sd_done" }
+        val failures=events.count { it.status=="sd_error" }
+        val enabled=prefs.getBoolean("sd_copy_enabled",false)
+        val access=sdCardAccessOk()
+        val free=ControllerPolicy.sdFreeBytes(this)
+        val space=if(free!=null) String.format(java.util.Locale.US,"%.1f GB",(free.toDouble()/1073741824.0))
+                  else "Unavailable (Android SD volume access)"
+        AlertDialog.Builder(this).setTitle("SD backup status")
+            .setMessage("Project: ${if(pid.isBlank()) "Not selected" else pid}\n" +
+                "SD copying: ${if(enabled) "Enabled" else "Off"}\n" +
+                "SD access: ${if(access) "Ready" else "Unavailable"}\n" +
+                "Verified copies in recent history: $copied\n" +
+                "Recent copy errors: $failures\n" +
+                "Free space: $space\n\n" +
+                "Counters show recent recorded events, not a full inventory of the SD card.")
+            .setPositiveButton("Close",null).show()
+    }
+
     private fun runDiagnostics() {
         val base=normalizedServerUrl(server.text.toString())
         val device=token.text.toString().trim()
