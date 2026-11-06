@@ -96,18 +96,27 @@ class UploadService : Service() {
                 }
                 val candidates = mutableListOf<DocumentFile>()
                 collect(root, candidates, 0)
+                // DJI filenames encode reel and clip sequence. Always process oldest first;
+                // a file still being written must not be overtaken by a later clip.
+                val ordered = candidates.sortedWith(
+                    compareBy<DocumentFile> { djiSequenceKey(it.name ?: "") }
+                        .thenBy { it.lastModified() }
+                        .thenBy { it.name ?: "" }
+                )
                 var uploaded = 0
-                for (f in candidates) {
+                for (f in ordered) {
                     if (!running) break
                     val key = f.uri.toString(); val stamp = f.lastModified(); val size = f.length()
                     val old = seen[key]
-                    if (old == null || old.size != size || old.modified != stamp) { seen[key] = FileState(size, stamp, 0); continue }
-                    val stable = old.stableScans + 1
-                    seen[key] = old.copy(stableScans = stable)
-                    if (stable < 3) continue // Require ~36 seconds with no changes before upload.
                     val binding=ledger.observe(f,sessionProject,true)
                     if (binding != "pending") continue
-                    if (size <= 0L) continue
+                    if (old == null || old.size != size || old.modified != stamp) {
+                        seen[key] = FileState(size, stamp, 0)
+                        break // Wait for the oldest pending clip before later clips.
+                    }
+                    val stable = old.stableScans + 1
+                    seen[key] = old.copy(stableScans = stable)
+                    if (stable < 3 || size <= 0L) break // Require ~36 seconds stable.
                     status("Sender ${f.name ?: "videoklipp"} · ${(size / 1048576)} MB")
                     ledger.logEvent(sessionProject,f.name ?: "videoklipp","started","${size / 1048576} MB")
                     if (upload(f, size)) {
@@ -116,12 +125,25 @@ class UploadService : Service() {
                         uploaded++
                     } else {
                         ledger.logEvent(sessionProject,f.name ?: "videoklipp","waiting","Venter på nytt forsøk / nett")
+                        break // Do not let newer clips overtake a failed upload.
                     }
                 }
                 status(if (uploaded > 0) "$uploaded klipp sendt · overvåker nye filer" else "Overvåker · ${ledger.countQuarantined()} gamle/ukjente filer blokkert")
             } catch (e: Exception) { status("Venter på nett / tilgang · ${e.message?.take(70) ?: "feil"}") }
             try { Thread.sleep(12000) } catch (_: InterruptedException) { }
         }
+    }
+
+    private fun djiSequenceKey(filename:String):String {
+        val name=filename.uppercase()
+        // Match reel and clip numbers, preserving order across different reels.
+        val match=Regex("""^D(\\d+)C(\\d+)""").find(name)
+        if(match!=null) {
+            val reel=match.groupValues[1].padStart(12,'0')
+            val clip=match.groupValues[2].padStart(12,'0')
+            return "0-$reel-$clip"
+        }
+        return "1-$name"
     }
 
     private fun collect(dir: DocumentFile, out: MutableList<DocumentFile>, depth: Int) {
