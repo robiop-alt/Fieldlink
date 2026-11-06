@@ -302,7 +302,7 @@ def device_app_update(x_device_token:str=Header(default='')):
             with urlopen(req,timeout=5) as response:
                 release=json.load(response)
             tag=release.get('tag_name','')
-            match=re.fullmatch(r'offset-android-(\\d+)',tag)
+            match=re.fullmatch(r'offset-android-(\d+)',tag)
             if match:
                 assets=release.get('assets',[])
                 asset=next((a for a in assets if a.get('name')=='OFFSET.apk'),None)
