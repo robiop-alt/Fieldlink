@@ -20,14 +20,14 @@ import androidx.documentfile.provider.DocumentFile
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action != Intent.ACTION_BOOT_COMPLETED) return
+        if (intent?.action != Intent.ACTION_BOOT_COMPLETED && intent?.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val prefs=context.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("start_on_boot",false)) return
+        if (!prefs.getBoolean("start_on_boot",true)) return
         // The lightweight status pill is independent of the uploader, so it
         // can appear immediately after boot, before DJI Pilot 2 starts.
         if(prefs.getBoolean("overlay",true) && Build.VERSION.SDK_INT>=23 &&
             android.provider.Settings.canDrawOverlays(context)) {
-            try { ControllerOverlayService.launch(context) } catch (_:Exception) {
+            try { ControllerOverlayService.launch(context,if(Build.VERSION.SDK_INT>=35) "Open OFFSET to resume uploads" else "Controller starting") } catch (_:Exception) {
                 // DJI firmware may restrict background startup.
             }
         }
@@ -52,7 +52,7 @@ class BootReceiver : BroadcastReceiver() {
                 prefs.edit().putBoolean("boot_resume_pending",false).apply()
                 return
             } catch (_:Exception) {
-                // Background-start restrictions vary across DJI firmware.
+                // DJI firmware may still restrict background service starts.
             }
         }
 
