@@ -153,6 +153,7 @@ class UploadService : Service() {
         }
     }
 
+    private val publishedPreviews=mutableSetOf<String>()
     private val manifestHttp=OkHttpClient.Builder()
         .connectTimeout(8,TimeUnit.SECONDS).readTimeout(8,TimeUnit.SECONDS)
         .writeTimeout(8,TimeUnit.SECONDS).build()
@@ -173,8 +174,42 @@ class UploadService : Service() {
                 .header("X-Device-Token",sessionToken)
                 .put(JSONObject().put("clips",clips).toString().toRequestBody("application/json".toMediaType()))
                 .build()
-            manifestHttp.newCall(request).execute().use { /* best-effort status; do not stop uploads */ }
+            val ok=manifestHttp.newCall(request).execute().use { it.isSuccessful }
+            if(ok) publishPreviewImages(files)
+
         }catch(_:Exception) { }
+    }
+
+    private fun publishPreviewImages(files:List<DocumentFile>) {
+        val tree=prefs.getString("tree_uri",null)?.let(Uri::parse) ?: return
+        val thumbDir=DocumentFile.fromTreeUri(this,tree)?.findFile(".thumbnail") ?: return
+        val thumbs=thumbDir.listFiles().filter { it.isFile &&
+            ((it.name ?: "").endsWith(".JPEG",true) || (it.name ?: "").endsWith(".JPG",true)) }
+            .associateBy { (it.name ?: "").substringBeforeLast(".").uppercase() }
+        var sent=0
+        for(file in files) {
+            if(sent>=3) break // avoid slowing the actual video upload
+            val name=file.name ?: continue
+            if(name in publishedPreviews) continue
+            val thumb=thumbs[name.substringBeforeLast(".").uppercase()] ?: continue
+            if(thumb.length() !in 4..(2*1024*1024L)) continue
+            try {
+                val bytes=contentResolver.openInputStream(thumb.uri)?.use { it.readBytes() } ?: continue
+                if(bytes.size<4 || bytes.size>2*1024*1024 ||
+                    bytes[0]!=0xff.toByte() || bytes[1]!=0xd8.toByte()) continue
+                val jpg=bytes.toRequestBody("image/jpeg".toMediaType())
+                val form=MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("filename",name)
+                    .addFormDataPart("image","preview.jpg",jpg).build()
+                val request=Request.Builder()
+                    .url("$sessionBase/api/device/projects/$sessionProject/incoming-thumbnail")
+                    .header("X-Device-Token",sessionToken).post(form).build()
+                manifestHttp.newCall(request).execute().use { response ->
+                    if(response.isSuccessful) publishedPreviews.add(name)
+                }
+                sent++
+            }catch(_:Exception) { }
+        }
     }
 
     private fun djiSequenceKey(filename:String):String {
