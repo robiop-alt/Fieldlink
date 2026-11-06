@@ -20,11 +20,11 @@ def test_manifest_project_deeplink_and_invalid_slug():
 
 def test_icons_are_real_png():
     for size in (180,192,512):
-        r=client.get('/pwa/icon-'+str(size)+'.png')
+        r=client.get('/pwa/logo-'+str(size)+'.png')
         assert r.status_code==200
         assert r.headers['content-type']=='image/png'
         assert r.content[:8]==bytes([137,80,78,71,13,10,26,10])
-    assert client.get('/pwa/icon-999.png').status_code==404
+    assert client.get('/pwa/logo-999.png').status_code==404
 
 def test_service_worker_and_install_html():
     r=client.get('/offset-sw.js')
@@ -33,5 +33,21 @@ def test_service_worker_and_install_html():
     assert b"request.mode" in r.content
     for page in ('/','/r/test-project'):
         html=client.get(page).text
-        assert 'apple-touch-icon' in html
+        assert '/pwa/logo-180.png' in html
         assert '/app.webmanifest' in html
+
+def test_approved_logo_green_pixels_in_png():
+    import struct, zlib
+    from pwa_assets import icon_png, LOGO_GREEN
+    data=icon_png(180)
+    pos=8
+    compressed=b''
+    while pos<len(data):
+        length=struct.unpack('>I',data[pos:pos+4])[0]
+        kind=data[pos+4:pos+8]
+        payload=data[pos+8:pos+8+length]
+        if kind==b'IDAT': compressed+=payload
+        pos+=12+length
+    pixels=zlib.decompress(compressed)
+    assert bytes(LOGO_GREEN) in pixels
+    assert pixels.count(bytes(LOGO_GREEN))>100

@@ -279,11 +279,12 @@ def offset_pwa_manifest(project:str=''):
         'start_url':start,'scope':'/','display':'standalone',
         'background_color':'#0b0d0f','theme_color':'#0b0d0f',
         'icons':[
-            {'src':'/pwa/icon-192.png','sizes':'192x192','type':'image/png','purpose':'any maskable'},
-            {'src':'/pwa/icon-512.png','sizes':'512x512','type':'image/png','purpose':'any maskable'}
+            {'src':'/pwa/logo-192.png','sizes':'192x192','type':'image/png','purpose':'any maskable'},
+            {'src':'/pwa/logo-512.png','sizes':'512x512','type':'image/png','purpose':'any maskable'}
         ]
     },media_type='application/manifest+json',headers={'Cache-Control':'public, max-age=3600'})
 
+@app.get('/pwa/logo-{size}.png')
 @app.get('/pwa/icon-{size}.png')
 def offset_pwa_icon(size:int):
     from pwa_assets import icon_png
