@@ -499,7 +499,10 @@ def make_room(incoming):
 def generate_thumbnail(clip_id):
     source=FILES/clip_id; output=THUMBS/(clip_id+'.jpg')
     try:
-        subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-ss','2','-i',str(source),'-frames:v','1','-vf','scale=640:-2',str(output)],timeout=40,check=True)
+        # First frame works for short proxy clips; seeking to 2s can exceed their duration.
+        subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',str(source),'-frames:v','1','-vf','scale=640:-2',str(output)],timeout=40,check=True)
+        if r2_enabled():
+            upload_file(output, f'thumbnails/{clip_id}.jpg')
     except Exception:
         output.unlink(missing_ok=True)
 
@@ -514,6 +517,11 @@ def get_clip_for_review(slug,clip_id,token):
 def thumbnail(slug:str,clip_id:str,session:str=''):
     get_clip_for_review(slug,clip_id,session)
     path=THUMBS/(clip_id+'.jpg')
+    if not path.exists() and r2_enabled():
+        try:
+            download_file(f'thumbnails/{clip_id}.jpg',path)
+        except Exception:
+            pass
     if not path.exists():
         ensure_clip_local(clip_id)
         generate_thumbnail(clip_id)
