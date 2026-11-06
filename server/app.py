@@ -275,6 +275,19 @@ def signed_share_token(project_id, expiry):
     signature=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
     return f"{payload}:{signature}"
 
+@app.get('/api/device/projects/{project_id}/uploads')
+def device_project_uploads(project_id:str, x_device_token:str=Header(default='')):
+    """Authenticated, project-scoped list of completed server uploads."""
+    require_device(x_device_token)
+    with db() as conn:
+        project=conn.execute('SELECT id FROM projects WHERE id=?',(project_id,)).fetchone()
+        if not project: raise HTTPException(404,'Project not found')
+        rows=conn.execute(
+            'SELECT id,filename,size,created FROM clips WHERE project_id=? AND status=? ORDER BY created DESC LIMIT 100',
+            (project_id,'ready')
+        ).fetchall()
+    return {'project_id':project_id,'clips':[dict(row) for row in rows]}
+
 @app.get('/api/device/projects/{project_id}/share')
 def device_project_share(project_id:str, request:Request, pinless:bool=False, x_device_token:str=Header(default='')):
     """Generate a standard PIN link or an expiring bearer link for the device operator."""
