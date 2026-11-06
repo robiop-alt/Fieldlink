@@ -16,6 +16,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import java.util.concurrent.TimeUnit
@@ -142,6 +143,10 @@ class MainActivity : Activity() {
                 stopService(Intent(this,UploadService::class.java))
                 folderLabel.text="Uploader stopped"
             }
+        ))
+        upload.addView(row(
+            primaryButton("Clip library") { showClipLibrary() },
+            button("Upload queue") { showUploadQueue() }
         ))
         upload.addView(row(
             button("Select cache folder") { chooseFolder() },
@@ -632,6 +637,100 @@ class MainActivity : Activity() {
     startActivityForResult(manager.createScreenCaptureIntent(), 4321)
 }
 
+
+    private fun showClipLibrary() {
+        val pid=project.text.toString().trim()
+        val uri=prefs.getString("tree_uri",null)?.let(Uri::parse)
+        val root=uri?.let { DocumentFile.fromTreeUri(this,it) }
+        if(pid.isBlank() || root==null) {
+            AlertDialog.Builder(this).setTitle("Clip library")
+                .setMessage("Select a project and CACHE_VIDEO folder first.")
+                .setPositiveButton("OK",null).show()
+            return
+        }
+        val ledger=ProjectLedger(this)
+        val queued=ledger.queueUris(pid)
+        val files=root.listFiles().filter { it.isFile && (it.name ?: "").endsWith(".mp4",true) }
+            .sortedWith(compareBy<DocumentFile> { it.name ?: "" }.thenBy { it.lastModified() })
+        val selected=mutableSetOf<String>()
+        val layout=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(8)) }
+        val mode=Switch(this).apply {
+            text="Auto upload (off = selected clips only)"
+            setTextColor(Color.BLACK)
+            isChecked=prefs.getString("upload_mode","auto")=="auto"
+            setOnCheckedChangeListener { _,checked ->
+                prefs.edit().putString("upload_mode",if(checked) "auto" else "manual").apply()
+            }
+        }
+        layout.addView(mode)
+        layout.addView(text("${files.size} clips · ${queued.size} queued · Select clips to upload",12f,Color.DKGRAY))
+        val thumbs=root.findFile(".thumbnail")
+        for(file in files.take(200)) {
+            val key=file.uri.toString()
+            val line=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL }
+            val check=android.widget.CheckBox(this).apply {
+                isChecked=key in queued
+                isEnabled=key !in queued
+                setOnCheckedChangeListener { _,v -> if(v) selected.add(key) else selected.remove(key) }
+            }
+            line.addView(check)
+            val stem=(file.name ?: "").substringBeforeLast(".")
+            val thumb=thumbs?.listFiles()?.firstOrNull {
+                it.isFile && it.name?.substringBeforeLast(".")==stem && (it.name?.endsWith(".JPEG",true)==true || it.name?.endsWith(".JPG",true)==true)
+            }
+            if(thumb!=null) {
+                try {
+                    contentResolver.openInputStream(thumb.uri)?.use { stream ->
+                        val bmp=BitmapFactory.decodeStream(stream)
+                        if(bmp!=null) line.addView(ImageView(this).apply {
+                            setImageBitmap(bmp);scaleType=ImageView.ScaleType.CENTER_CROP
+                        },LinearLayout.LayoutParams(dp(92),dp(56)).apply { rightMargin=dp(10) })
+                    }
+                }catch(_:Exception) {}
+            }
+            line.addView(text("${file.name}\n${file.length()/1048576} MB · ${if(key in queued) "QUEUED" else "LOCAL"}",13f,Color.BLACK))
+            layout.addView(line)
+        }
+        val dialog=AlertDialog.Builder(this).setTitle("Clip library · $pid")
+            .setView(ScrollView(this).apply { addView(layout) })
+            .setNegativeButton("Close",null)
+            .setNeutralButton("Queue selected") { _,_ ->
+                var added=0
+                for(file in files) if(file.uri.toString() in selected) {
+                    if(ledger.enqueueManual(file,pid)=="Queued") added++
+                }
+                AlertDialog.Builder(this).setTitle("Upload queue")
+                    .setMessage("$added clips added. Start upload to send them.")
+                    .setPositiveButton("View queue") { _,_ -> showUploadQueue() }
+                    .setNegativeButton("Close",null).show()
+            }.create()
+        dialog.show()
+    }
+
+    private fun showUploadQueue() {
+        val pid=project.text.toString().trim()
+        val ledger=ProjectLedger(this)
+        val queue=ledger.manualPending(pid)
+        val layout=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(8),dp(14),dp(8)) }
+        layout.addView(text("${queue.size} waiting · Priority clips upload first",13f,Color.DKGRAY))
+        for(uriString in queue.take(150)) {
+            val file=DocumentFile.fromSingleUri(this,Uri.parse(uriString))
+            val line=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL }
+            line.addView(text(file?.name ?: "Clip",13f,Color.BLACK),LinearLayout.LayoutParams(0,-2,1f))
+            line.addView(button("Next") {
+                ledger.prioritize(uriString,pid)
+                showUploadQueue()
+            })
+            line.addView(button("Remove") {
+                ledger.removeFromQueue(uriString,pid)
+                showUploadQueue()
+            })
+            layout.addView(line)
+        }
+        AlertDialog.Builder(this).setTitle("Upload queue · $pid")
+            .setView(ScrollView(this).apply { addView(layout) })
+            .setPositiveButton("Close",null).show()
+    }
     private fun chooseManualFiles() {
         val pid=project.text.toString().trim()
         if(pid.isBlank()) {
