@@ -338,6 +338,30 @@ class MainActivity : Activity() {
         val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay",v).apply() } }
         settings.addView(overlay)
+        val pilotOnly=Switch(this).apply {
+            text="Show pill only in DJI Pilot 2"
+            textSize=12f
+            setTextColor(Color.WHITE)
+            isChecked=prefs.getBoolean("overlay_pilot_only",false)
+            setOnCheckedChangeListener { _,enabled ->
+                prefs.edit().putBoolean("overlay_pilot_only",enabled).apply()
+                if(enabled && !PilotForeground.permissionGranted(this@MainActivity)) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Allow app visibility")
+                        .setMessage("To show the pill only while DJI Pilot 2 is open, Android needs one-time Usage access for OFFSET. No screen content is read. Until access is granted, the pill stays hidden in this mode.")
+                        .setNegativeButton("Later",null)
+                        .setPositiveButton("Open settings") { _,_ ->
+                            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                        }.show()
+                }
+                // The background service checks preferences every 1.5 seconds.
+                if(prefs.getBoolean("overlay",true) && (Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this@MainActivity))) {
+                    try { ControllerOverlayService.launch(this@MainActivity) }catch(_:Exception){}
+                }
+            }
+        }
+        settings.addView(pilotOnly)
+        settings.addView(text("When off, the pill can appear over other apps. When on, it appears only in DJI Pilot 2. Uploads continue in the background either way.",11f,muted))
         val metadataReminder=Switch(this).apply {
             text="Metadata access reminder"
             setTextColor(Color.WHITE)
