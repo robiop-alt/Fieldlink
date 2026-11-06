@@ -495,8 +495,8 @@ def device_create_project(body:ProjectIn, x_device_token:str=Header(default=''))
         slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
         pin=f'{secrets.randbelow(1_000_000):06d}'
         conn.execute(
-            'INSERT INTO projects(id,name,slug,pin_hash,created,public_review) VALUES(?,?,?,?,?,?)',
-            (pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review))
+            'INSERT INTO projects(id,name,slug,pin_hash,created,public_review,pin_secret,pin_days,pin_expires_at) VALUES(?,?,?,?,?,?,?,?,?)',
+            (pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review),protect_pin(pin) if not body.public_review else '',14,int(time.time())+14*86400 if not body.public_review else 0)
         )
     return {'id':pid,'name':body.name,'slug':slug,'url_path':f'/r/{slug}',
             'pin':None if body.public_review else pin,'public_review':body.public_review}
