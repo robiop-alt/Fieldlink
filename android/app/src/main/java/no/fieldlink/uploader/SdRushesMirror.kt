@@ -48,8 +48,7 @@ internal class SdRushesMirror(private val context: Context) {
 
     /** Returns true only after the destination SHA-256 equals the original. */
     fun copy(file: DocumentFile, project: String, projectName: String,
-             mayContinue: () -> Boolean): Boolean {
-        if (!prefs.getBoolean("sd_copy_enabled", false)) return false
+             mayContinue: () -> Boolean, onBytes: (Long) -> Unit = {}): Boolean {
         val uriText = prefs.getString("sd_tree_uri", null) ?: return false
         val treeUri = Uri.parse(uriText)
         val granted = context.contentResolver.persistedUriPermissions.any {
@@ -90,7 +89,7 @@ internal class SdRushesMirror(private val context: Context) {
         if (target != null) {
             val originalHash = shaOf(file) ?: return false
             if (target.isFile && target.length() == size && shaOf(target) == originalHash) {
-                prefs.edit().putString("sd_copied_${key}", "${size}|${modified}|${projectFolder}").commit()
+                prefs.edit().putString("sd_copied_${key}", "${size}|${modified}|${projectFolder}|${uriText}").commit()
                 return true
             }
             val suffix = key.take(10)
@@ -119,6 +118,7 @@ internal class SdRushesMirror(private val context: Context) {
                         if (count > 0) {
                             out.write(buffer, 0, count)
                             digest.update(buffer, 0, count)
+                            onBytes(count.toLong())
                         }
                     }
                     out.flush()

@@ -39,13 +39,11 @@ class UploadService : Service() {
     @Volatile private var loopStarted = false
     private data class FileState(val size: Long, val modified: Long, val stableScans: Int)
     private val seen = mutableMapOf<String, FileState>()
-    // SD copying uses its own stability tracker and continues without Wi-Fi.
-    private val sdSeen = mutableMapOf<String, FileState>()
-    private val sdHandled = mutableSetOf<String>()
-    private var sdActiveRoot = ""
-    private val sdMirror by lazy { SdRushesMirror(this) }
-
     private var batteryPaused=false
+    private var recoveryFailures=0
+    private var recoveryUntil=0L
+    private var lastAlertKey=""
+    private var lastAlertAt=0L
 
     override fun onCreate() {
         super.onCreate()
@@ -85,13 +83,48 @@ class UploadService : Service() {
         }
     }
 
+    private fun alertProblem(key:String, message:String) {
+        if(!prefs.getBoolean("error_alerts",true))return
+        val now=System.currentTimeMillis()
+        if(key==lastAlertKey && now-lastAlertAt<10*60*1000)return
+        lastAlertKey=key;lastAlertAt=now
+        val manager=getSystemService(NotificationManager::class.java)
+        val channel="offset_critical_errors_v1"
+        if(Build.VERSION.SDK_INT>=26) {
+            manager.createNotificationChannel(NotificationChannel(
+                channel,"OFFSET important errors",NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val note=if(Build.VERSION.SDK_INT>=26)Notification.Builder(this,channel)
+                 else Notification.Builder(this)
+        manager.notify(43,note.setContentTitle("OFFSET · action may be needed")
+            .setContentText(message.take(110))
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setAutoCancel(true).build())
+        ledger.logEvent(sessionProject,"OFFSET","error",message)
+    }
+
+    private fun recoveryFailure() {
+        if(!prefs.getBoolean("smart_recovery",true))return
+        recoveryFailures=(recoveryFailures+1).coerceAtMost(6)
+        // Gradual retries, not an endless tight retry loop.
+        recoveryUntil=System.currentTimeMillis()+
+            minOf(180000L,12000L*(1L shl (recoveryFailures-1)))
+        if(recoveryFailures>=3)alertProblem("network","Repeated upload errors · retrying safely")
+    }
+
+    private fun recoverySucceeded() {
+        recoveryFailures=0
+        recoveryUntil=0L
+    }
+
+
     private fun monitorLoop() {
-        val tree = prefs.getString("tree_uri", null)?.let(Uri::parse) ?: run { stopSelf(); return }
-        val root = DocumentFile.fromTreeUri(this, tree) ?: run { status("Får ikke tilgang til valgt mappe"); stopSelf(); return }
+        val tree = prefs.getString("tree_uri", null)?.let(Uri::parse) ?: run { alertProblem("cache","DJI cache folder not configured");stopSelf(); return }
+        val root = DocumentFile.fromTreeUri(this, tree) ?: run { status("Får ikke tilgang til valgt mappe");alertProblem("cache","DJI cache access unavailable"); stopSelf(); return }
         // Baseline is recorded before any new media is eligible. On restart, unknown
         // cache files are quarantined rather than assumed to belong to this project.
         try { val baseline=mutableListOf<DocumentFile>(); collect(root,baseline,0); ledger.registerExisting(baseline) }
-        catch (e: Exception) { status("Kan ikke sikre cache: ${e.message}"); stopSelf(); return }
+        catch (e: Exception) { status("Kan ikke sikre cache: ${e.message}");alertProblem("cache","DJI cache inspection failed"); stopSelf(); return }
         while (running) {
             try {
                 if (lowBatteryPause()) {
@@ -102,11 +135,17 @@ class UploadService : Service() {
                 if (prefs.getString("project", "") != sessionProject) {
                     status("Prosjekt endret: stopp og start OFFSET på nytt"); stopSelf(); return
                 }
-                // SD copies are local and do not depend on the server or Wi-Fi.
-                // A copy failure never blocks the normal cloud uploader.
-                if (prefs.getBoolean("sd_copy_enabled", false)) {
-                    try { backupPendingRushes(root) }
-                    catch (e: Exception) { status("SD copy waiting: ${e.message?.take(55)}") }
+                val policyPause=ControllerPolicy.pauseReason(this,prefs)
+                if(policyPause!=null) {
+                    status(policyPause)
+                    Thread.sleep(12000)
+                    continue
+                }
+                if(System.currentTimeMillis()<recoveryUntil &&
+                   prefs.getBoolean("smart_recovery",true)) {
+                    status("Waiting to retry · upload progress saved")
+                    Thread.sleep(12000)
+                    continue
                 }
                 if (!hasNetwork()) {
                     status("Waiting for network · uploads paused")
@@ -134,7 +173,7 @@ class UploadService : Service() {
                             ledger.markDone(file,sessionProject)
                             ledger.logEvent(sessionProject,file.name ?: "proxy.mp4","done","Manual upload completed")
                         }
-                    }catch(e:Exception) { status("Manual upload waiting: ${e.message?.take(55)}") }
+                    }catch(e:Exception) { status("Manual upload waiting: ${e.message?.take(55)}");recoveryFailure() }
                 }
                 if (prefs.getString("upload_mode","auto")=="manual") {
                     publishIncoming(ledger.manualPending(sessionProject).mapNotNull { uri ->
@@ -178,17 +217,19 @@ class UploadService : Service() {
                     status("Sender ${f.name ?: "videoklipp"} · ${(size / 1048576)} MB")
                     ledger.logEvent(sessionProject,f.name ?: "videoklipp","started","${size / 1048576} MB")
                     if (upload(f, size)) {
+                        recoverySucceeded()
                         ledger.markDone(f,sessionProject)
                         ledger.logEvent(sessionProject,f.name ?: "videoklipp","done","${size / 1048576} MB sendt")
                         uploaded++
                     } else {
                         ledger.logEvent(sessionProject,f.name ?: "videoklipp","waiting","Venter på nytt forsøk / nett")
+                        recoveryFailure()
                         break // Do not let newer clips overtake a failed upload.
                     }
                 }
                 if(lowBatteryPause()) lowBatteryStatus()
                 else status(if (uploaded > 0) "$uploaded klipp sendt · overvåker nye filer" else "Overvåker · ${ledger.countQuarantined()} gamle/ukjente filer blokkert")
-            } catch (e: Exception) { status("Venter på nett / tilgang · ${e.message?.take(70) ?: "feil"}") }
+            } catch (e: Exception) { status("Venter på nett / tilgang · ${e.message?.take(70) ?: "feil"}");recoveryFailure() }
             try { Thread.sleep(12000) } catch (_: InterruptedException) { }
         }
     }
@@ -298,69 +339,6 @@ class UploadService : Service() {
         return "1-$name"
     }
 
-    /**
-     * Back up current-project original rushes to the user-selected SD tree.
-     * Only stable clips already bound to this project are eligible. Historical
-     * quarantined media is never silently copied to a different production.
-     */
-    private fun backupPendingRushes(root: DocumentFile) {
-        val project = sessionProject
-        val cardRoot = prefs.getString("sd_tree_uri", "").orEmpty()
-        if (project.isBlank() || cardRoot.isBlank()) return
-        if (sdActiveRoot != cardRoot) {
-            sdHandled.clear()
-            sdSeen.clear()
-            sdActiveRoot = cardRoot
-        }
-        val items=mutableListOf<DocumentFile>()
-        collect(root, items, 0)
-        // Explicitly selected older clips are also eligible for SD copying.
-        val manualUris=ledger.manualPending(project)
-        val manuallySelected=manualUris.mapNotNull { value ->
-            try { DocumentFile.fromSingleUri(this, Uri.parse(value)) } catch (_:Exception) { null }
-        }.filter { it.isFile && it.length()>0L }
-        val visited=HashSet<String>()
-        val ordered=(items+manuallySelected)
-            .filter { visited.add(it.uri.toString()) }
-            .sortedWith(compareBy<DocumentFile> { djiSequenceKey(it.name ?: "") }
-                .thenBy { it.lastModified() })
-        for (file in ordered) {
-            if (!running || !prefs.getBoolean("sd_copy_enabled", false) ||
-                prefs.getString("project", "") != project || lowBatteryPause()) return
-            val key=file.uri.toString()
-            if (key in sdHandled) continue
-            val size=file.length()
-            val modified=file.lastModified()
-            if (size<=0L) continue
-            val previous=sdSeen[key]
-            if (previous==null || previous.size!=size || previous.modified!=modified) {
-                sdSeen[key]=FileState(size,modified,0)
-                continue
-            }
-            val stable=previous.stableScans+1
-            sdSeen[key]=previous.copy(stableScans=stable)
-            if (stable<3) continue
-            val binding=ledger.observe(file,project, key !in manualUris)
-            // observe() will refuse all quarantined or cross-project files.
-            if (binding!="pending" && binding!="done") continue
-            val name=prefs.getString("project_name", "Project").orEmpty()
-            try {
-                if (sdMirror.copy(file,project,name) {
-                    running && prefs.getBoolean("sd_copy_enabled",false) &&
-                        prefs.getString("project","")==project && !lowBatteryPause()
-                }) {
-                    sdHandled.add(key)
-                    ledger.logEvent(project,file.name ?: "clip.mp4","sd_done","Original copied to SD card")
-                    // One new file per pass to avoid delaying the cloud queue.
-                    break
-                }
-            } catch (e: Exception) {
-                status("SD copy waiting: ${e.message?.take(55)}")
-                break
-            }
-        }
-    }
-
     private fun collect(dir: DocumentFile, out: MutableList<DocumentFile>, depth: Int) {
         if (depth > 5) return
         for (f in dir.listFiles()) {
@@ -372,6 +350,7 @@ class UploadService : Service() {
     @androidx.media3.common.util.UnstableApi
     private fun upload(doc: DocumentFile, size: Long): Boolean {
         if(lowBatteryPause()) { lowBatteryStatus(); return false }
+        ControllerPolicy.pauseReason(this,prefs)?.let { status(it);return false }
         val base = sessionBase
         val project = sessionProject
         val token = sessionToken
@@ -448,6 +427,7 @@ class UploadService : Service() {
             while(offset<uploadSize && running) {
                 // Finish the current HTTP chunk, then pause before the next one.
                 if(lowBatteryPause()) { lowBatteryStatus(); return false }
+                ControllerPolicy.pauseReason(this,prefs)?.let { status(it);return false }
                 val len=minOf(chunkSize.toLong(),uploadSize-offset).toInt()
                 val temp=File(cacheDir,"fl_${uploadId}_$offset.tmp")
                 try {
@@ -473,12 +453,15 @@ class UploadService : Service() {
                         return false
                     }
                     offset=received
+                    val delay=ControllerPolicy.throttleMillis(this,prefs)
+                    if(delay>0 && running)Thread.sleep(delay)
                     status("Sending $uploadName · ${(offset*100/uploadSize)} %")
                 } finally { temp.delete() }
             }
         } ?: return false
         if(offset!=uploadSize) return false
         if(lowBatteryPause()) { lowBatteryStatus(); return false }
+        ControllerPolicy.pauseReason(this,prefs)?.let { status(it);return false }
         val localDigest=sha256(sourceUri) ?: return false
         val complete=execute(Request.Builder().url("$base/api/upload/$uploadId/complete")
             .header("X-Device-Token",token).header("X-Content-SHA256",localDigest)

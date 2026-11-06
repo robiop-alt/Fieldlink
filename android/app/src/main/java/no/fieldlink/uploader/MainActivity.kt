@@ -39,7 +39,6 @@ class MainActivity : Activity() {
     private val pickFolder=4101
     private val pickManual=4102
     private val pickSdCard=4103
-    private var sdCopySwitch:Switch?=null
     private val prefs by lazy { getSharedPreferences("fieldlink",MODE_PRIVATE) }
     // Only PIN-protected review links are cached: never store a 24h PIN-free bearer URL.
     private var cachedQrProject=""
@@ -234,6 +233,12 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onStop() {
+        // A manual end-of-day SD copy must never continue when DJI Pilot comes back.
+        if(sdBackupRunning)sdBackupCancel=true
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         // Seed defaults before creating the fields or starting the uploader.
@@ -318,6 +323,7 @@ class MainActivity : Activity() {
         ))
         root.addView(upload,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
         refreshFolderLabel()
+        upload.addView(button("Copy rushes to SD card") { startManualSdBackup() })
         val tools=card("MORE TOOLS")
         tools.addView(row(
             button("Server history") { showServerUploadHistory() },
@@ -353,29 +359,7 @@ class MainActivity : Activity() {
             "Off (default): send original DJI cache. On: create a smaller 480p copy for new clips, keeping the original untouched. Existing uploads keep their original quality.",
             11f,muted
         ))
-        val sdCopy=Switch(this).apply {
-            text="Copy rushes to SD card"
-            textSize=13f
-            setTextColor(Color.WHITE)
-            isChecked=prefs.getBoolean("sd_copy_enabled",false)
-            setOnCheckedChangeListener { _,enabled ->
-                if(!enabled) {
-                    prefs.edit().putBoolean("sd_copy_enabled",false).apply()
-                } else if(sdCardAccessOk()) {
-                    prefs.edit().putBoolean("sd_copy_enabled",true).apply()
-                } else {
-                    // One-time Android permission choice, never assume SD root access.
-                    isChecked=false
-                    chooseSdCard()
-                }
-            }
-        }
-        sdCopySwitch=sdCopy
-        settings.addView(sdCopy)
-        settings.addView(text(
-            "Off by default. Select the offset folder on your SD card (create it in the picker if needed). Original clips are verified and copied to offset/year_project name without deleting DJI cache files. Works without Wi-Fi.",
-            11f,muted
-        ))
+        settings.addView(text("SD copy is manual only. Press the backup button when flying is finished; OFFSET never copies to SD automatically.",11f,muted))
         settings.addView(button("Choose SD card / change folder") { chooseSdCard() })
         val lowBattery=Switch(this).apply {
             text="Low Battery Protection · 20%"
@@ -391,6 +375,40 @@ class MainActivity : Activity() {
             "On (default): pause uploading below 20% controller battery. Resume automatically at 25%. Queued clips and upload progress are preserved.",
             11f,muted
         ))
+        // Small, persisted controls: all evaluated live by the uploader.
+        fun operationToggle(title:String,key:String,default:Boolean,help:String) {
+            val control=Switch(this).apply {
+                text=title
+                textSize=13f
+                setTextColor(Color.WHITE)
+                isChecked=prefs.getBoolean(key,default)
+                setOnCheckedChangeListener { _,enabled ->
+                    prefs.edit().putBoolean(key,enabled).apply()
+                }
+            }
+            settings.addView(control)
+            settings.addView(text(help,11f,muted))
+        }
+        settings.addView(text("UPLOAD",12f,accent))
+        operationToggle("Wi-Fi only","wifi_only",false,
+            "Pause cloud uploads when Wi-Fi is unavailable. SD copying still runs offline.")
+        operationToggle("Upload only while charging","charging_only",false,
+            "Cloud transfers wait for external power. Current upload offset is preserved.")
+        operationToggle("Critical error notifications","error_alerts",true,
+            "Notify once for important recurring failures; normal clip uploads stay quiet.")
+
+        settings.addView(text("SD CARD",12f,accent))
+        operationToggle("Show SD backup status","sd_backup_status",true,
+            "Show recent manual SD copies and free space when available.")
+        settings.addView(button("SD backup status") { showSdBackupStatus() })
+
+        settings.addView(text("ADVANCED",12f,accent))
+        operationToggle("Startup health check","startup_health_check",true,
+            "Quietly verify cache, project and server at startup; only warn if action is needed.")
+        operationToggle("Adaptive upload speed","adaptive_speed",false,
+            "Gently slow upload chunks while DJI Pilot is visible or the controller is warm.")
+        operationToggle("Smart recovery","smart_recovery",true,
+            "Retry transient errors with backoff and resume from server-confirmed bytes. Never discard originals.")
         val startOnBoot=Switch(this).apply {
             text="Start on boot"
             setTextColor(Color.WHITE)
@@ -537,7 +555,179 @@ class MainActivity : Activity() {
         } else if(bootPending) {
             prefs.edit().putBoolean("boot_resume_pending",false).apply()
         }
+        if(prefs.getBoolean("startup_health_check",true))window.decorView.post {
+            checkStartupHealth()
+        }
     }
+    private fun checkStartupHealth() {
+        val pid=prefs.getString("project","").orEmpty()
+        val base=prefs.getString("server","").orEmpty().trimEnd('/')
+        val key=prefs.getString("token","").orEmpty()
+        // No repeated modal prompts during controller startup or when unconfigured.
+        if(pid.isBlank())return
+        val problems=mutableListOf<String>()
+        if(!cacheAccessOk())problems.add("DJI cache access missing")
+        if(!base.startsWith("https://")||key.isBlank())problems.add("Secure server connection not configured")
+        if(problems.isNotEmpty()) {
+            val now=System.currentTimeMillis()
+            val last=prefs.getLong("startup_health_warning_at",0L)
+            if(now-last>3600_000L) {
+                prefs.edit().putLong("startup_health_warning_at",now).apply()
+                showOffsetError("OFFSET startup check",problems.joinToString("\n"),
+                    "Uploads cannot start until these settings are corrected.")
+            }
+            return
+        }
+        // Network availability can change during flight; an offline startup
+        // is only a status hint, never an alert requiring operator action.
+        if(!ControllerPolicy.wifiAvailable(this) && prefs.getBoolean("wifi_only",false)) {
+            folderLabel.text="Wi-Fi only · uploads will resume on Wi-Fi"
+        }
+    }
+
+    @Volatile private var sdBackupRunning=false
+    @Volatile private var sdBackupCancel=false
+
+    private fun startManualSdBackup() {
+        if(sdBackupRunning) {
+            AlertDialog.Builder(this).setMessage("An SD backup is already running.")
+                .setPositiveButton("OK",null).show()
+            return
+        }
+        val pid=prefs.getString("project","").orEmpty()
+        if(pid.isBlank() || !cacheAccessOk()) {
+            AlertDialog.Builder(this).setMessage("Select a project and grant DJI cache access first.")
+                .setPositiveButton("OK",null).show()
+            return
+        }
+        if(!sdCardAccessOk()) {
+            AlertDialog.Builder(this).setTitle("SD card needed")
+                .setMessage("Choose the writable offset folder on your SD card, then press Copy rushes to SD card again.")
+                .setPositiveButton("Choose SD card") { _,_ -> chooseSdCard() }
+                .setNegativeButton("Cancel",null).show()
+            return
+        }
+        AlertDialog.Builder(this).setTitle("End-of-day SD backup")
+            .setMessage("Copy verified, project-owned original rushes to SD now? No automatic SD copying takes place during flight. Leave OFFSET open while copying. DJI originals are never deleted.")
+            .setNegativeButton("Cancel",null)
+            .setPositiveButton("Start copying") { _,_ -> runManualSdBackup(pid) }
+            .show()
+    }
+
+    private fun runManualSdBackup(pid:String) {
+        sdBackupRunning=true
+        sdBackupCancel=false
+        val progress=android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { max=100 }
+        val detail=text("Preparing project rushes…",12f,Color.WHITE)
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(18),dp(14),dp(18),dp(12))
+            addView(detail)
+            addView(progress)
+        }
+        val dialog=AlertDialog.Builder(this).setTitle("Copy rushes to SD card")
+            .setView(body)
+            .setNegativeButton("Stop copy") { _,_ -> sdBackupCancel=true }
+            .create()
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.show()
+        val projectName=prefs.getString("project_name","Project").orEmpty()
+        Thread {
+            var copied=0
+            var skipped=0
+            var failures=0
+            var total=0
+            var doneBytes=0L
+            val ledger=ProjectLedger(this)
+            try {
+                val files=ledger.sdEligible(pid)
+                total=files.size
+                val bytesTotal=files.sumOf { it.size.coerceAtLeast(0) }.coerceAtLeast(1)
+                val mirror=SdRushesMirror(this)
+                for((index,entry) in files.withIndex()) {
+                    if(sdBackupCancel || prefs.getString("project","")!=pid)break
+                    val document=try { DocumentFile.fromSingleUri(this,Uri.parse(entry.uri)) }catch(_:Exception){null}
+                    if(document==null || !document.isFile || document.length()!=entry.size ||
+                       document.lastModified()!=entry.modified) {
+                        skipped++
+                        ledger.logEvent(pid,"unknown","sd_error","Source file missing or changed; not copied")
+                        continue
+                    }
+                    val filename=document.name ?: "clip.mp4"
+                    runOnUiThread {
+                        detail.text="Clip ${index+1}/$total · $filename"
+                        progress.progress=((doneBytes*100)/bytesTotal).toInt().coerceIn(0,100)
+                    }
+                    try {
+                        var transferred=0L
+                        var lastTick=0L
+                        val result=mirror.copy(document,pid,projectName,{
+                            !sdBackupCancel && prefs.getString("project","")==pid
+                        },{ delta ->
+                            transferred+=delta
+                            val now=System.currentTimeMillis()
+                            if(now-lastTick>=500L) {
+                                lastTick=now
+                                val pct=(((doneBytes+transferred).coerceAtMost(bytesTotal))*100/bytesTotal)
+                                    .toInt().coerceIn(0,100)
+                                runOnUiThread { progress.progress=pct }
+                            }
+                        })
+                        if(result) {
+                            copied++
+                            ledger.logEvent(pid,filename,"sd_done","Verified manual SD backup")
+                        }else skipped++
+                    }catch(e:Exception) {
+                        if(sdBackupCancel)break
+                        failures++
+                        ledger.logEvent(pid,filename,"sd_error",e.message ?: "SD copy failed")
+                    }
+                    doneBytes+=entry.size.coerceAtLeast(0)
+                    val pct=((doneBytes*100)/bytesTotal).toInt().coerceIn(0,100)
+                    runOnUiThread { progress.progress=pct }
+                }
+            }catch(e:Exception) {
+                failures++
+                ledger.logEvent(pid,"SD backup","sd_error",e.message ?: "Could not start SD copy")
+            }finally {
+                sdBackupRunning=false
+                val stopped=sdBackupCancel
+                runOnUiThread {
+                    dialog.dismiss()
+                    AlertDialog.Builder(this).setTitle(if(stopped) "SD backup stopped" else "SD backup finished")
+                        .setMessage("Verified: $copied / $total\nSkipped: $skipped\nErrors: $failures\n\nDJI originals remain untouched. You can run this again to retry.")
+                        .setPositiveButton("Close",null).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun showSdBackupStatus() {
+        val pid=prefs.getString("project","").orEmpty()
+        if(!prefs.getBoolean("sd_backup_status",true)) {
+            AlertDialog.Builder(this).setTitle("SD backup status")
+                .setMessage("Enable SD backup status in Upload preferences.")
+                .setPositiveButton("Close",null).show()
+            return
+        }
+        val events=if(pid.isBlank()) emptyList() else ProjectLedger(this).history(pid,500)
+        val copied=events.count { it.status=="sd_done" }
+        val failures=events.count { it.status=="sd_error" }
+        val access=sdCardAccessOk()
+        val free=ControllerPolicy.sdFreeBytes(this)
+        val space=if(free!=null) String.format(java.util.Locale.US,"%.1f GB",(free.toDouble()/1073741824.0))
+                  else "Unavailable (Android SD volume access)"
+        AlertDialog.Builder(this).setTitle("SD backup status")
+            .setMessage("Project: ${if(pid.isBlank()) "Not selected" else pid}\n" +
+                "SD copying: Manual only\n" +
+                "SD access: ${if(access) "Ready" else "Unavailable"}\n" +
+                "Verified copies in recent history: $copied\n" +
+                "Recent copy errors: $failures\n" +
+                "Free space: $space\n\n" +
+                "Counters show recent recorded events, not a full inventory of the SD card.")
+            .setPositiveButton("Close",null).show()
+    }
+
     private fun runDiagnostics() {
         val base=normalizedServerUrl(server.text.toString())
         val device=token.text.toString().trim()
@@ -545,7 +735,7 @@ class MainActivity : Activity() {
         val local=mutableListOf<String>()
         val folderReady=cacheAccessOk()
         local.add(if(folderReady) "✓ DJI cache access" else "✕ DJI cache permission missing")
-        if(prefs.getBoolean("sd_copy_enabled",false)) {
+        if(prefs.getString("sd_tree_uri",null)!=null) {
             local.add(if(sdCardAccessOk()) "✓ SD backup access ready"
                       else "✕ SD backup selected but card unavailable or read-only")
         } else local.add("· SD backup disabled")
@@ -1556,14 +1746,11 @@ class MainActivity : Activity() {
                     val root=DocumentFile.fromTreeUri(this,uri)
                     if(root?.isDirectory!=true || !root.canWrite()) throw SecurityException("SD root is not writable")
                     prefs.edit().putString("sd_tree_uri",uri.toString())
-                        .putBoolean("sd_copy_enabled",true).commit()
-                    sdCopySwitch?.isChecked=true
-                    AlertDialog.Builder(this).setTitle("SD backup enabled")
-                        .setMessage("OFFSET will copy original rushes to offset/year_project name on the selected SD card. The source files will remain untouched.")
+                        .commit()
+                    AlertDialog.Builder(this).setTitle("SD card ready")
+                        .setMessage("Choose Copy rushes to SD card after filming. OFFSET will never copy in the background. Originals remain untouched.")
                         .setPositiveButton("OK",null).show()
                 } catch(e:Exception) {
-                    sdCopySwitch?.isChecked=false
-                    prefs.edit().putBoolean("sd_copy_enabled",false).apply()
                     showOffsetError("SD card access needed",
                         "Choose the offset folder on the SD card (create it in the file picker if needed) and grant both read and write access.",
                         e.localizedMessage,"Choose SD card"){ chooseSdCard() }

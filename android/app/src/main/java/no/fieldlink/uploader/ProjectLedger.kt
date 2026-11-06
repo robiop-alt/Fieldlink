@@ -140,6 +140,18 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
         addToQueue(db,key,project)
         return "Queued"
     }
+    data class SdEligible(val uri:String,val size:Long,val modified:Long)
+    /** Only media explicitly bound to this project; never expose quarantined or foreign files. */
+    @Synchronized fun sdEligible(project:String):List<SdEligible> {
+        val files=mutableListOf<SdEligible>()
+        readableDatabase.rawQuery(
+            "SELECT uri,size,modified FROM media WHERE project=? AND state IN ('pending','done') ORDER BY uri",
+            arrayOf(project)
+        ).use { rows ->
+            while(rows.moveToNext()) files.add(SdEligible(rows.getString(0),rows.getLong(1),rows.getLong(2)))
+        }
+        return files
+    }
     @Synchronized fun manualPending(project:String):List<String> {
         val result=mutableListOf<String>()
         readableDatabase.rawQuery("SELECT m.uri FROM media m JOIN clip_queue q ON q.uri=m.uri AND q.project=m.project WHERE m.project=? AND m.state='pending' ORDER BY q.priority DESC,q.created ASC",arrayOf(project)).use { rows ->
