@@ -3,7 +3,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py db_persistence.py r2_storage.py ./
+COPY app.py db_persistence.py r2_storage.py pwa_assets.py ./
 COPY static ./static
 ENV PYTHONUNBUFFERED=1
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

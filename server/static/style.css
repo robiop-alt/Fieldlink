@@ -18,3 +18,12 @@ select{display:block;width:100%;margin-top:8px;padding:14px 15px;border:1px soli
 .project-field-error{color:#ff9b95;font-size:13px;margin:7px 0 0}.project-field-error.hidden{display:none}#name[aria-invalid='true']{border-color:#ff7771;outline:1px solid #ff7771}
 
 .project .delete-project{font-size:12px;padding:8px 12px;border-color:#69403d;color:#f2a5a0}.project .delete-project:hover{border-color:#e37b72;background:#301c1c}
+
+/* Standalone iPhone home-screen app: support display cutouts and compact controls. */
+@media(max-width:650px){
+  .shell{padding:calc(18px + env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
+  .panel{padding:16px;margin:12px 0}
+  .top{padding-bottom:12px}
+  button{min-height:36px}
+  input,select,textarea{font-size:16px}
+}

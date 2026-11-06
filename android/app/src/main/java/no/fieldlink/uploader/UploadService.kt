@@ -5,7 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.IBinder
 import android.content.Context
@@ -35,6 +39,7 @@ class UploadService : Service() {
     @Volatile private var loopStarted = false
     private data class FileState(val size: Long, val modified: Long, val stableScans: Int)
     private val seen = mutableMapOf<String, FileState>()
+    private var batteryPaused=false
 
     override fun onCreate() {
         super.onCreate()
@@ -83,6 +88,16 @@ class UploadService : Service() {
         catch (e: Exception) { status("Kan ikke sikre cache: ${e.message}"); stopSelf(); return }
         while (running) {
             try {
+                if (lowBatteryPause()) {
+                    lowBatteryStatus()
+                    Thread.sleep(12000)
+                    continue
+                }
+                if (!hasNetwork()) {
+                    status("Waiting for network · uploads paused")
+                    Thread.sleep(12000)
+                    continue
+                }
                 if (prefs.getString("project", "") != sessionProject) {
                     status("Prosjekt endret: stopp og start OFFSET på nytt"); stopSelf(); return
                 }
@@ -95,7 +110,10 @@ class UploadService : Service() {
                 // Auto mode will publish the complete pending list further below.
                 if(prefs.getString("upload_mode","auto")=="manual") publishIncoming(manuallyQueued)
                 for(uriString in ledger.manualPending(sessionProject)) {
-                    if(!running) break
+                    if(!running || lowBatteryPause()) {
+                        if(running) lowBatteryStatus()
+                        break
+                    }
                     try {
                         val file=DocumentFile.fromSingleUri(this,Uri.parse(uriString)) ?: continue
                         if(!file.isFile || file.length()<=0L) continue
@@ -110,7 +128,8 @@ class UploadService : Service() {
                     publishIncoming(ledger.manualPending(sessionProject).mapNotNull { uri ->
                         try { DocumentFile.fromSingleUri(this,Uri.parse(uri)) }catch(_:Exception){null}
                     }.filter { it.isFile && it.length()>0L })
-                    status("Manual mode: waiting for selected clips")
+                    if(lowBatteryPause()) lowBatteryStatus()
+                    else status("Manual mode: waiting for selected clips")
                     Thread.sleep(12000)
                     continue
                 }
@@ -129,7 +148,10 @@ class UploadService : Service() {
                 publishIncoming(eligible + manuallyQueued.filter { doc -> ledger.stateFor(doc.uri.toString(),sessionProject)=="pending" })
                 var uploaded = 0
                 for (f in ordered) {
-                    if (!running) break
+                    if (!running || lowBatteryPause()) {
+                        if(running) lowBatteryStatus()
+                        break
+                    }
                     val key = f.uri.toString(); val stamp = f.lastModified(); val size = f.length()
                     val old = seen[key]
                     val binding=ledger.observe(f,sessionProject,true)
@@ -152,10 +174,45 @@ class UploadService : Service() {
                         break // Do not let newer clips overtake a failed upload.
                     }
                 }
-                status(if (uploaded > 0) "$uploaded klipp sendt · overvåker nye filer" else "Overvåker · ${ledger.countQuarantined()} gamle/ukjente filer blokkert")
+                if(lowBatteryPause()) lowBatteryStatus()
+                else status(if (uploaded > 0) "$uploaded klipp sendt · overvåker nye filer" else "Overvåker · ${ledger.countQuarantined()} gamle/ukjente filer blokkert")
             } catch (e: Exception) { status("Venter på nett / tilgang · ${e.message?.take(70) ?: "feil"}") }
             try { Thread.sleep(12000) } catch (_: InterruptedException) { }
         }
+    }
+
+    /**
+     * Pause new upload work below 20%. Resume at 25% to prevent repeatedly
+     * starting and stopping near the threshold. Keep all upload IDs and bytes.
+     * An unavailable battery reading must not falsely indicate a low battery.
+     */
+    private fun lowBatteryPause():Boolean {
+        if(!prefs.getBoolean("low_battery_protection",true)) {
+            batteryPaused=false
+            return false
+        }
+        val battery=registerReceiver(null,IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level=battery?.getIntExtra(BatteryManager.EXTRA_LEVEL,-1) ?: -1
+        val scale=battery?.getIntExtra(BatteryManager.EXTRA_SCALE,-1) ?: -1
+        if(level<0 || scale<=0) return batteryPaused
+        val percent=(level*100)/scale
+        if(batteryPaused) {
+            if(percent>=25) batteryPaused=false
+        }else if(percent<20) {
+            batteryPaused=true
+        }
+        return batteryPaused
+    }
+
+    private fun lowBatteryStatus() {
+        status("Low battery · uploads paused below 20% · resumes at 25%")
+    }
+
+    private fun hasNetwork(): Boolean {
+        val manager=getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val active=manager.activeNetwork ?: return false
+        val capabilities=manager.getNetworkCapabilities(active) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     private val publishedPreviews=mutableSetOf<String>()
@@ -237,57 +294,159 @@ class UploadService : Service() {
         }
     }
 
+    @androidx.media3.common.util.UnstableApi
     private fun upload(doc: DocumentFile, size: Long): Boolean {
+        if(lowBatteryPause()) { lowBatteryStatus(); return false }
         val base = sessionBase
         val project = sessionProject
         val token = sessionToken
+        val originalName = doc.name ?: "drone_clip.mp4"
         var uploadId = ledger.getUploadId(doc,project)
+        // Freeze the encoding choice at upload/init. Never switch bytes on resume.
+        val lowMode = if(uploadId!=null) prefs.getBoolean("upload_low_$uploadId",false)
+                      else prefs.getBoolean("low_data_mode",false)
+        val compressor=LowDataCompressor(this)
+        val lowFile=if(lowMode) compressor.fileFor(project,doc.uri,size,doc.lastModified()) else null
+        val sourceUri:Uri
+        val uploadSize:Long
+        val uploadName:String
+        if(lowFile!=null) {
+            val prepared=if(uploadId!=null) {
+                if(lowFile.isFile && lowFile.length()>0) lowFile else null
+            } else {
+                // Low-data transcoding must not compete with DJI Pilot when
+                // the controller is hot or almost out of working space.
+                val power=getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                val hot=Build.VERSION.SDK_INT>=29 &&
+                    power.currentThermalStatus>=android.os.PowerManager.THERMAL_STATUS_SEVERE
+                val free=filesDir.usableSpace
+                if(hot || free < size.coerceAtMost(512L*1024*1024)) {
+                    status(if(hot) "Waiting for controller to cool · Low Data Mode"
+                        else "Low Data Mode waiting for storage space")
+                    return false
+                }
+                status("Compressing $originalName · Low Data Mode")
+                compressor.compress(doc.uri,lowFile,size)
+            }
+            if(prepared==null) {
+                status(if(uploadId!=null) "Low Data copy missing · keep upload queued"
+                    else "Low Data compression unavailable · original kept safe")
+                return false
+            }
+            sourceUri=Uri.fromFile(prepared)
+            uploadSize=prepared.length()
+            uploadName=originalName.substringBeforeLast('.')+"_LOW_DATA.mp4"
+        } else {
+            sourceUri=doc.uri
+            uploadSize=size
+            uploadName=originalName
+        }
         if (uploadId == null) {
-            val body = JSONObject().put("project_id", project).put("filename", doc.name ?: "drone_clip.mp4").put("total_size", size)
+            val body = JSONObject().put("project_id",project).put("filename",uploadName)
+                .put("total_size",uploadSize)
                 .toString().toRequestBody("application/json".toMediaType())
-            val response = execute(Request.Builder().url("$base/api/upload/init").header("X-Device-Token", token).post(body).build()) ?: return false
+            val response = execute(Request.Builder().url("$base/api/upload/init")
+                .header("X-Device-Token",token).post(body).build()) ?: return false
             uploadId = JSONObject(response).getString("upload_id")
+            // commit() persists before any chunk is transferred.
+            prefs.edit().putBoolean("upload_low_$uploadId",lowMode).commit()
             ledger.setUploadId(doc,project,uploadId)
         }
-        val state = execute(Request.Builder().url("$base/api/upload/$uploadId").header("X-Device-Token", token).get().build()) ?: return false
-        var offset = JSONObject(state).getLong("received")
-        val chunkSize = 4 * 1024 * 1024
-        contentResolver.openInputStream(doc.uri)?.use { input ->
-            var skipped = 0L
-            while (skipped < offset) {
-                val n = input.skip(offset - skipped)
-                if (n <= 0) { if (input.read() == -1) return false else skipped++ } else skipped += n
+        val state = execute(Request.Builder().url("$base/api/upload/$uploadId")
+            .header("X-Device-Token",token).get().build()) ?: return false
+        val initialState=JSONObject(state)
+        if(initialState.optString("status")=="ready") {
+            return verifyCompleted(doc,sourceUri,uploadSize,initialState,uploadId,lowFile)
+        }
+        var offset=initialState.getLong("received")
+        if(offset<0 || offset>uploadSize || initialState.optLong("total",uploadSize)!=uploadSize) {
+            status("Upload state mismatch · keeping clip queued")
+            return false
+        }
+        val chunkSize=4*1024*1024
+        contentResolver.openInputStream(sourceUri)?.use { input ->
+            var skipped=0L
+            while(skipped<offset) {
+                val n=input.skip(offset-skipped)
+                if(n<=0) { if(input.read()==-1) return false else skipped++ } else skipped+=n
             }
-            while (offset < size && running) {
-                val len = minOf(chunkSize.toLong(), size - offset).toInt()
-                val temp = File(cacheDir, "fl_${uploadId}_$offset.tmp")
-                FileOutputStream(temp).use { out ->
-                    val buf = ByteArray(64 * 1024); var remaining = len
-                    while (remaining > 0) {
-                        val n = input.read(buf, 0, minOf(buf.size, remaining))
-                        if (n < 0) break
-                        out.write(buf, 0, n); remaining -= n
+            while(offset<uploadSize && running) {
+                // Finish the current HTTP chunk, then pause before the next one.
+                if(lowBatteryPause()) { lowBatteryStatus(); return false }
+                val len=minOf(chunkSize.toLong(),uploadSize-offset).toInt()
+                val temp=File(cacheDir,"fl_${uploadId}_$offset.tmp")
+                try {
+                    FileOutputStream(temp).use { out ->
+                        val buf=ByteArray(64*1024);var remaining=len
+                        while(remaining>0) {
+                            val n=input.read(buf,0,minOf(buf.size,remaining))
+                            if(n<0) break
+                            out.write(buf,0,n);remaining-=n
+                        }
                     }
-                }
-                if (temp.length() != len.toLong()) { temp.delete(); return false }
-                val part = temp.asRequestBody("application/octet-stream".toMediaType())
-                val multipart = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("chunk", "chunk.bin", part).build()
-                val req = Request.Builder().url("$base/api/upload/$uploadId/chunk").header("X-Device-Token", token).header("X-Offset", offset.toString()).put(multipart).build()
-                val result = execute(req) ?: run { temp.delete(); return false }
-                offset = JSONObject(result).getLong("received"); temp.delete()
-                status("Sender ${doc.name} · ${(offset * 100 / size)} %")
+                    if(temp.length()!=len.toLong()) return false
+                    val part=temp.asRequestBody("application/octet-stream".toMediaType())
+                    val multipart=MultipartBody.Builder().setType(MultipartBody.FORM)
+                        .addFormDataPart("chunk","chunk.bin",part).build()
+                    val req=Request.Builder().url("$base/api/upload/$uploadId/chunk")
+                        .header("X-Device-Token",token).header("X-Offset",offset.toString())
+                        .put(multipart).build()
+                    val response=execute(req) ?: return false
+                    val received=JSONObject(response).getLong("received")
+                    if(received!=offset+len) {
+                        status("Unexpected upload offset · rechecking on next attempt")
+                        return false
+                    }
+                    offset=received
+                    status("Sending $uploadName · ${(offset*100/uploadSize)} %")
+                } finally { temp.delete() }
             }
         } ?: return false
-        if (offset != size) return false
-        val complete = execute(Request.Builder().url("$base/api/upload/$uploadId/complete").header("X-Device-Token", token).post("".toRequestBody(null)).build()) ?: return false
-        ledger.clearUploadId(doc,project)
+        if(offset!=uploadSize) return false
+        if(lowBatteryPause()) { lowBatteryStatus(); return false }
+        val localDigest=sha256(sourceUri) ?: return false
+        val complete=execute(Request.Builder().url("$base/api/upload/$uploadId/complete")
+            .header("X-Device-Token",token).header("X-Content-SHA256",localDigest)
+            .post("".toRequestBody(null)).build()) ?: return false
         val result=JSONObject(complete)
-        if(result.optString("status")=="ready") {
-            val clipId=result.optString("clip_id")
-            if(clipId.isNotBlank()) sendDjiThumbnail(doc,clipId)
-            return true
+        if(result.optString("status")!="ready" || result.optLong("size",-1)!=uploadSize ||
+            !result.optString("sha256").equals(localDigest,true)) {
+            status("Integrity check failed · keeping upload queued")
+            return false
         }
-        return false
+        finishVerifiedUpload(doc,uploadId,lowFile,result)
+        return true
+    }
+
+    private fun finishVerifiedUpload(doc:DocumentFile,uploadId:String,lowFile:File?,result:JSONObject) {
+        ledger.clearUploadId(doc,sessionProject)
+        prefs.edit().remove("upload_low_$uploadId").apply()
+        lowFile?.delete()
+        val clipId=result.optString("clip_id")
+        if(clipId.isNotBlank()) sendDjiThumbnail(doc,clipId)
+    }
+
+    private fun sha256(uri:Uri):String? = try {
+        val hash=MessageDigest.getInstance("SHA-256")
+        contentResolver.openInputStream(uri)?.use { input ->
+            val bytes=ByteArray(1024*1024)
+            while(true) {
+                val n=input.read(bytes)
+                if(n<0) break
+                if(n>0) hash.update(bytes,0,n)
+            }
+            hash.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        }
+    }catch(_:Exception) { null }
+
+    private fun verifyCompleted(doc:DocumentFile,sourceUri:Uri,size:Long,
+        result:JSONObject,uploadId:String,lowFile:File?):Boolean {
+        val localDigest=sha256(sourceUri) ?: return false
+        val safe=result.optString("status")=="ready" && result.optLong("total",-1)==size &&
+            result.optString("sha256").equals(localDigest,true)
+        if(safe) finishVerifiedUpload(doc,uploadId,lowFile,result)
+        else status("Integrity check failed · keeping upload queued")
+        return safe
     }
 
     private fun sendDjiThumbnail(video: DocumentFile, clipId: String) {

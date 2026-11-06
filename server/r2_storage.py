@@ -57,6 +57,14 @@ def upload_clip_if_enabled(local_path, clip_id):
     if not r2_enabled():
         return False
     upload_file(local_path, f"clips/{clip_id}")
+    # A successful SDK call is not sufficient: confirm the remote object size.
+    response = r2_client().head_object(
+        Bucket=os.environ.get("R2_BUCKET", "offset-rushes"),
+        Key=f"clips/{clip_id}",
+    )
+    from pathlib import Path
+    if int(response["ContentLength"]) != Path(local_path).stat().st_size:
+        raise RuntimeError("R2 object size differs from uploaded clip")
     return True
 
 def presigned_clip_url(clip_id, expires_seconds=900):

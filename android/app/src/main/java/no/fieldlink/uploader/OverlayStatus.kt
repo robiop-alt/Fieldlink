@@ -41,19 +41,38 @@ class OverlayStatus(private val ctx: Context) {
         setStroke(dp(1),Color.rgb(88,102,91))
     }
     private fun stateColor():Int=when {
-        last.contains("failed",true)||last.contains("error",true)||last.contains("feil",true) -> Color.rgb(255,104,106)
-        last.contains("venter",true)||last.contains("waiting",true)||last.contains("blocked",true) -> Color.rgb(255,194,93)
+        last.contains("failed",true)||last.contains("error",true)||
+            last.contains("feil",true)||last.contains("mismatch",true)||
+            last.contains("integrity",true) -> Color.rgb(255,104,106)
+        last.contains("battery",true)||last.contains("network",true)||last.contains("venter",true)||
+            last.contains("waiting",true)||last.contains("blocked",true)||
+            last.contains("paused",true) -> Color.rgb(255,194,93)
         else -> accent
     }
     private fun shortText():String {
-        val progress=Regex("""(\d{1,3})\s*%""").find(last)?.groupValues?.get(1)
+        val progress=if(last.contains("battery",true)) null else Regex("""(\d{1,3})\s*%""").find(last)?.groupValues?.get(1)
         return when {
+            last.contains("battery",true) -> "▰"
             progress!=null -> "↑ $progress%"
-            last.contains("sender",true)||last.contains("upload",true) -> "↑"
-            last.contains("venter",true)||last.contains("waiting",true) -> "…"
-            last.contains("error",true)||last.contains("feil",true) -> "!"
+            last.contains("compress",true) -> "⇣"
+            last.contains("sender",true)||last.contains("upload",true)||
+                last.contains("sending",true) -> "↑"
+            last.contains("network",true)||last.contains("venter",true)||
+                last.contains("waiting",true) -> "…"
+            last.contains("failed",true)||last.contains("error",true)||
+                last.contains("feil",true)||last.contains("integrity",true) -> "!"
             else -> "●"
         }
+    }
+    private fun readableStatus():String=when {
+        last.contains("battery",true) -> "Low battery · Uploads paused"
+        last.contains("compress",true) -> "Compressing · Low Data Mode"
+        last.contains("network",true) || last.contains("nett",true) -> "Waiting for network"
+        last.contains("integrity",true) || last.contains("mismatch",true) ->
+            "File verification needs attention"
+        last.contains("Monitoring",true) || last.contains("Overvåker",true) ->
+            "Ready · Monitoring"
+        else -> last
     }
     private fun paint() {
         val compact=style=="compact"
@@ -70,7 +89,7 @@ class OverlayStatus(private val ctx: Context) {
                 dp(if(!expanded && style=="minimal") 7 else 12),dp(9))
         }
         details?.apply {
-            text=last
+            text=readableStatus()
             visibility=if(expanded || (style=="classic" && prefs.getBoolean("overlay_show_status",true))) View.VISIBLE else View.GONE
         }
         projectLabel?.visibility=if((expanded || style=="classic") && prefs.getBoolean("overlay_show_project",false)) View.VISIBLE else View.GONE

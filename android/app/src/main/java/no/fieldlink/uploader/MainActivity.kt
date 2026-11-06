@@ -234,6 +234,16 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        // Seed defaults before creating the fields or starting the uploader.
+        // Existing controller-specific overrides always take precedence.
+        val initial=prefs.edit()
+        if(!prefs.contains("server")) {
+            initial.putString("server","https://fieldlink-xrd1.onrender.com")
+        }
+        if(!prefs.contains("token") && BuildConfig.DEFAULT_DEVICE_TOKEN.isNotBlank()) {
+            initial.putString("token",BuildConfig.DEFAULT_DEVICE_TOKEN)
+        }
+        initial.apply()
         window.statusBarColor=bg;window.navigationBarColor=bg
         val root=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
@@ -263,11 +273,7 @@ class MainActivity : Activity() {
         root.addView(header)
         server=field("HTTPS server",prefs.getString("server","")?:"")
         project=field("Project ID",prefs.getString("project","")?:"")
-        token=field("Device token",prefs.getString("token","")?:"",true)
-        val config=card("CONNECTION")
-        config.addView(server)
-        config.addView(token)
-        config.addView(button("Test connection") { testConnection() })
+        token=field("Device token",prefs.getString("token",null) ?: BuildConfig.DEFAULT_DEVICE_TOKEN,true)
         val active=card("ACTIVE PROJECT")
         projectSummary=text(
             prefs.getString("project_name","")?.takeIf { it.isNotBlank() }
@@ -281,7 +287,13 @@ class MainActivity : Activity() {
                 ?: "Choose or create a project to begin",
             11f,muted
         ))
-        active.addView(primaryButton("Manage projects") { showProjects() })
+        active.addView(LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            addView(primaryButton("Choose project") { showProjects() },
+                LinearLayout.LayoutParams(0,dp(38),1f).apply { rightMargin=dp(5) })
+            addView(button("Share / QR") { showProjectShare() },
+                LinearLayout.LayoutParams(0,dp(38),1f))
+        })
         root.addView(active,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
         val upload=card("UPLOAD CONTROL")
         folderLabel=text("",12f,muted)
@@ -304,24 +316,59 @@ class MainActivity : Activity() {
         ))
         root.addView(upload,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
         refreshFolderLabel()
-        val tools=card("PROJECT TOOLS")
+        val tools=card("MORE TOOLS")
         tools.addView(row(
             button("Server history") { showServerUploadHistory() },
             button("Local history") { showUploadHistory() }
         ))
-        tools.addView(row(
-            button("Share / QR") { showProjectShare() },
-            button("Camera metadata") { startMetadataCapture() }
-        ))
-        root.addView(tools,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
+        tools.addView(button("Camera metadata") { startMetadataCapture() })
+        tools.addView(button("Run diagnostics") { runDiagnostics() })
+        val moreTools=button("More tools") {
+            val parent=tools.parent
+            if(parent is ViewGroup) parent.removeView(tools)
+            AlertDialog.Builder(this).setTitle("More tools")
+                .setView(ScrollView(this).apply { addView(tools) })
+                .setPositiveButton("Close",null).show()
+        }
+        root.addView(moreTools,LinearLayout.LayoutParams(-1,dp(38)).apply { bottomMargin=dp(6) })
         if(server.text.isBlank() || token.text.isBlank()) {
-            root.post { showConnectionSettings() }
+            // Do not repeatedly interrupt the operator with a connection popup.
+            // The compact Settings entry remains available for first-time setup.
+            folderLabel.text="Connection setup needed · open Settings"
         }
         val settings=card("Upload preferences")
+        val lowData=Switch(this).apply {
+            text="Low Data Mode"
+            textSize=13f
+            setTextColor(Color.WHITE)
+            isChecked=prefs.getBoolean("low_data_mode",false)
+            setOnCheckedChangeListener { _,enabled ->
+                prefs.edit().putBoolean("low_data_mode",enabled).apply()
+            }
+        }
+        settings.addView(lowData)
+        settings.addView(text(
+            "Off (default): send original DJI cache. On: create a smaller 480p copy for new clips, keeping the original untouched. Existing uploads keep their original quality.",
+            11f,muted
+        ))
+        val lowBattery=Switch(this).apply {
+            text="Low Battery Protection · 20%"
+            textSize=13f
+            setTextColor(Color.WHITE)
+            isChecked=prefs.getBoolean("low_battery_protection",true)
+            setOnCheckedChangeListener { _,enabled ->
+                prefs.edit().putBoolean("low_battery_protection",enabled).apply()
+            }
+        }
+        settings.addView(lowBattery)
+        settings.addView(text(
+            "On (default): pause uploading below 20% controller battery. Resume automatically at 25%. Queued clips and upload progress are preserved.",
+            11f,muted
+        ))
         val startOnBoot=Switch(this).apply {
             text="Start on boot"
             setTextColor(Color.WHITE)
-            isChecked=prefs.getBoolean("start_on_boot",false)
+            isChecked=prefs.getBoolean("start_on_boot",true)
             setOnCheckedChangeListener { _,enabled ->
                 prefs.edit().putBoolean("start_on_boot",enabled).apply()
             }
@@ -465,6 +512,55 @@ class MainActivity : Activity() {
             prefs.edit().putBoolean("boot_resume_pending",false).apply()
         }
     }
+    private fun runDiagnostics() {
+        val base=normalizedServerUrl(server.text.toString())
+        val device=token.text.toString().trim()
+        val pid=project.text.toString().trim()
+        val local=mutableListOf<String>()
+        val folderReady=cacheAccessOk()
+        local.add(if(folderReady) "✓ DJI cache access" else "✕ DJI cache permission missing")
+        val auto=prefs.getBoolean("start_on_boot",true)
+        local.add(if(auto) "✓ Auto-resume enabled" else "· Auto-resume disabled")
+        val overlayEnabled=prefs.getBoolean("overlay",true)
+        val overlayAllowed=Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this)
+        local.add(when {
+            !overlayEnabled -> "· Status pill disabled"
+            overlayAllowed -> "✓ Status pill permission"
+            else -> "✕ Status pill permission missing"
+        })
+        val space=filesDir.usableSpace
+        local.add(if(space >= 150L*1024*1024) "✓ Local working space"
+                  else "✕ Local working space low")
+        local.add(if(pid.isNotBlank()) "✓ Project selected" else "✕ No project selected")
+        val heading="OFFSET diagnostics"
+        if(!base.startsWith("https://") || device.isBlank()) {
+            showOffsetError(heading,local.joinToString("\n")+
+                "\n✕ Connection not configured","Server or device token missing")
+            return
+        }
+        // One read-only network call; never create/upload a test clip in diagnostics.
+        Thread {
+            val result=try {
+                val req=Request.Builder().url("$base/api/device/projects")
+                    .header("X-Device-Token",device).get().build()
+                OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS)
+                    .readTimeout(15,TimeUnit.SECONDS).build().newCall(req).execute().use { response ->
+                        when(response.code) {
+                            in 200..299 -> "✓ Server reachable · Device authorized"
+                            401,403 -> "✕ Device token rejected by server"
+                            else -> "✕ Server returned HTTP ${response.code}"
+                        }
+                    }
+            }catch(e:Exception) { "✕ Server unreachable · check network" }
+            runOnUiThread {
+                AlertDialog.Builder(this).setTitle(heading)
+                    .setMessage((local+result).joinToString("\n")+
+                        "\n\nChecks are read-only. No test footage was uploaded.")
+                    .setPositiveButton("Close",null).show()
+            }
+        }.start()
+    }
+
     private fun showConnectionSettings() {
         val body=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
@@ -492,7 +588,11 @@ class MainActivity : Activity() {
         val change=project.text.toString().trim()!=id
         if(change) stopService(Intent(this,UploadService::class.java))
         project.setText(id)
-        prefs.edit().putString("project",id).putString("project_name",name).apply()
+        // Project selection is the only routine setup step. Persist the
+        // already-prefilled connection before the automatic service restart.
+        prefs.edit().putString("server",normalizedServerUrl(server.text.toString()))
+            .putString("token",token.text.toString().trim())
+            .putString("project",id).putString("project_name",name).commit()
         projectSummary.text="$name  ·  $id"
         prefetchReviewQr()
         showMediaLibraryPage()
@@ -528,16 +628,9 @@ class MainActivity : Activity() {
                     AlertDialog.Builder(this).setTitle("Manage projects")
                         .setItems(names) { _,index ->
                             val item=result.getJSONObject(index)
-                            val id=item.getString("id")
-                            val name=item.optString("name","Project")
-                            val count=item.optInt("clips")
-                            AlertDialog.Builder(this).setTitle(name)
-                                .setMessage("Project ID: $id\\nStatus: ${if(id==project.text.toString().trim()) "ACTIVE" else "Available"}\\nUploaded clips: $count")
-                                .setPositiveButton("Select") { _,_ -> activateProject(id,name) }
-                                .setNeutralButton("Delete") { _,_ -> confirmDeleteProject(id,name,count) }
-                                .setNegativeButton("Back") { _,_ -> showProjects() }
-                                .show()
+                            activateProject(item.getString("id"),item.optString("name","Project"))
                         }
+                        .setNeutralButton("Manage / delete") { _,_ -> showProjectManagement(result) }
                         .setPositiveButton("New project") { _,_ -> createProjectDialog() }
                         .setNegativeButton("Close",null).show()
                 }
@@ -549,6 +642,20 @@ class MainActivity : Activity() {
                 }
             }
         }.start()
+    }
+
+    private fun showProjectManagement(projects:org.json.JSONArray) {
+        val names=Array(projects.length()) { i ->
+            val item=projects.getJSONObject(i)
+            "${item.optString("name")} · ${item.optInt("clips")} clips"
+        }
+        AlertDialog.Builder(this).setTitle("Manage projects")
+            .setItems(names) { _,index ->
+                val item=projects.getJSONObject(index)
+                confirmDeleteProject(item.getString("id"),
+                    item.optString("name","Project"),item.optInt("clips"))
+            }
+            .setNegativeButton("Close",null).show()
     }
 
     private fun confirmDeleteProject(id:String,name:String,count:Int) {

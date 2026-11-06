@@ -30,7 +30,8 @@ def db():
 with db() as c:
     c.executescript('''CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,name TEXT NOT NULL,slug TEXT UNIQUE NOT NULL,pin_hash TEXT NOT NULL,created INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS clips(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,filename TEXT NOT NULL,size INTEGER NOT NULL,created INTEGER NOT NULL,status TEXT NOT NULL,sha256 TEXT,UNIQUE(project_id,filename),FOREIGN KEY(project_id) REFERENCES projects(id));
-    CREATE TABLE IF NOT EXISTS uploads(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,filename TEXT NOT NULL,total INTEGER NOT NULL,received INTEGER NOT NULL DEFAULT 0,temp_path TEXT NOT NULL,created INTEGER NOT NULL);''')
+    CREATE TABLE IF NOT EXISTS uploads(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,filename TEXT NOT NULL,total INTEGER NOT NULL,received INTEGER NOT NULL DEFAULT 0,temp_path TEXT NOT NULL,created INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS completed_uploads(upload_id TEXT PRIMARY KEY,project_id TEXT NOT NULL,clip_id TEXT NOT NULL,size INTEGER NOT NULL,sha256 TEXT NOT NULL);''')
 
 # Live pre-upload manifests are ephemeral and project-scoped.
 with db() as c:
@@ -226,6 +227,35 @@ class UploadInit(BaseModel):
 def home(): return FileResponse('static/admin.html')
 @app.get('/r/{slug}')
 def review(slug:str): return FileResponse('static/review.html')
+# Installable private iPhone web app. Manifest has no project PIN or credentials.
+@app.get('/app.webmanifest')
+def offset_pwa_manifest(project:str=''):
+    valid=bool(re.fullmatch(r'[A-Za-z0-9_-]{1,80}',project))
+    start='/r/'+project if valid else '/'
+    return JSONResponse({
+        'id':start,'name':'OFFSET','short_name':'OFFSET',
+        'description':'Private production rushes review',
+        'start_url':start,'scope':'/','display':'standalone',
+        'background_color':'#0b0d0f','theme_color':'#0b0d0f',
+        'icons':[
+            {'src':'/pwa/icon-192.png','sizes':'192x192','type':'image/png','purpose':'any maskable'},
+            {'src':'/pwa/icon-512.png','sizes':'512x512','type':'image/png','purpose':'any maskable'}
+        ]
+    },media_type='application/manifest+json',headers={'Cache-Control':'public, max-age=3600'})
+
+@app.get('/pwa/icon-{size}.png')
+def offset_pwa_icon(size:int):
+    from pwa_assets import icon_png
+    if size not in (180,192,512):
+        raise HTTPException(404,'Icon not found')
+    return Response(icon_png(size),media_type='image/png',
+        headers={'Cache-Control':'public, max-age=604800'})
+
+@app.get('/offset-sw.js')
+def offset_pwa_worker():
+    return FileResponse('static/offset-sw.js',media_type='application/javascript',
+        headers={'Service-Worker-Allowed':'/','Cache-Control':'no-cache'})
+
 @app.get('/health')
 def health(): return {'ok':True,'product':'OFFSET','version':'1.0.0'}
 
@@ -679,9 +709,15 @@ def upload_chunk(upload_id:str, chunk:UploadFile=File(...), x_device_token:str=H
     return {'received':u['received']+len(data),'total':u['total']}
 
 @app.post('/api/upload/{upload_id}/complete')
-def upload_complete(upload_id:str,x_device_token:str=Header(default='')):
+def upload_complete(upload_id:str,x_device_token:str=Header(default=''),x_content_sha256:str=Header(default='')):
     require_device(x_device_token)
-    with db() as c: u=c.execute('SELECT * FROM uploads WHERE id=?',(upload_id,)).fetchone()
+    with db() as c:
+        done=c.execute('SELECT * FROM completed_uploads WHERE upload_id=?',(upload_id,)).fetchone()
+        u=c.execute('SELECT * FROM uploads WHERE id=?',(upload_id,)).fetchone()
+    if done:
+        if x_content_sha256 and not hmac.compare_digest(x_content_sha256.lower(),done['sha256']):
+            raise HTTPException(422,'SHA-256 mismatch')
+        return {'clip_id':done['clip_id'],'status':'ready','sha256':done['sha256'],'size':done['size']}
     if not u: raise HTTPException(404,'Upload not found')
     tmp=Path(u['temp_path'])
     if not tmp.exists() or tmp.stat().st_size!=u['total']: raise HTTPException(400,'Upload incomplete')
@@ -696,6 +732,8 @@ def upload_complete(upload_id:str,x_device_token:str=Header(default='')):
     with open(tmp,'rb') as source:
         for block in iter(lambda: source.read(1024*1024), b''): h.update(block)
     digest=h.hexdigest()
+    if x_content_sha256 and not hmac.compare_digest(x_content_sha256.lower(),digest):
+        raise HTTPException(422,'SHA-256 mismatch')
     # Upload the original to durable storage BEFORE acknowledging completion.
     # On failure, keep the temporary upload and DB record so the client can retry.
     if os.getenv("R2_ENDPOINT"):
@@ -712,16 +750,20 @@ def upload_complete(upload_id:str,x_device_token:str=Header(default='')):
         tmp.replace(FILES/clip_id)
         with db() as c:
             c.execute('INSERT INTO clips VALUES(?,?,?,?,?,?,?)',(clip_id,u['project_id'],final_name,u['total'],int(time.time()),'ready',digest))
+            c.execute('INSERT INTO completed_uploads VALUES(?,?,?,?,?)',(upload_id,u['project_id'],clip_id,u['total'],digest))
             c.execute('DELETE FROM uploads WHERE id=?',(upload_id,))
     generate_thumbnail(clip_id)
     probe_metadata(clip_id)
-    return {'clip_id':clip_id,'status':'ready','sha256':digest}
+    return {'clip_id':clip_id,'status':'ready','sha256':digest,'size':u['total']}
 
 @app.get('/api/upload/{upload_id}')
 def upload_status(upload_id:str,x_device_token:str=Header(default='')):
     require_device(x_device_token)
     with db() as c: u=c.execute('SELECT id,total,received,filename FROM uploads WHERE id=?',(upload_id,)).fetchone()
-    if not u: raise HTTPException(404,'Upload not found')
+    if not u:
+        with db() as c: done=c.execute('SELECT * FROM completed_uploads WHERE upload_id=?',(upload_id,)).fetchone()
+        if done: return {'status':'ready','clip_id':done['clip_id'],'sha256':done['sha256'],'total':done['size'],'received':done['size']}
+        raise HTTPException(404,'Upload not found')
     return dict(u)
 
 
