@@ -227,6 +227,35 @@ class UploadInit(BaseModel):
 def home(): return FileResponse('static/admin.html')
 @app.get('/r/{slug}')
 def review(slug:str): return FileResponse('static/review.html')
+# Installable private iPhone web app. Manifest has no project PIN or credentials.
+@app.get('/app.webmanifest')
+def offset_pwa_manifest(project:str=''):
+    valid=bool(re.fullmatch(r'[A-Za-z0-9_-]{1,80}',project))
+    start='/r/'+project if valid else '/'
+    return JSONResponse({
+        'id':start,'name':'OFFSET','short_name':'OFFSET',
+        'description':'Private production rushes review',
+        'start_url':start,'scope':'/','display':'standalone',
+        'background_color':'#0b0d0f','theme_color':'#0b0d0f',
+        'icons':[
+            {'src':'/pwa/icon-192.png','sizes':'192x192','type':'image/png','purpose':'any maskable'},
+            {'src':'/pwa/icon-512.png','sizes':'512x512','type':'image/png','purpose':'any maskable'}
+        ]
+    },media_type='application/manifest+json',headers={'Cache-Control':'public, max-age=3600'})
+
+@app.get('/pwa/icon-{size}.png')
+def offset_pwa_icon(size:int):
+    from pwa_assets import icon_png
+    if size not in (180,192,512):
+        raise HTTPException(404,'Icon not found')
+    return Response(icon_png(size),media_type='image/png',
+        headers={'Cache-Control':'public, max-age=604800'})
+
+@app.get('/offset-sw.js')
+def offset_pwa_worker():
+    return FileResponse('static/offset-sw.js',media_type='application/javascript',
+        headers={'Service-Worker-Allowed':'/','Cache-Control':'no-cache'})
+
 @app.get('/health')
 def health(): return {'ok':True,'product':'OFFSET','version':'1.0.0'}
 
