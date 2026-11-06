@@ -26,6 +26,7 @@ class OverlayStatus(private val ctx: Context) {
     private var header:TextView?=null
     private var details:TextView?=null
     private var projectLabel:TextView?=null
+    private var metadataTap:TextView?=null
     private var modeLabel:TextView?=null
     private var waitingLabel:TextView?=null
     private var actionLabel:TextView?=null
@@ -92,6 +93,7 @@ class OverlayStatus(private val ctx: Context) {
             visibility=if(expanded) View.VISIBLE else View.GONE
         }
         actionLabel?.visibility=if(expanded) View.VISIBLE else View.GONE
+        metadataTap?.visibility=if(prefs.getBoolean("metadata_reminder",true) && !prefs.getBoolean("metadata_capture_active",false)) View.VISIBLE else View.GONE
         root?.background=drawable()
         root?.let { view -> params?.let { p ->
             if(expanded) {
@@ -150,7 +152,22 @@ class OverlayStatus(private val ctx: Context) {
                 }catch(_:Exception){}
             }
         }
-        layout.addView(label);layout.addView(mode);layout.addView(waiting)
+        val metadata=TextView(ctx).apply {
+            text="●  METADATA TAP"
+            textSize=10f
+            setTypeface(null,Typeface.BOLD)
+            setTextColor(Color.rgb(255,183,86))
+            gravity=Gravity.CENTER
+            setPadding(dp(7),dp(7),dp(7),dp(7))
+            setOnClickListener {
+                try {
+                    ctx.startActivity(Intent(ctx,MainActivity::class.java)
+                        .putExtra("request_metadata_access",true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                }catch(_:Exception){}
+            }
+        }
+        layout.addView(label);layout.addView(metadata);layout.addView(mode);layout.addView(waiting)
         layout.addView(detail);layout.addView(project);layout.addView(action)
         val display=ctx.resources.displayMetrics
         val savedSide=prefs.getString("overlay_side","right")
@@ -165,6 +182,7 @@ class OverlayStatus(private val ctx: Context) {
             y=prefs.getInt("overlay_y",dp(140)).coerceIn(dp(50),(display.heightPixels-dp(80)).coerceAtLeast(dp(50)))
         }
         root=layout;header=label;details=detail;projectLabel=project
+        metadataTap=metadata
         modeLabel=mode;waitingLabel=waiting;actionLabel=action;params=p
         expanded=style=="classic"
         var downX=0f;var downY=0f;var originX=0;var originY=0;var moved=false
@@ -208,7 +226,7 @@ class OverlayStatus(private val ctx: Context) {
     }
     fun hide() {
         val current=root
-        root=null;header=null;details=null;projectLabel=null
+        root=null;header=null;details=null;projectLabel=null;metadataTap=null
         modeLabel=null;waitingLabel=null;actionLabel=null;params=null
         if(current!=null) try {wm.removeView(current)}catch(_:Exception){}
     }
