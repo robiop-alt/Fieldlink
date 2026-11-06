@@ -727,22 +727,21 @@ class MainActivity : Activity() {
         val grid=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         root.addView(grid)
         setContentView(ScrollView(this).apply { addView(root) })
+        val base=normalizedServerUrl(server.text.toString())
+        val secret=token.text.toString().trim()
         val cacheUri=prefs.getString("tree_uri",null)?.let(Uri::parse)
         if(pid.isBlank()) {
             status.text="No project selected. Choose or create a project with Manage projects."
             return
         }
-        if(cacheUri==null) {
-            status.text="Choose CACHE_VIDEO from Dashboard to browse local clips."
-            return
-        }
+        if(cacheUri==null) status.text="No CACHE_VIDEO selected. Showing any available cloud clips."
         Thread {
             val clips=mutableListOf<LibraryClip>()
             val remote=mutableListOf<CloudClip>()
             var cloudAvailable=false
             var serverError=""
             try {
-                val tree=DocumentFile.fromTreeUri(this,cacheUri)
+                val tree=cacheUri?.let { DocumentFile.fromTreeUri(this,it) }
                 val thumbs=tree?.findFile(".thumbnail")?.listFiles()
                     ?.filter { it.isFile && (it.name ?: "").endsWith(".JPEG",true) || it.isFile && (it.name ?: "").endsWith(".JPG",true) }
                     ?.associateBy { (it.name ?: "").substringBeforeLast(".").uppercase() }
@@ -760,8 +759,6 @@ class MainActivity : Activity() {
                     clips.add(LibraryClip(file,bitmap))
                 }
             }catch(e:Exception) {serverError="Could not read CACHE_VIDEO: ${e.localizedMessage}"}
-            val base=normalizedServerUrl(server.text.toString())
-            val secret=token.text.toString().trim()
             if(base.startsWith("https://") && secret.isNotBlank()) {
                 try {
                     val req=Request.Builder().url("$base/api/device/projects/${Uri.encode(pid)}/uploads")
@@ -797,7 +794,7 @@ class MainActivity : Activity() {
                     }
                 }
                 grid.addView(mode)
-                if(clips.isEmpty()) grid.addView(text("No local MP4 clips found in CACHE_VIDEO.",13f,muted))
+                if(clips.isEmpty()) grid.addView(text("No local MP4 clips found. Cloud-only clips are listed below.",13f,muted))
                 for(item in clips) {
                     val file=item.file
                     val name=file.name ?: "clip.mp4"
@@ -840,6 +837,7 @@ class MainActivity : Activity() {
                     }else if(isQueued) {
                         action("Next") { ledger.prioritize(file.uri.toString(),pid);showMediaLibraryPage() }
                         action("Remove from queue") {
+                            stopService(Intent(this,UploadService::class.java))
                             ledger.removeFromQueue(file.uri.toString(),pid)
                             showMediaLibraryPage()
                         }
@@ -851,6 +849,7 @@ class MainActivity : Activity() {
                             }else showMediaLibraryPage()
                         }
                         if(localState!="quarantine") action("Exclude") {
+                            stopService(Intent(this,UploadService::class.java))
                             ledger.excludeFromAuto(file,pid);showMediaLibraryPage()
                         }
                     }
