@@ -19,6 +19,8 @@
       if (label != null) el.textContent=label;
       return el;
     };
+    const playSvg='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.5 5.75 18 12l-9.5 6.25V5.75Z" fill="currentColor"/></svg>';
+    const pauseSvg='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 6.5v11M16 6.5v11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
     const button = (label, title) => {
       const el = make('button','offset-player-btn',label);
       el.type='button';
@@ -55,7 +57,9 @@
 
     const controls=make('div','offset-player-controls');
     const previous=button('‹','Previous clip');
-    const toggle=button('▶','Play / pause');
+    const toggle=button('','Play / pause');
+    toggle.classList.add('offset-play-toggle');
+    toggle.innerHTML=playSvg;
     const next=button('›','Next clip');
     const clock=make('span','offset-player-clock','00:00 / --:--');
     const seek=make('input','offset-player-seek');
@@ -88,7 +92,8 @@
       seek.disabled=!Number.isFinite(total);
     };
     const updateButtons=()=>{
-      toggle.textContent=video.paused?'▶':'Ⅱ';
+      toggle.innerHTML=video.paused?playSvg:pauseSvg;
+      toggle.setAttribute('aria-label',video.paused?'Play video':'Pause video');
       previous.disabled=index===0;
       next.disabled=index===clips.length-1;
     };
@@ -173,7 +178,8 @@
       const img=make('img','offset-clip-thumb');
       img.src=posterUrl(clips[i]);img.loading=i<6?'eager':'lazy';
       img.alt=`Preview of ${clips[i].filename}`;
-      const playIcon=make('span','offset-clip-play-icon','▶');
+      const playIcon=make('span','offset-clip-play-icon');
+      playIcon.innerHTML=playSvg;
       preview.append(img,playIcon);
       old.replaceWith(preview);
       card.querySelector('.offset-view-controls')?.remove();
