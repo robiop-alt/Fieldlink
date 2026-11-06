@@ -50,7 +50,7 @@ class OverlayStatus(private val ctx: Context) {
         else -> accent
     }
     private fun shortText():String {
-        val progress=Regex("""(\\d{1,3})\\s*%""").find(last)?.groupValues?.get(1)
+        val progress=Regex("""(\d{1,3})\s*%""").find(last)?.groupValues?.get(1)
         return when {
             progress!=null -> "↑ $progress%"
             last.contains("compress",true) -> "⇣"
