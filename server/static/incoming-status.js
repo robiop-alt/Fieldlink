@@ -33,12 +33,15 @@
           const uploading=clip.status==='uploading';
           const percent=Math.max(0,Math.min(100,Number(clip.percent)||0));
           const status=uploading?'Uploading '+percent+'%':'Queued · waiting to upload';
+          const thumbUrl='/api/review/'+encodeURIComponent(location.pathname.split('/').pop())+
+            '/incoming-thumbnail?session='+encodeURIComponent(token)+'&filename='+encodeURIComponent(clip.filename);
           return '<article class="offset-incoming-card" aria-label="'+name+' '+status+'">'+
-            '<div class="offset-incoming-art"><img loading="lazy" alt="" src="/api/review/${encodeURIComponent(location.pathname.split('/').pop())}/incoming-thumbnail?session=${encodeURIComponent(token)}&filename=${encodeURIComponent(clip.filename)}" onerror="this.style.display='none'"><span>COMING SOON</span></div>'+
+            '<div class="offset-incoming-art"><img loading="lazy" alt="" src="'+escape(thumbUrl)+'"><span>COMING SOON</span></div>'+
             '<div class="offset-incoming-details"><strong>'+name+'</strong>'+
             '<span>'+escape(status)+' · '+escape(formatBytes(clip.size||0))+'</span>'+
             '<div class="offset-incoming-track"><div style="width:'+percent+'%"></div></div></div></article>';
         }).join('')+'</div>';
+      panel.querySelectorAll('.offset-incoming-art img').forEach(img=>img.addEventListener('error',()=>{img.style.display='none'}));
     }catch(_) { /* Offline: don't interrupt playback. */ }
   }
   setTimeout(refresh,600);
