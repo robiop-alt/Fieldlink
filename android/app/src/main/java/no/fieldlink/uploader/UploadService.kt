@@ -152,81 +152,86 @@ class UploadService : Service() {
                     Thread.sleep(12000)
                     continue
                 }
-                // Explicitly queued older files may be outside the monitored DJI folder.
-                // Only the operator can bind them to the selected project.
-                val manuallyQueued=ledger.manualPending(sessionProject).mapNotNull { uri ->
-                    try { DocumentFile.fromSingleUri(this,Uri.parse(uri)) }catch(_:Exception) { null }
+                // Priority is persisted independently of the manual queue. The
+                // current HTTP upload is never interrupted: order is checked
+                // again only after its verified completion.
+                val manualMode=prefs.getString("upload_mode","auto")=="manual"
+                val manualUris=ledger.manualPending(sessionProject)
+                val manualSet=manualUris.toSet()
+                val manualFiles=manualUris.mapNotNull { uri ->
+                    try { DocumentFile.fromSingleUri(this,Uri.parse(uri)) }catch(_:Exception){null}
                 }.filter { it.isFile && it.length()>0L }
-                // Manual selection must appear immediately, even in manual-only mode.
-                // Auto mode will publish the complete pending list further below.
-                if(prefs.getString("upload_mode","auto")=="manual") publishIncoming(manuallyQueued)
-                for(uriString in ledger.manualPending(sessionProject)) {
+                val ordered=if(manualMode) emptyList<DocumentFile>() else {
+                    val candidates=mutableListOf<DocumentFile>()
+                    collect(root,candidates,0)
+                    candidates.sortedWith(compareBy<DocumentFile> { djiSequenceKey(it.name ?: "") }
+                        .thenBy { it.lastModified() }.thenBy { it.name ?: "" })
+                }
+                val eligible=ordered.filter { file ->
+                    try { ledger.observe(file,sessionProject,true)=="pending" }catch(_:Exception){false}
+                }
+                publishIncoming(eligible + manualFiles.filter {
+                    ledger.stateFor(it.uri.toString(),sessionProject)=="pending"
+                })
+                val urgent=ledger.urgentUris(sessionProject).mapNotNull { uri ->
+                    if(manualMode && uri !in manualSet)return@mapNotNull null
+                    val file=try { DocumentFile.fromSingleUri(this,Uri.parse(uri)) }catch(_:Exception){null}
+                    if(file?.isFile==true && file.length()>0L)file
+                    else { ledger.clearPriority(uri,sessionProject);null }
+                }
+                // Highest priority first, then explicit/manual queue, then the
+                // normal DJI sequence. A file appears once, regardless of source.
+                val unique=HashSet<String>()
+                val work=(urgent+manualFiles+ordered).filter { unique.add(it.uri.toString()) }
+                var uploaded=0
+                for(f in work) {
                     if(!running || lowBatteryPause()) {
                         if(running) lowBatteryStatus()
                         break
                     }
-                    try {
-                        val file=DocumentFile.fromSingleUri(this,Uri.parse(uriString)) ?: continue
-                        if(!file.isFile || file.length()<=0L) continue
-                        if(ledger.observe(file,sessionProject,false)!="pending") continue
-                        if(upload(file,file.length())) {
-                            ledger.markDone(file,sessionProject)
-                            ledger.logEvent(sessionProject,file.name ?: "proxy.mp4","done","Manual upload completed")
+                    val policyReason=ControllerPolicy.pauseReason(this,prefs)
+                    if(policyReason!=null) { status(policyReason);break }
+                    val key=f.uri.toString()
+                    val manual=key in manualSet
+                    val binding=ledger.observe(f,sessionProject,!manual)
+                    if(binding!="pending")continue
+                    val stamp=f.lastModified()
+                    val size=f.length()
+                    if(!manual) {
+                        // A prioritized DJI cache file must obey the same
+                        // stability/quarantine rules as any automatic file.
+                        val old=seen[key]
+                        if(old==null || old.size!=size || old.modified!=stamp) {
+                            seen[key]=FileState(size,stamp,0)
+                            break
                         }
-                    }catch(e:Exception) { status("Manual upload waiting: ${e.message?.take(55)}");recoveryFailure() }
-                }
-                if (prefs.getString("upload_mode","auto")=="manual") {
-                    publishIncoming(ledger.manualPending(sessionProject).mapNotNull { uri ->
-                        try { DocumentFile.fromSingleUri(this,Uri.parse(uri)) }catch(_:Exception){null}
-                    }.filter { it.isFile && it.length()>0L })
-                    if(lowBatteryPause()) lowBatteryStatus()
-                    else status("Manual mode: waiting for selected clips")
-                    Thread.sleep(12000)
-                    continue
-                }
-                val candidates = mutableListOf<DocumentFile>()
-                collect(root, candidates, 0)
-                // DJI filenames encode reel and clip sequence. Always process oldest first;
-                // a file still being written must not be overtaken by a later clip.
-                val ordered = candidates.sortedWith(
-                    compareBy<DocumentFile> { djiSequenceKey(it.name ?: "") }
-                        .thenBy { it.lastModified() }
-                        .thenBy { it.name ?: "" }
-                )
-                val eligible=ordered.filter { file ->
-                    try { ledger.observe(file,sessionProject,true)=="pending" }catch(_:Exception) { false }
-                }
-                publishIncoming(eligible + manuallyQueued.filter { doc -> ledger.stateFor(doc.uri.toString(),sessionProject)=="pending" })
-                var uploaded = 0
-                for (f in ordered) {
-                    if (!running || lowBatteryPause()) {
-                        if(running) lowBatteryStatus()
+                        val stable=old.stableScans+1
+                        seen[key]=old.copy(stableScans=stable)
+                        if(stable<3 || size<=0L)break
+                    }
+                    status("Sender ${f.name ?: "videoklipp"} · ${size/1048576} MB"+
+                        if(key in ledger.urgentUris(sessionProject))" · PRIORITY" else "")
+                    ledger.logEvent(sessionProject,f.name ?: "clip.mp4","started",
+                        if(key in ledger.urgentUris(sessionProject))"Priority upload" else "${size/1048576} MB")
+                    try {
+                        if(upload(f,size)) {
+                            recoverySucceeded()
+                            ledger.markDone(f,sessionProject)
+                            ledger.logEvent(sessionProject,f.name ?: "clip.mp4","done",
+                                "Upload verified · ${size/1048576} MB")
+                            uploaded++
+                        }else{
+                            ledger.logEvent(sessionProject,f.name ?: "clip.mp4","waiting","Waiting for safe retry")
+                            recoveryFailure()
+                            break
+                        }
+                    }catch(e:Exception) {
+                        status("Upload waiting · ${e.message?.take(50)}")
+                        recoveryFailure()
                         break
                     }
-                    val key = f.uri.toString(); val stamp = f.lastModified(); val size = f.length()
-                    val old = seen[key]
-                    val binding=ledger.observe(f,sessionProject,true)
-                    if (binding != "pending") continue
-                    if (old == null || old.size != size || old.modified != stamp) {
-                        seen[key] = FileState(size, stamp, 0)
-                        break // Wait for the oldest pending clip before later clips.
-                    }
-                    val stable = old.stableScans + 1
-                    seen[key] = old.copy(stableScans = stable)
-                    if (stable < 3 || size <= 0L) break // Require ~36 seconds stable.
-                    status("Sender ${f.name ?: "videoklipp"} · ${(size / 1048576)} MB")
-                    ledger.logEvent(sessionProject,f.name ?: "videoklipp","started","${size / 1048576} MB")
-                    if (upload(f, size)) {
-                        recoverySucceeded()
-                        ledger.markDone(f,sessionProject)
-                        ledger.logEvent(sessionProject,f.name ?: "videoklipp","done","${size / 1048576} MB sendt")
-                        uploaded++
-                    } else {
-                        ledger.logEvent(sessionProject,f.name ?: "videoklipp","waiting","Venter på nytt forsøk / nett")
-                        recoveryFailure()
-                        break // Do not let newer clips overtake a failed upload.
-                    }
                 }
+                if(manualMode && uploaded==0)status("Manual mode · waiting for selected clips")
                 if(lowBatteryPause()) lowBatteryStatus()
                 else status(if (uploaded > 0) "$uploaded klipp sendt · overvåker nye filer" else "Overvåker · ${ledger.countQuarantined()} gamle/ukjente filer blokkert")
             } catch (e: Exception) { status("Venter på nett / tilgang · ${e.message?.take(70) ?: "feil"}");recoveryFailure() }
