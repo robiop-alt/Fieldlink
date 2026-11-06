@@ -52,6 +52,8 @@ def ensure_project_access_schema():
             c.execute('ALTER TABLE projects ADD COLUMN public_review INTEGER NOT NULL DEFAULT 0')
         if 'allow_downloads' not in columns:
             c.execute('ALTER TABLE projects ADD COLUMN allow_downloads INTEGER NOT NULL DEFAULT 1')
+        if 'access_nonce' not in columns:
+            c.execute("ALTER TABLE projects ADD COLUMN access_nonce TEXT NOT NULL DEFAULT ''")
 ensure_project_access_schema()
 
 # Editable public website copy; changes are stored in the durable project database.
@@ -202,12 +204,26 @@ def require_device(key):
     if not DEVICE or not hmac.compare_digest(key or '', DEVICE): raise HTTPException(401,'Uploader authentication required')
 def pin_digest(pin): return hashlib.sha256((pin+SECRET).encode()).hexdigest()
 def session_token(project_id, expiry):
-    payload=f'{project_id}:{expiry}'; sig=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+    # Bind review sessions to the project's current access generation.
+    # The empty nonce preserves old sessions on untouched projects.
+    with db() as c:
+        row=c.execute('SELECT access_nonce FROM projects WHERE id=?',(project_id,)).fetchone()
+    if not row: raise HTTPException(404,'Project not found')
+    payload=f'{project_id}:{expiry}'
+    signing=payload+row['access_nonce']
+    sig=hmac.new(SECRET.encode(),signing.encode(),hashlib.sha256).hexdigest()
     return payload+':'+sig
+
 def check_session(token, project_id):
     try:
-        pid, exp, sig=token.split(':'); payload=f'{pid}:{exp}'
-        return pid==project_id and int(exp)>int(time.time()) and hmac.compare_digest(sig,hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest())
+        pid, exp, sig=token.split(':')
+        if pid!=project_id or int(exp)<=int(time.time()): return False
+        with db() as c:
+            row=c.execute('SELECT access_nonce FROM projects WHERE id=?',(project_id,)).fetchone()
+        if not row: return False
+        signing=f'{pid}:{exp}'+row['access_nonce']
+        expected=hmac.new(SECRET.encode(),signing.encode(),hashlib.sha256).hexdigest()
+        return hmac.compare_digest(sig,expected)
     except Exception: return False
 
 def safe_name(name):
@@ -298,17 +314,34 @@ def update_project(project_id:str, body:ProjectUpdateIn, request:Request, x_admi
 
 class ProjectReviewSettingsIn(BaseModel):
     allow_downloads: bool
+    public_review: bool | None = None
 
 @app.patch('/api/admin/projects/{project_id}/review-settings')
 def update_project_review_settings(project_id:str, body:ProjectReviewSettingsIn,
                                    request:Request, x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
+    new_pin=None
     with db() as c:
-        exists=c.execute('SELECT 1 FROM projects WHERE id=?',(project_id,)).fetchone()
-        if not exists: raise HTTPException(404,'Project not found')
-        c.execute('UPDATE projects SET allow_downloads=? WHERE id=?',
-                  (int(body.allow_downloads),project_id))
-    return {'id':project_id,'allow_downloads':body.allow_downloads}
+        existing=c.execute('SELECT id,public_review FROM projects WHERE id=?',(project_id,)).fetchone()
+        if not existing: raise HTTPException(404,'Project not found')
+        is_public=bool(existing['public_review'])
+        new_public=is_public if body.public_review is None else body.public_review
+        if new_public!=is_public:
+            # Never reuse the old PIN. Changing access immediately revokes all
+            # previously issued review sessions, including PIN-free sessions.
+            new_pin=f'{secrets.randbelow(1_000_000):06d}' if not new_public else None
+            nonce=secrets.token_hex(16)
+            if new_pin is not None:
+                c.execute('UPDATE projects SET allow_downloads=?,public_review=?,pin_hash=?,access_nonce=? WHERE id=?',
+                    (int(body.allow_downloads),int(new_public),pin_digest(new_pin),nonce,project_id))
+            else:
+                c.execute('UPDATE projects SET allow_downloads=?,public_review=?,access_nonce=? WHERE id=?',
+                    (int(body.allow_downloads),int(new_public),nonce,project_id))
+        else:
+            c.execute('UPDATE projects SET allow_downloads=? WHERE id=?',
+                      (int(body.allow_downloads),project_id))
+    return {'id':project_id,'allow_downloads':body.allow_downloads,
+            'public_review':new_public,'pin':new_pin}
 
 @app.get('/api/review/{slug}/settings')
 def review_settings(slug:str, authorization:str=Header(default=''), session:str=''):
@@ -485,8 +518,11 @@ class ShareIn(BaseModel):
 @app.post('/api/review/{slug}/share-unlock')
 def share_unlock(slug:str, body:ShareIn):
     with db() as c:
-        p=c.execute('SELECT id FROM projects WHERE slug=?',(slug,)).fetchone()
+        p=c.execute('SELECT id,public_review,access_nonce FROM projects WHERE slug=?',(slug,)).fetchone()
     if not p: raise HTTPException(403,'Invalid share link')
+    # A prior PIN-free share link must never bypass a newly enabled PIN.
+    if not p['public_review'] and p['access_nonce']:
+        raise HTTPException(403,'Project now requires a PIN')
     try:
         purpose,pid,expiry,signature=body.share_token.split(':')
         payload=f"{purpose}:{pid}:{expiry}"

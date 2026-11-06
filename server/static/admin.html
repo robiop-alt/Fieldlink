@@ -54,30 +54,61 @@ async function renameProject(projectId){
 
 async function projectReviewSettings(projectId){
  const p=allProjects.find(item=>item.id===projectId);if(!p)return;
+ document.querySelectorAll('.project-review-settings-popover').forEach(el=>el.remove());
  const wrap=document.createElement('div');
- wrap.style.cssText='padding:12px 18px;background:#14181c;border:1px solid #35413d;border-radius:10px;margin-top:10px';
+ wrap.className='project-review-settings-popover';
+ wrap.style.cssText='padding:14px 18px;background:#14181c;border:1px solid #35413d;border-radius:10px;margin-top:10px';
  const heading=document.createElement('strong');heading.textContent=p.name+' · Review settings';
- const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px;margin:14px 0';
- const check=document.createElement('input');check.type='checkbox';check.checked=!!p.allow_downloads;
- check.style.cssText='width:18px;height:18px;margin:0;accent-color:#b7f34d';
- label.append(check,document.createTextNode('Allow clip downloads'));
- const help=document.createElement('p');help.className='hint';
- help.textContent='Off hides download actions and blocks direct download and ZIP endpoints. Viewers can still watch clips.';
+ function option(labelText, checked, info){
+   const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px;margin:14px 0 4px';
+   const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=checked;
+   checkbox.style.cssText='width:18px;height:18px;margin:0;accent-color:#b7f34d';
+   label.append(checkbox,document.createTextNode(labelText));
+   const hint=document.createElement('p');hint.className='hint';hint.textContent=info;hint.style.margin='0 0 12px 28px';
+   wrap.append(label,hint);return checkbox;
+ }
+ wrap.append(heading);
+ const requirePin=option('Require project PIN',!p.public_review,
+   'Enable to generate a new 6-digit PIN. Disable to let anyone with the project link watch without a PIN.');
+ const allowDownloads=option('Allow clip downloads',!!p.allow_downloads,
+   'When off, download buttons and download API endpoints are disabled. Streaming remains available.');
  const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
  const save=document.createElement('button');save.type='button';save.textContent='Save';
  const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Close';cancel.style.marginLeft='8px';
  cancel.onclick=()=>wrap.remove();
- save.onclick=async()=>{save.disabled=true;status.textContent='Saving…';
-   try{await api('/api/admin/projects/'+encodeURIComponent(projectId)+'/review-settings',{
-     method:'PATCH',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({allow_downloads:check.checked})
-   });await load();status.textContent='Saved';wrap.remove()}
-   catch(err){status.textContent=err.message||'Save failed';save.disabled=false}
+ save.onclick=async()=>{
+   const changingAccess=requirePin.checked===!!p.public_review;
+   if(changingAccess&&!confirm(requirePin.checked?
+     'Enable PIN protection? Previously opened review sessions will be signed out, and a new PIN will be generated.':
+     'Remove PIN protection? Anyone with the project link will be able to view this project. Previously opened sessions will be signed out.'))return;
+   save.disabled=true;status.textContent='Saving…';
+   try{
+     const result=await api('/api/admin/projects/'+encodeURIComponent(projectId)+'/review-settings',{
+       method:'PATCH',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({allow_downloads:allowDownloads.checked,public_review:!requirePin.checked})
+     });
+     await load();
+     if(result.pin){
+       // PIN is shown exactly once and cannot be recovered from the server.
+       const message=document.createElement('div');message.className='result';message.style.marginTop='12px';
+       const label=document.createElement('strong');label.textContent='New project PIN · Save this now';
+       const value=document.createElement('p');value.className='pin';value.textContent=result.pin;
+       const hint=document.createElement('p');hint.className='hint';
+       hint.textContent='Previous review sessions are revoked. Copy this PIN before closing; it will not be displayed again.';
+       const copy=document.createElement('button');copy.type='button';copy.textContent='Copy PIN';
+       copy.onclick=async()=>{try{await navigator.clipboard.writeText(result.pin);copy.textContent='Copied'}catch(e){window.prompt('Copy PIN',result.pin)}};
+       const done=document.createElement('button');done.className='secondary';done.type='button';done.textContent='Close';done.style.marginLeft='8px';done.onclick=()=>message.remove();
+       message.append(label,value,hint,copy,done);
+       document.querySelector('#projects').prepend(message);
+     }else if(changingAccess)alert(requirePin.checked?'PIN protection enabled':'PIN protection removed. Project link is now PIN-free.');
+     wrap.remove();
+   }catch(err){status.textContent=err.message||'Save failed';save.disabled=false}
  };
- wrap.append(heading,label,help,save,cancel,status);
+ wrap.append(save,cancel,status);
  document.querySelector('#projects').prepend(wrap);
- check.focus();
+ requirePin.focus();
 }
+
 async function deleteProject(projectId){
  const project=allProjects.find(p=>p.id===projectId);if(!project)return;
  const count=Number(project.clips)||0;
