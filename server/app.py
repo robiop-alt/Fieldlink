@@ -246,6 +246,9 @@ def list_projects(request:Request, x_admin_key:str=Header(default='')):
 @app.delete('/api/admin/projects/{project_id}')
 def delete_project(project_id:str,request:Request,confirm_clips:bool=False,x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
+    return _delete_project(project_id,confirm_clips)
+
+def _delete_project(project_id:str,confirm_clips:bool=False):
     with db() as conn:
         project=conn.execute('SELECT id,name FROM projects WHERE id=?',(project_id,)).fetchone()
         if not project: raise HTTPException(404,'Project not found')
@@ -274,6 +277,12 @@ def signed_share_token(project_id, expiry):
     payload=f"share:{project_id}:{expiry}"
     signature=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
     return f"{payload}:{signature}"
+
+@app.delete('/api/device/projects/{project_id}')
+def device_delete_project(project_id:str, confirm_clips:bool=False,
+                          x_device_token:str=Header(default='')):
+    require_device(x_device_token)
+    return _delete_project(project_id,confirm_clips)
 
 @app.get('/api/device/projects')
 def device_list_projects(x_device_token:str=Header(default='')):
