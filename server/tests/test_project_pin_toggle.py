@@ -57,3 +57,40 @@ def test_other_project_unchanged_and_bad_project_returns_404(project):
         headers={"X-Admin-Key":"test-admin-key"},
         json={"allow_downloads":True,"public_review":False})
     assert r.status_code==404
+
+def test_admin_pin_visibility_duration_and_expiration(project):
+    client,pid,slug=project
+    headers={'X-Admin-Key':'test-admin-key'}
+    url=f'/api/admin/projects/{pid}/review-settings'
+    assert client.get(url).status_code==401
+    setting=client.get(url,headers=headers).json()
+    assert setting['legacy_pin'] is True
+    assert setting['pin'] is None
+    enabled=client.patch(url,headers=headers,json={
+        'allow_downloads':True,'public_review':False,'pin_days':14
+    }).json()
+    pin=enabled['pin']
+    now=int(time.time())
+    info=client.get(url,headers=headers).json()
+    assert info['pin']==pin
+    assert info['pin_days']==14
+    assert now+13*86400 <= info['pin_expires_at'] <= now+15*86400
+    valid=client.post(f'/api/review/{slug}/unlock',json={'pin':pin}).json()['token']
+    changed=client.patch(url,headers=headers,json={
+        'allow_downloads':True,'public_review':False,'pin_days':30
+    }).json()
+    assert changed['pin'] is None
+    assert client.get(url,headers=headers).json()['pin']==pin
+    assert client.get(url,headers=headers).json()['pin_days']==30
+    assert client.get(f'/api/review/{slug}/settings?session={valid}').status_code==401
+    fresh=client.post(f'/api/review/{slug}/unlock',json={'pin':pin}).json()['token']
+    with backend.db() as c:
+        c.execute('UPDATE projects SET pin_expires_at=? WHERE id=?',(int(time.time())-1,pid))
+    assert client.post(f'/api/review/{slug}/unlock',json={'pin':pin}).status_code==403
+    assert client.get(f'/api/review/{slug}/settings?session={fresh}').status_code==401
+    renewed=client.patch(url,headers=headers,json={
+        'allow_downloads':True,'public_review':False,'pin_days':7,'renew_pin':True
+    }).json()
+    assert renewed['pin'] and renewed['pin']!=pin
+    assert client.get(url,headers=headers).json()['pin_days']==7
+    assert client.post(f'/api/review/{slug}/unlock',json={'pin':renewed['pin']}).status_code==200
