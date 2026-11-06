@@ -839,7 +839,12 @@ class MainActivity : Activity() {
                 }
                 grid.addView(mode)
                 if(clips.isEmpty()) grid.addView(text("No local MP4 clips found. Cloud-only clips are listed below.",13f,muted))
-                for(item in clips) {
+                val columns=if(resources.displayMetrics.widthPixels>=dp(760)) 3 else 2
+                val gap=dp(6)
+                val cardWidth=((resources.displayMetrics.widthPixels-dp(32)-gap*(columns-1))/columns).coerceAtLeast(dp(130))
+                val libraryGrid=android.widget.GridLayout(this).apply { columnCount=columns }
+                grid.addView(libraryGrid)
+                for((position,item) in clips.withIndex()) {
                     val file=item.file
                     val name=file.name ?: "clip.mp4"
                     val cloud=remoteByName[name]
@@ -849,56 +854,79 @@ class MainActivity : Activity() {
                         cloud!=null -> "UPLOADED"
                         isQueued -> "QUEUED"
                         localState=="done" -> if(cloudAvailable) "REMOVED FROM REVIEW" else "PREVIOUSLY UPLOADED"
-                        localState=="quarantine" -> "NOT UPLOADED · PROTECTED"
+                        localState=="quarantine" -> "EXCLUDED"
                         localState=="other" -> "OTHER PROJECT"
                         else -> "NOT UPLOADED"
                     }
                     val card=LinearLayout(this).apply {
                         orientation=LinearLayout.VERTICAL
-                        setPadding(dp(12),dp(10),dp(12),dp(10))
+                        setPadding(dp(7),dp(7),dp(7),dp(5))
                         background=rounded(panel,Color.rgb(52,62,64))
                     }
-                    val top=LinearLayout(this).apply {
+                    val preview=ImageView(this).apply {
+                        scaleType=ImageView.ScaleType.CENTER_CROP
+                        setBackgroundColor(Color.rgb(19,24,26))
+                        item.thumb?.let { setImageBitmap(it) }
+                    }
+                    card.addView(preview,LinearLayout.LayoutParams(-1,dp(95)))
+                    card.addView(text(name,12f,Color.WHITE).apply {
+                        maxLines=1
+                        ellipsize=android.text.TextUtils.TruncateAt.MIDDLE
+                        setTypeface(typeface,android.graphics.Typeface.BOLD)
+                    })
+                    val detail=LinearLayout(this).apply {
                         orientation=LinearLayout.HORIZONTAL
                         gravity=android.view.Gravity.CENTER_VERTICAL
                     }
-                    item.thumb?.let { bmp ->
-                        top.addView(ImageView(this).apply {
-                            setImageBitmap(bmp)
-                            scaleType=ImageView.ScaleType.CENTER_CROP
-                        },LinearLayout.LayoutParams(dp(98),dp(58)).apply { rightMargin=dp(12) })
-                    }
-                    top.addView(text("$name\n$label  ·  ${file.length()/1048576} MB",13f,
-                        if(cloud!=null) accent else Color.WHITE))
-                    card.addView(top)
-                    val actions=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-                    fun action(label:String,click:()->Unit) {
-                        actions.addView(button(label,click),
-                            LinearLayout.LayoutParams(0,dp(39),1f).apply { rightMargin=dp(5) })
-                    }
+                    detail.addView(text("$label · ${file.length()/1048576} MB",10f,
+                        if(cloud!=null) accent else muted),
+                        LinearLayout.LayoutParams(0,-2,1f))
+                    val actions=mutableListOf<Pair<String,()->Unit>>()
                     if(cloud!=null && cloudAvailable) {
-                        action("Delete from review") { confirmDeleteCloudClip(pid,cloud.id,name) }
+                        actions.add("Delete from review" to { confirmDeleteCloudClip(pid,cloud.id,name) })
                     }else if(isQueued) {
-                        action("Next") { ledger.prioritize(file.uri.toString(),pid);showMediaLibraryPage() }
-                        action("Remove from queue") {
+                        actions.add("Upload next" to { ledger.prioritize(file.uri.toString(),pid);showMediaLibraryPage() })
+                        actions.add("Remove from queue" to {
                             stopService(Intent(this,UploadService::class.java))
                             ledger.removeFromQueue(file.uri.toString(),pid)
                             showMediaLibraryPage()
-                        }
+                        })
                     }else if(localState!="other" && localState!="done") {
-                        action("Add to queue") {
+                        actions.add("Add to queue" to {
                             val result=ledger.enqueueManual(file,pid)
                             if(result!="Queued") {
                                 AlertDialog.Builder(this).setMessage(result).setPositiveButton("OK",null).show()
-                            }else showMediaLibraryPage()
-                        }
-                        if(localState!="quarantine") action("Exclude") {
+                            } else showMediaLibraryPage()
+                        })
+                        if(localState!="quarantine") actions.add("Exclude from upload" to {
                             stopService(Intent(this,UploadService::class.java))
-                            ledger.excludeFromAuto(file,pid);showMediaLibraryPage()
-                        }
+                            ledger.excludeFromAuto(file,pid)
+                            showMediaLibraryPage()
+                        })
                     }
-                    if(actions.childCount>0) card.addView(actions)
-                    grid.addView(card,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
+                    if(actions.isNotEmpty()) {
+                        val menuButton=button("⋮") {}
+                        menuButton.textSize=18f
+                        menuButton.minWidth=dp(34)
+                        menuButton.minimumWidth=dp(34)
+                        menuButton.setPadding(0,0,0,0)
+                        menuButton.setOnClickListener { view ->
+                            val popup=android.widget.PopupMenu(this,view)
+                            actions.forEachIndexed { index,action -> popup.menu.add(0,index,index,action.first) }
+                            popup.setOnMenuItemClickListener { selected ->
+                                actions.getOrNull(selected.itemId)?.second?.invoke()
+                                true
+                            }
+                            popup.show()
+                        }
+                        detail.addView(menuButton,LinearLayout.LayoutParams(dp(38),dp(36)))
+                    }
+                    card.addView(detail)
+                    libraryGrid.addView(card,android.widget.GridLayout.LayoutParams().apply {
+                        width=cardWidth-gap/2
+                        height=ViewGroup.LayoutParams.WRAP_CONTENT
+                        setMargins(if(position%columns==0) 0 else gap/2,dp(5),gap/2,0)
+                    })
                 }
                 for(cloud in remote) if(cloud.filename !in localNames) {
                     val line=LinearLayout(this).apply {
