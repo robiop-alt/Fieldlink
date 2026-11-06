@@ -558,9 +558,13 @@ def review_incoming(slug:str,authorization:str=Header(default='')):
     for u in uploads:
         if u['filename'] in ready: continue
         active_names.add(u['filename'])
+        # A full transfer can still be undergoing durable storage and media probing.
+        # Very old transfers without progress should not look actively uploading.
+        stage=('processing' if u['received']>=u['total'] else
+               'reconnecting' if now-u['created']>7200 else 'uploading')
         results.append({'id':u['id'],'filename':u['filename'],'size':u['total'],
             'received':u['received'],'percent':min(100,int(100*u['received']/max(u['total'],1))),
-            'status':'uploading','created':u['created']})
+            'status':stage,'created':u['created']})
     for q in queued:
         if q['filename'] in ready or q['filename'] in active_names: continue
         results.append({'id':'queued:'+q['filename'],'filename':q['filename'],
