@@ -37,6 +37,8 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.media3:media3-transformer:1.6.1")
+    implementation("androidx.media3:media3-effect:1.6.1")
 }
 
 android {
