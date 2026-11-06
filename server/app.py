@@ -228,7 +228,7 @@ def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(defau
     with db() as c:
         alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ'
         for _ in range(20):
-            pid=''.join(secrets.choice(alphabet) for _ in range(8))
+            pid=''.join(secrets.choice(alphabet) for _ in range(5))
             if not c.execute('SELECT 1 FROM projects WHERE id=?',(pid,)).fetchone(): break
         else: raise HTTPException(503,'Could not allocate a unique project ID')
     slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
@@ -333,7 +333,7 @@ def device_create_project(body:ProjectIn, x_device_token:str=Header(default=''))
     alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ'
     with db() as conn:
         for _ in range(20):
-            pid=''.join(secrets.choice(alphabet) for _ in range(8))
+            pid=''.join(secrets.choice(alphabet) for _ in range(5))
             if not conn.execute('SELECT 1 FROM projects WHERE id=?',(pid,)).fetchone():
                 break
         else:
