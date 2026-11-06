@@ -378,7 +378,7 @@ def update_project_review_settings(project_id:str, body:ProjectReviewSettingsIn,
             else:
                 c.execute('UPDATE projects SET allow_downloads=? WHERE id=?',(int(body.allow_downloads),project_id))
         else:
-            rotate=changed_mode or body.renew_pin or not existing['pin_secret']
+            rotate=changed_mode or body.renew_pin
             if rotate:
                 new_pin=f'{secrets.randbelow(1_000_000):06d}'
                 c.execute('UPDATE projects SET public_review=0,allow_downloads=?,pin_secret=?,pin_hash=?,pin_days=?,pin_expires_at=?,access_nonce=? WHERE id=?',
