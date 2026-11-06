@@ -168,6 +168,23 @@ class MainActivity : Activity() {
             root.post { showConnectionSettings() }
         }
         val settings=card("Upload preferences")
+        val startOnBoot=Switch(this).apply {
+            text="Start on boot"
+            setTextColor(Color.WHITE)
+            isChecked=prefs.getBoolean("start_on_boot",false)
+            setOnCheckedChangeListener { _,enabled ->
+                prefs.edit().putBoolean("start_on_boot",enabled).apply()
+            }
+        }
+        settings.addView(startOnBoot)
+        settings.addView(text(
+            if(Build.VERSION.SDK_INT>=35)
+                "After restarting the controller, tap the OFFSET notification to resume uploads (Android restriction)."
+            else
+                "Automatically resume the uploader when the controller restarts, if project and cache folder are configured.",
+            12f,muted
+        ))
+
         val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay",v).apply() } }
         settings.addView(overlay)
