@@ -32,6 +32,13 @@ with db() as c:
     CREATE TABLE IF NOT EXISTS clips(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,filename TEXT NOT NULL,size INTEGER NOT NULL,created INTEGER NOT NULL,status TEXT NOT NULL,sha256 TEXT,UNIQUE(project_id,filename),FOREIGN KEY(project_id) REFERENCES projects(id));
     CREATE TABLE IF NOT EXISTS uploads(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,filename TEXT NOT NULL,total INTEGER NOT NULL,received INTEGER NOT NULL DEFAULT 0,temp_path TEXT NOT NULL,created INTEGER NOT NULL);''')
 
+# Live pre-upload manifests are ephemeral and project-scoped.
+with db() as c:
+    c.execute("""CREATE TABLE IF NOT EXISTS incoming_clips (
+        project_id TEXT NOT NULL, filename TEXT NOT NULL,
+        size INTEGER NOT NULL, updated INTEGER NOT NULL,
+        PRIMARY KEY(project_id,filename))""")
+
 def ensure_metadata_schema():
     with db() as c:
         c.execute("CREATE TABLE IF NOT EXISTS clip_metadata (clip_id TEXT PRIMARY KEY, data_json TEXT NOT NULL)")
@@ -458,6 +465,59 @@ def review_project(slug, token):
     with db() as c: p=c.execute('SELECT * FROM projects WHERE slug=?',(slug,)).fetchone()
     if not p or not check_session(token,p['id']): raise HTTPException(401,'Enter project PIN')
     return p
+
+class IncomingItem(BaseModel):
+    filename: str = Field(min_length=1,max_length=240)
+    size: int = Field(ge=0,le=20_000_000_000)
+
+class IncomingManifest(BaseModel):
+    clips: list[IncomingItem] = Field(max_length=500)
+
+@app.put('/api/device/projects/{project_id}/incoming')
+def publish_incoming(project_id:str,body:IncomingManifest,x_device_token:str=Header(default='')):
+    """Report only clips approved for this project's upload queue."""
+    require_device(x_device_token)
+    now=int(time.time())
+    with db() as c:
+        if not c.execute('SELECT 1 FROM projects WHERE id=?',(project_id,)).fetchone():
+            raise HTTPException(404,'Project not found')
+        c.execute('DELETE FROM incoming_clips WHERE project_id=?',(project_id,))
+        for item in body.clips:
+            filename=safe_name(item.filename)
+            if not filename.lower().endswith('.mp4'): continue
+            c.execute('INSERT OR REPLACE INTO incoming_clips(project_id,filename,size,updated) VALUES(?,?,?,?)',
+                (project_id,filename,item.size,now))
+    return {'ok':True,'count':len(body.clips)}
+
+@app.get('/api/review/{slug}/incoming')
+def review_incoming(slug:str,authorization:str=Header(default='')):
+    """Live incoming/queued status; never grants video access before completion."""
+    token=authorization.removeprefix('Bearer ').strip()
+    project=review_project(slug,token)
+    now=int(time.time())
+    with db() as c:
+        ready={r['filename'] for r in c.execute(
+            "SELECT filename FROM clips WHERE project_id=? AND status='ready'",
+            (project['id'],)).fetchall()}
+        uploads=c.execute(
+            'SELECT id,filename,total,received,created FROM uploads WHERE project_id=? ORDER BY created',
+            (project['id'],)).fetchall()
+        queued=c.execute(
+            'SELECT filename,size,updated FROM incoming_clips WHERE project_id=? AND updated>? ORDER BY filename',
+            (project['id'],now-150)).fetchall()
+    results=[]
+    active_names=set()
+    for u in uploads:
+        if u['filename'] in ready: continue
+        active_names.add(u['filename'])
+        results.append({'id':u['id'],'filename':u['filename'],'size':u['total'],
+            'received':u['received'],'percent':min(100,int(100*u['received']/max(u['total'],1))),
+            'status':'uploading','created':u['created']})
+    for q in queued:
+        if q['filename'] in ready or q['filename'] in active_names: continue
+        results.append({'id':'queued:'+q['filename'],'filename':q['filename'],
+            'size':q['size'],'received':0,'percent':0,'status':'queued','created':q['updated']})
+    return {'clips':results,'updated':now}
 
 @app.get('/api/review/{slug}/clips')
 def clips(slug:str, authorization:str=Header(default='')):
