@@ -1,6 +1,6 @@
 from r2_storage import upload_file, download_file, delete_file, r2_enabled
 from fastapi import FastAPI, HTTPException, Header, Request, UploadFile, File
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
@@ -448,6 +448,19 @@ def clip_file(slug:str,clip_id:str,request:Request,authorization:str=Header(defa
     token=authorization.removeprefix('Bearer ').strip() or session; p=review_project(slug,token)
     with db() as c: clip=c.execute('SELECT * FROM clips WHERE id=? AND project_id=? AND status="ready"',(clip_id,p['id'])).fetchone()
     if not clip: raise HTTPException(404,'Clip not found')
+    if not download and r2_enabled():
+        # Let R2 serve Safari's byte-range requests directly, rather than first
+        # downloading the entire video to Render and proxying each range.
+        try:
+            from r2_storage import presigned_clip_url
+            return RedirectResponse(
+                presigned_clip_url(clip_id),
+                status_code=307,
+                headers={'Cache-Control':'private, no-store'}
+            )
+        except Exception:
+            import logging
+            logging.exception('R2 playback redirect failed; falling back to local streaming')
     path=ensure_clip_local(clip_id)
     if download: return FileResponse(path,media_type='application/octet-stream',filename=clip['filename'])
     size=path.stat().st_size
