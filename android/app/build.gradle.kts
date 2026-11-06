@@ -3,6 +3,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android {
     namespace = "no.fieldlink.uploader"
     compileSdk = 35
+    buildFeatures { buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -13,6 +14,9 @@ android {
         targetSdk = 35
         versionCode = System.getenv("OFFSET_VERSION_CODE")?.toIntOrNull() ?: 1
         versionName = System.getenv("OFFSET_VERSION_NAME") ?: "0.1.0"
+        val defaultToken = System.getenv("OFFSET_DEFAULT_DEVICE_TOKEN") ?: ""
+        val escaped = defaultToken.replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField("String", "DEFAULT_DEVICE_TOKEN", "\"$escaped\"")
     }
     signingConfigs {
         create("offsetRelease") {
