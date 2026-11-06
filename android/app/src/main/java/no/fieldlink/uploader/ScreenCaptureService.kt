@@ -57,6 +57,7 @@ override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     
 )
 startScreenCapture()
+        getSharedPreferences("fieldlink",MODE_PRIVATE).edit().putBoolean("metadata_capture_active",true).apply()
     }
 
     return START_NOT_STICKY
@@ -90,6 +91,7 @@ private fun startScreenCapture() {
     override fun onBind(intent: Intent?): IBinder? = null
 
 override fun onDestroy() {
+    getSharedPreferences("fieldlink",MODE_PRIVATE).edit().putBoolean("metadata_capture_active",false).apply()
     virtualDisplay?.release()
     virtualDisplay = null
 
