@@ -184,7 +184,7 @@ class UploadService : Service() {
                 val unique=HashSet<String>()
                 val work=(urgent+manualFiles+ordered).filter { unique.add(it.uri.toString()) }
                 var uploaded=0
-                for(f in work) {
+                for((index,f) in work.withIndex()) {
                     if(!running || lowBatteryPause()) {
                         if(running) lowBatteryStatus()
                         break
@@ -220,10 +220,10 @@ class UploadService : Service() {
                             ledger.logEvent(sessionProject,f.name ?: "clip.mp4","done",
                                 "Upload verified · ${size/1048576} MB")
                             uploaded++
-                            // Re-evaluate the urgent queue after each completed
-                            // clip. A priority chosen while this clip was active
-                            // must be first on the next pass.
-                            break
+                            // Re-evaluate after each verified clip. Re-scan only
+                            // if the operator picked a different next clip mid-transfer.
+                            val nextUrgent=ledger.urgentUris(sessionProject).firstOrNull()
+                            if(nextUrgent!=null && work.getOrNull(index+1)?.uri?.toString()!=nextUrgent)break
                         }else{
                             ledger.logEvent(sessionProject,f.name ?: "clip.mp4","waiting","Waiting for safe retry")
                             recoveryFailure()
