@@ -318,6 +318,20 @@ class MainActivity : Activity() {
             root.post { showConnectionSettings() }
         }
         val settings=card("Upload preferences")
+        val lowData=Switch(this).apply {
+            text="Low Data Mode"
+            textSize=13f
+            setTextColor(Color.WHITE)
+            isChecked=prefs.getBoolean("low_data_mode",false)
+            setOnCheckedChangeListener { _,enabled ->
+                prefs.edit().putBoolean("low_data_mode",enabled).apply()
+            }
+        }
+        settings.addView(lowData)
+        settings.addView(text(
+            "Off (default): send original DJI cache. On: create a smaller 480p copy for new clips, keeping the original untouched. Existing uploads keep their original quality.",
+            11f,muted
+        ))
         val startOnBoot=Switch(this).apply {
             text="Start on boot"
             setTextColor(Color.WHITE)
