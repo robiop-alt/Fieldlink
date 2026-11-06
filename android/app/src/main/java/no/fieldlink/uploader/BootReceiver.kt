@@ -37,6 +37,15 @@ class BootReceiver : BroadcastReceiver() {
                 it.uri==treeUri && it.isReadPermission
             }) return
 
+        // The lightweight status pill is independent of the uploader, so it
+        // can appear immediately after boot, before DJI Pilot 2 starts.
+        if(prefs.getBoolean("overlay",true) && Build.VERSION.SDK_INT>=23 &&
+            android.provider.Settings.canDrawOverlays(context)) {
+            try { ControllerOverlayService.launch(context) } catch (_:Exception) {
+                // DJI firmware may restrict background startup.
+            }
+        }
+
         if (Build.VERSION.SDK_INT < 35) {
             try {
                 context.startForegroundService(Intent(context,UploadService::class.java))
