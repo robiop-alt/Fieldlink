@@ -117,6 +117,39 @@ class MainActivity : Activity() {
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.isAllCaps=false
         }
     }
+    private fun showOffsetConfirm(
+        title:String, message:String, confirmLabel:String, destructive:Boolean=false,
+        onConfirm:()->Unit
+    ) {
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(20),dp(8),dp(20),dp(6))
+        }
+        body.addView(text(if(destructive) "●  PERMANENT ACTION" else "●  CONFIRM",11f,
+            if(destructive) Color.rgb(255,174,106) else accent).apply {
+            letterSpacing=0.08f
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        body.addView(text(title,20f,Color.WHITE).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        body.addView(text(message,14f,Color.rgb(207,218,218)).apply {
+            setLineSpacing(dp(3).toFloat(),1f)
+        })
+        AlertDialog.Builder(this).setView(body)
+            .setNegativeButton("Cancel",null)
+            .setPositiveButton(confirmLabel) { _,_ -> onConfirm() }
+            .show().also { dialog ->
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+                    isAllCaps=false
+                    setTextColor(if(destructive) Color.WHITE else bg)
+                    background=rounded(if(destructive) Color.rgb(159,57,57) else accent,
+                        if(destructive) Color.rgb(159,57,57) else accent,8)
+                    setPadding(dp(12),0,dp(12),0)
+                }
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.isAllCaps=false
+            }
+    }
     private fun card(title:String):LinearLayout = LinearLayout(this).apply {
         orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(14),dp(18),dp(14));background=rounded(panel,Color.rgb(57,65,67))
         addView(text(title,15f))
@@ -365,9 +398,11 @@ class MainActivity : Activity() {
         prefs.edit().putString("project",id).putString("project_name",name).apply()
         projectSummary.text="$name  ·  $id"
         showMediaLibraryPage()
-        if(change) AlertDialog.Builder(this).setTitle("Project selected")
-            .setMessage("Active project: $name ($id). The uploader was stopped for safety. Tap START UPLOAD when ready.")
-            .setPositiveButton("OK",null).show()
+        if(change) {
+            // The project selection was deliberate; resume it without extra taps.
+            prefs.edit().putBoolean("upload_paused",false).apply()
+            resumeSavedUploader()
+        }
     }
 
     private fun showProjects() {
@@ -757,12 +792,9 @@ class MainActivity : Activity() {
     }
 
     private fun showMetadataPermissionPrompt() {
-        AlertDialog.Builder(this)
-            .setTitle("Camera metadata access")
-            .setMessage("OFFSET needs your permission to read the DJI Pilot screen. Grant screen capture access for this session? This is optional and can be stopped at any time.")
-            .setNegativeButton("Not now",null)
-            .setPositiveButton("Grant access") { _,_ -> startMetadataCapture() }
-            .show()
+        showOffsetConfirm("Camera metadata access",
+            "Allow OFFSET to read the DJI Pilot display for camera metadata during this session? Android will ask for screen capture permission. You can stop it at any time.",
+            "Continue") { startMetadataCapture() }
     }
 
     private fun startMetadataCapture() {
@@ -985,10 +1017,9 @@ class MainActivity : Activity() {
     }
 
     private fun confirmDeleteCloudClip(pid:String,clipId:String,name:String) {
-        AlertDialog.Builder(this).setTitle("Delete proxy from review?")
-            .setMessage("$name will be permanently removed from the project and will no longer be visible to the review team. The local DJI file will remain untouched.")
-            .setNegativeButton("Cancel",null)
-            .setPositiveButton("Delete from review") { _,_ ->
+        showOffsetConfirm("Remove clip from review?",
+            "$name will be removed from the review site. The original DJI file stays on the controller.",
+            "Remove",destructive=true) {
                 Thread {
                     val error=try {
                         val base=normalizedServerUrl(server.text.toString())
@@ -1010,7 +1041,7 @@ class MainActivity : Activity() {
                             error)
                     }
                 }.start()
-            }.show()
+            }
     }
 
     private fun showClipLibrary() {
