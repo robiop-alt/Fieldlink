@@ -339,7 +339,7 @@ def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(defau
 def list_projects(request:Request, x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
     with db() as c:
-        rows=c.execute('SELECT p.id,p.name,p.slug,p.created,p.public_review,p.allow_downloads,COUNT(cl.id) clips,COALESCE(SUM(CASE WHEN cl.status=\'ready\' THEN cl.size ELSE 0 END),0) storage_bytes FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
+        rows=c.execute('SELECT p.id,p.name,p.slug,p.created,p.public_review,p.allow_downloads,COUNT(cl.id) clips,COALESCE(SUM(CASE WHEN cl.status=\'ready\' THEN cl.size ELSE 0 END),0) storage_bytes,MAX(CASE WHEN cl.status=\'ready\' THEN cl.created ELSE NULL END) last_uploaded_at FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
     return [dict(r) for r in rows]
 
 class ProjectUpdateIn(BaseModel):
