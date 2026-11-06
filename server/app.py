@@ -506,7 +506,7 @@ def incoming_thumbnail_upload(project_id:str,filename:str=Form(...),
                                (project_id,filename)).fetchone()
     if not existing and not transferring: raise HTTPException(404,'Clip not in upload queue')
     data=image.file.read(2*1024*1024+1)
-    if len(data)>2*1024*1024 or len(data)<4 or not data.startswith(b'\\xff\\xd8\\xff'):
+    if len(data)>2*1024*1024 or len(data)<4 or not data.startswith(b'\xff\xd8\xff'):
         raise HTTPException(415,'Expected JPEG under 2 MB')
     path,key=incoming_thumb_path(project_id,filename)
     path.write_bytes(data)
