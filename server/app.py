@@ -62,6 +62,15 @@ def ensure_project_access_schema():
             c.execute('ALTER TABLE projects ADD COLUMN pin_expires_at INTEGER NOT NULL DEFAULT 0')
 ensure_project_access_schema()
 
+# Preserve last byte-level progress independently from the upload start time.
+def ensure_upload_progress_schema():
+    with db() as c:
+        columns={row['name'] for row in c.execute('PRAGMA table_info(uploads)').fetchall()}
+        if 'updated' not in columns:
+            c.execute('ALTER TABLE uploads ADD COLUMN updated INTEGER NOT NULL DEFAULT 0')
+            c.execute('UPDATE uploads SET updated=created WHERE updated=0')
+ensure_upload_progress_schema()
+
 # Editable public website copy; changes are stored in the durable project database.
 SITE_DEFAULTS = {
     'admin_title': 'Send rushes.',
@@ -690,7 +699,7 @@ def review_incoming(slug:str,authorization:str=Header(default='')):
             "SELECT filename FROM clips WHERE project_id=? AND status='ready'",
             (project['id'],)).fetchall()}
         uploads=c.execute(
-            'SELECT id,filename,total,received,created FROM uploads WHERE project_id=? ORDER BY created',
+            'SELECT id,filename,total,received,created,updated FROM uploads WHERE project_id=? ORDER BY created',
             (project['id'],)).fetchall()
         queued=c.execute(
             'SELECT filename,size,updated FROM incoming_clips WHERE project_id=? AND updated>? ORDER BY filename',
@@ -701,17 +710,29 @@ def review_incoming(slug:str,authorization:str=Header(default='')):
         if u['filename'] in ready: continue
         active_names.add(u['filename'])
         # A full transfer can still be undergoing durable storage and media probing.
-        # Very old transfers without progress should not look actively uploading.
+        # A stalled upload is determined by the last confirmed chunk, never its age.
+        last_progress=u['updated'] or u['created']
+        age=max(0,now-last_progress)
         stage=('processing' if u['received']>=u['total'] else
-               'reconnecting' if now-u['created']>7200 else 'uploading')
+               'reconnecting' if age>90 else 'uploading' if u['received'] else 'starting')
         results.append({'id':u['id'],'filename':u['filename'],'size':u['total'],
             'received':u['received'],'percent':min(100,int(100*u['received']/max(u['total'],1))),
-            'status':stage,'created':u['created']})
+            'status':stage,'created':u['created'],'updated':last_progress,
+            'stalled_seconds':age if stage=='reconnecting' else 0})
     for q in queued:
         if q['filename'] in ready or q['filename'] in active_names: continue
         results.append({'id':'queued:'+q['filename'],'filename':q['filename'],
-            'size':q['size'],'received':0,'percent':0,'status':'queued','created':q['updated']})
-    return {'clips':results,'updated':now}
+            'size':q['size'],'received':0,'percent':0,'status':'queued',
+            'created':q['updated'],'updated':q['updated']})
+    total_bytes=sum(max(0,int(item['size'])) for item in results)
+    received_bytes=sum(max(0,min(int(item['received']),int(item['size']))) for item in results)
+    counts={stage:sum(1 for item in results if item['status']==stage)
+            for stage in ('queued','starting','uploading','reconnecting','processing')}
+    return {'clips':results,'updated':now,
+            'summary':{'total_clips':len(results),'total_bytes':total_bytes,
+                       'received_bytes':received_bytes,
+                       'percent':round(100*received_bytes/total_bytes) if total_bytes else 0,
+                       'counts':counts}}
 
 @app.get('/api/review/{slug}/clips')
 def clips(slug:str, authorization:str=Header(default='')):
@@ -805,7 +826,7 @@ def upload_init(body:UploadInit,x_device_token:str=Header(default='')):
     if body.total_size > LIMIT_BYTES: raise HTTPException(413,'Clip exceeds 6 GB limit')
     uid=uuid.uuid4().hex; tmp=TMP/uid
     tmp.touch()
-    with db() as c: c.execute('INSERT INTO uploads VALUES(?,?,?,?,?,?,?)',(uid,body.project_id,safe_name(body.filename),body.total_size,0,str(tmp),int(time.time())))
+    with db() as c: c.execute('INSERT INTO uploads(id,project_id,filename,total,received,temp_path,created,updated) VALUES(?,?,?,?,?,?,?,?)',(uid,body.project_id,safe_name(body.filename),body.total_size,0,str(tmp),int(time.time()),int(time.time())))
     return {'upload_id':uid,'chunk_size':4*1024*1024}
 
 @app.put('/api/upload/{upload_id}/chunk')
@@ -818,7 +839,7 @@ def upload_chunk(upload_id:str, chunk:UploadFile=File(...), x_device_token:str=H
     if len(data)>4*1024*1024: raise HTTPException(413,'Chunk too large')
     if u['received']+len(data)>u['total']: raise HTTPException(400,'Too much data')
     with open(u['temp_path'],'ab') as f: f.write(data)
-    with db() as c: c.execute('UPDATE uploads SET received=received+? WHERE id=?',(len(data),upload_id))
+    with db() as c: c.execute('UPDATE uploads SET received=received+?, updated=? WHERE id=?',(len(data),int(time.time()),upload_id))
     return {'received':u['received']+len(data),'total':u['total']}
 
 @app.post('/api/upload/{upload_id}/complete')
