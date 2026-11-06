@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     private lateinit var server:EditText
     private lateinit var project:EditText
     private lateinit var token:EditText
+    private var dashboardView:View?=null
     private lateinit var folderLabel:TextView
     private lateinit var projectSummary:TextView
     private val bg=Color.rgb(17,20,22)
@@ -146,7 +147,7 @@ class MainActivity : Activity() {
             }
         ))
         upload.addView(row(
-            primaryButton("Clip library") { showClipLibrary() },
+            primaryButton("Media library") { showMediaLibraryPage() },
             button("Upload queue") { showUploadQueue() }
         ))
         upload.addView(row(
@@ -257,7 +258,9 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(0,dp(42),1f))
         root.addView(footer)
         root.addView(text("OFFSET  /  CONTROLLER",10f,muted))
-        setContentView(ScrollView(this).apply { addView(root) })
+        dashboardView=ScrollView(this).apply { addView(root) }
+        setContentView(dashboardView)
+        showMediaLibraryPage()
         if(prefs.getBoolean("boot_resume_pending",false)) {
             prefs.edit().putBoolean("boot_resume_pending",false).apply()
             AlertDialog.Builder(this).setTitle("Resume OFFSET uploads?")
@@ -295,6 +298,7 @@ class MainActivity : Activity() {
         project.setText(id)
         prefs.edit().putString("project",id).putString("project_name",name).apply()
         projectSummary.text="$name  ·  $id"
+        showMediaLibraryPage()
         if(change) AlertDialog.Builder(this).setTitle("Project selected")
             .setMessage("Active project: $name ($id). The uploader was stopped for safety. Tap START UPLOAD when ready.")
             .setPositiveButton("OK",null).show()
@@ -683,6 +687,220 @@ class MainActivity : Activity() {
     startActivityForResult(manager.createScreenCaptureIntent(), 4321)
 }
 
+
+
+    private data class LibraryClip(val file:DocumentFile,val thumb:Bitmap?)
+    private data class CloudClip(val id:String,val filename:String,val bytes:Long)
+
+    /** Main controller screen. Cloud status is authoritative; local media is never deleted. */
+    private fun showMediaLibraryPage() {
+        val pid=project.text.toString().trim()
+        val root=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+            setPadding(dp(16),dp(12),dp(16),dp(18))
+        }
+        val header=LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            gravity=android.view.Gravity.CENTER_VERTICAL
+        }
+        val heading=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        heading.addView(text("OFFSET.   MEDIA LIBRARY",20f,Color.WHITE).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        heading.addView(text(
+            (prefs.getString("project_name",null)?.takeIf { it.isNotBlank() } ?: "Select project")+
+                if(pid.isNotBlank()) "  ·  $pid" else "",
+            12f,accent
+        ))
+        header.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
+        header.addView(button("Dashboard") { dashboardView?.let { setContentView(it) } })
+        root.addView(header)
+        val nav=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        nav.addView(primaryButton("Manage projects") { showProjects() },
+            LinearLayout.LayoutParams(0,dp(42),1f).apply { rightMargin=dp(5) })
+        nav.addView(button("Refresh") { showMediaLibraryPage() },
+            LinearLayout.LayoutParams(0,dp(42),1f))
+        root.addView(nav)
+        val status=text("Loading media…",12f,muted)
+        root.addView(status)
+        val grid=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        root.addView(grid)
+        setContentView(ScrollView(this).apply { addView(root) })
+        val cacheUri=prefs.getString("tree_uri",null)?.let(Uri::parse)
+        if(pid.isBlank()) {
+            status.text="No project selected. Choose or create a project with Manage projects."
+            return
+        }
+        if(cacheUri==null) {
+            status.text="Choose CACHE_VIDEO from Dashboard to browse local clips."
+            return
+        }
+        Thread {
+            val clips=mutableListOf<LibraryClip>()
+            val remote=mutableListOf<CloudClip>()
+            var cloudAvailable=false
+            var serverError=""
+            try {
+                val tree=DocumentFile.fromTreeUri(this,cacheUri)
+                val thumbs=tree?.findFile(".thumbnail")?.listFiles()
+                    ?.filter { it.isFile && (it.name ?: "").endsWith(".JPEG",true) || it.isFile && (it.name ?: "").endsWith(".JPG",true) }
+                    ?.associateBy { (it.name ?: "").substringBeforeLast(".").uppercase() }
+                    ?: emptyMap()
+                val media=tree?.listFiles()?.filter { it.isFile && (it.name ?: "").endsWith(".mp4",true) }
+                    ?.sortedBy { it.name?.uppercase() ?: "" } ?: emptyList()
+                for(file in media.take(250)) {
+                    val stem=(file.name ?: "").substringBeforeLast(".").uppercase()
+                    val thumb=thumbs[stem]
+                    val bitmap=try {
+                        thumb?.let { t -> contentResolver.openInputStream(t.uri)?.use { stream ->
+                            BitmapFactory.decodeStream(stream,null,BitmapFactory.Options().apply { inSampleSize=4 })
+                        } }
+                    }catch(_:Exception){null}
+                    clips.add(LibraryClip(file,bitmap))
+                }
+            }catch(e:Exception) {serverError="Could not read CACHE_VIDEO: ${e.localizedMessage}"}
+            val base=normalizedServerUrl(server.text.toString())
+            val secret=token.text.toString().trim()
+            if(base.startsWith("https://") && secret.isNotBlank()) {
+                try {
+                    val req=Request.Builder().url("$base/api/device/projects/${Uri.encode(pid)}/uploads")
+                        .header("X-Device-Token",secret).get().build()
+                    val response=OkHttpClient.Builder().connectTimeout(30,TimeUnit.SECONDS)
+                        .readTimeout(45,TimeUnit.SECONDS).build().newCall(req).execute().use { res ->
+                            if(!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
+                            JSONObject(res.body?.string() ?: "{}")
+                        }
+                    val arr=response.optJSONArray("clips")
+                    if(arr!=null) for(i in 0 until arr.length()) {
+                        val o=arr.getJSONObject(i)
+                        remote.add(CloudClip(o.getString("id"),o.getString("filename"),o.optLong("size")))
+                    }
+                    cloudAvailable=true
+                }catch(e:Exception) {serverError="Cloud status unavailable: ${e.localizedMessage}"}
+            }else serverError="Configure your server and device token under Dashboard → Settings"
+            runOnUiThread {
+                if(project.text.toString().trim()!=pid) return@runOnUiThread
+                val ledger=ProjectLedger(this)
+                val queued=ledger.queueUris(pid)
+                val remoteByName=remote.associateBy { it.filename }
+                val localNames=clips.mapNotNull { it.file.name }.toSet()
+                val uploaded=clips.count { (it.file.name ?: "") in remoteByName }
+                status.text="${clips.size} local  ·  ${uploaded} uploaded  ·  ${queued.size} queued" +
+                    if(cloudAvailable) "" else "\n$serverError"
+                val mode=Switch(this).apply {
+                    text="Auto upload (off = selected clips only)"
+                    setTextColor(Color.WHITE);textSize=13f
+                    isChecked=prefs.getString("upload_mode","auto")=="auto"
+                    setOnCheckedChangeListener { _,auto ->
+                        prefs.edit().putString("upload_mode",if(auto) "auto" else "manual").apply()
+                    }
+                }
+                grid.addView(mode)
+                if(clips.isEmpty()) grid.addView(text("No local MP4 clips found in CACHE_VIDEO.",13f,muted))
+                for(item in clips) {
+                    val file=item.file
+                    val name=file.name ?: "clip.mp4"
+                    val cloud=remoteByName[name]
+                    val isQueued=file.uri.toString() in queued
+                    val localState=ledger.stateFor(file.uri.toString(),pid)
+                    val label=when {
+                        cloud!=null -> "UPLOADED"
+                        isQueued -> "QUEUED"
+                        localState=="done" -> if(cloudAvailable) "REMOVED FROM REVIEW" else "PREVIOUSLY UPLOADED"
+                        localState=="quarantine" -> "NOT UPLOADED · PROTECTED"
+                        localState=="other" -> "OTHER PROJECT"
+                        else -> "NOT UPLOADED"
+                    }
+                    val card=LinearLayout(this).apply {
+                        orientation=LinearLayout.VERTICAL
+                        setPadding(dp(12),dp(10),dp(12),dp(10))
+                        background=rounded(panel,Color.rgb(52,62,64))
+                    }
+                    val top=LinearLayout(this).apply {
+                        orientation=LinearLayout.HORIZONTAL
+                        gravity=android.view.Gravity.CENTER_VERTICAL
+                    }
+                    item.thumb?.let { bmp ->
+                        top.addView(ImageView(this).apply {
+                            setImageBitmap(bmp)
+                            scaleType=ImageView.ScaleType.CENTER_CROP
+                        },LinearLayout.LayoutParams(dp(98),dp(58)).apply { rightMargin=dp(12) })
+                    }
+                    top.addView(text("$name\n$label  ·  ${file.length()/1048576} MB",13f,
+                        if(cloud!=null) accent else Color.WHITE))
+                    card.addView(top)
+                    val actions=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+                    fun action(label:String,click:()->Unit) {
+                        actions.addView(button(label,click),
+                            LinearLayout.LayoutParams(0,dp(39),1f).apply { rightMargin=dp(5) })
+                    }
+                    if(cloud!=null && cloudAvailable) {
+                        action("Delete from review") { confirmDeleteCloudClip(pid,cloud.id,name) }
+                    }else if(isQueued) {
+                        action("Next") { ledger.prioritize(file.uri.toString(),pid);showMediaLibraryPage() }
+                        action("Remove from queue") {
+                            ledger.removeFromQueue(file.uri.toString(),pid)
+                            showMediaLibraryPage()
+                        }
+                    }else if(localState!="other" && localState!="done") {
+                        action("Add to queue") {
+                            val result=ledger.enqueueManual(file,pid)
+                            if(result!="Queued") {
+                                AlertDialog.Builder(this).setMessage(result).setPositiveButton("OK",null).show()
+                            }else showMediaLibraryPage()
+                        }
+                        if(localState!="quarantine") action("Exclude") {
+                            ledger.excludeFromAuto(file,pid);showMediaLibraryPage()
+                        }
+                    }
+                    if(actions.childCount>0) card.addView(actions)
+                    grid.addView(card,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
+                }
+                for(cloud in remote) if(cloud.filename !in localNames) {
+                    val line=LinearLayout(this).apply {
+                        orientation=LinearLayout.HORIZONTAL
+                        gravity=android.view.Gravity.CENTER_VERTICAL
+                        setPadding(dp(10),dp(8),dp(10),dp(8))
+                        background=rounded(panel,Color.rgb(52,62,64))
+                    }
+                    line.addView(text("${cloud.filename}\nUPLOADED · CLOUD ONLY",12f,accent),
+                        LinearLayout.LayoutParams(0,-2,1f))
+                    line.addView(button("Delete") { confirmDeleteCloudClip(pid,cloud.id,cloud.filename) })
+                    grid.addView(line,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
+                }
+                grid.addView(text("Deleting from review removes only the cloud proxy. Original DJI files are never deleted.",11f,muted))
+            }
+        }.start()
+    }
+
+    private fun confirmDeleteCloudClip(pid:String,clipId:String,name:String) {
+        AlertDialog.Builder(this).setTitle("Delete proxy from review?")
+            .setMessage("$name will be permanently removed from the project and will no longer be visible to the review team. The local DJI file will remain untouched.")
+            .setNegativeButton("Cancel",null)
+            .setPositiveButton("Delete from review") { _,_ ->
+                Thread {
+                    val error=try {
+                        val base=normalizedServerUrl(server.text.toString())
+                        val req=Request.Builder()
+                            .url("$base/api/device/projects/${Uri.encode(pid)}/clips/${Uri.encode(clipId)}")
+                            .header("X-Device-Token",token.text.toString().trim())
+                            .delete().build()
+                        OkHttpClient().newCall(req).execute().use { res ->
+                            if(res.isSuccessful) null
+                            else "Server HTTP ${res.code}: ${res.body?.string()?.take(150)}"
+                        }
+                    }catch(e:Exception){e.localizedMessage ?: "Network error"}
+                    runOnUiThread {
+                        if(error==null) {
+                            ProjectLedger(this).logEvent(pid,name,"removed","Deleted cloud proxy from review")
+                            showMediaLibraryPage()
+                        }else AlertDialog.Builder(this).setTitle("Deletion failed")
+                            .setMessage(error).setPositiveButton("OK",null).show()
+                    }
+                }.start()
+            }.show()
+    }
 
     private fun showClipLibrary() {
         val pid=project.text.toString().trim()
