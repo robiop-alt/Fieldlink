@@ -513,6 +513,21 @@ def get_clip_for_review(slug,clip_id,token):
     if not clip: raise HTTPException(404,'Clip not found')
     return clip
 
+@app.post('/api/device/clips/{clip_id}/thumbnail')
+async def device_clip_thumbnail(clip_id:str, image:UploadFile=File(...), x_device_token:str=Header(default='')):
+    require_device(x_device_token)
+    with db() as conn:
+        clip=conn.execute('SELECT id FROM clips WHERE id=? AND status=?',(clip_id,'ready')).fetchone()
+    if not clip: raise HTTPException(404,'Clip not found')
+    content=await image.read(2*1024*1024+1)
+    if len(content)>2*1024*1024 or len(content)<4 or not content.startswith(bytes.fromhex('ffd8ff')):
+        raise HTTPException(400,'Expected JPEG thumbnail under 2 MB')
+    output=THUMBS/(clip_id+'.jpg')
+    output.write_bytes(content)
+    if r2_enabled():
+        upload_file(output,f'thumbnails/{clip_id}.jpg')
+    return {'status':'ready'}
+
 @app.get('/api/review/{slug}/clips/{clip_id}/thumbnail')
 def thumbnail(slug:str,clip_id:str,session:str=''):
     get_clip_for_review(slug,clip_id,session)
