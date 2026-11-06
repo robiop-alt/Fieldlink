@@ -234,6 +234,10 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        // Seed the personal-controller default once, preserving user overrides.
+        if (!prefs.contains("server")) {
+            prefs.edit().putString("server","https://fieldlink-xrd1.onrender.com").apply()
+        }
         window.statusBarColor=bg;window.navigationBarColor=bg
         val root=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
