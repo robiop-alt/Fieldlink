@@ -11,6 +11,8 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import android.content.Intent
 import android.graphics.Color
@@ -37,6 +39,7 @@ class MainActivity : Activity() {
     private lateinit var project:EditText
     private lateinit var token:EditText
     private lateinit var folderLabel:TextView
+    private lateinit var projectSummary:TextView
     private val bg=Color.rgb(17,20,22)
     private val panel=Color.rgb(33,39,42)
     private val accent=Color.rgb(183,243,77)
@@ -72,10 +75,11 @@ class MainActivity : Activity() {
         server=field("HTTPS server",prefs.getString("server","")?:"")
         project=field("Project ID",prefs.getString("project","")?:"")
         token=field("Device token",prefs.getString("token","")?:"",true)
-        config.addView(server);config.addView(project);config.addView(token)
+        config.addView(server);config.addView(token)
         config.addView(button("Test connection") { testConnection() })
-        val projectSummary=text("PROJECT  ·  ${project.text.toString().ifBlank { "NOT SET" }}",14f,accent)
+        projectSummary=text("PROJECT  ·  ${prefs.getString("project_name","")?.takeIf { it.isNotBlank() } ?: project.text.toString().ifBlank { "NOT SET" }}  ${project.text.toString()}",14f,accent)
         root.addView(projectSummary)
+        root.addView(button("PROJECTS  ·  SELECT / CREATE") { showProjects() })
         fun compactRow(left:Button,right:Button):LinearLayout = LinearLayout(this).apply {
             orientation=LinearLayout.HORIZONTAL
             val lp=LinearLayout.LayoutParams(0,dp(43),1f).apply { setMargins(dp(2),dp(2),dp(2),dp(2)) }
@@ -114,6 +118,7 @@ class MainActivity : Activity() {
                 }.show()
         }
         root.addView(connectionButton)
+        if(server.text.isBlank() || token.text.isBlank()) connectionButton.post { connectionButton.performClick() }
         val settings=card("Upload preferences")
         val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay",v).apply() } }
@@ -163,6 +168,104 @@ class MainActivity : Activity() {
         root.addView(text("OFFSET TEST BUILD · Verify project isolation",11f,muted))
         setContentView(ScrollView(this).apply { addView(root) })
     }
+    private fun activateProject(id:String,name:String) {
+        if(id.isBlank()) return
+        val change=project.text.toString().trim()!=id
+        if(change) stopService(Intent(this,UploadService::class.java))
+        project.setText(id)
+        prefs.edit().putString("project",id).putString("project_name",name).apply()
+        projectSummary.text="PROJECT  ·  $name  ($id)"
+        if(change) AlertDialog.Builder(this).setTitle("Project selected")
+            .setMessage("Active project: $name ($id). The uploader was stopped for safety. Tap START UPLOAD when ready.")
+            .setPositiveButton("OK",null).show()
+    }
+
+    private fun showProjects() {
+        val base=server.text.toString().trim().trimEnd('/')
+        val device=token.text.toString().trim()
+        if(!base.startsWith("https://") || device.isBlank()) {
+            AlertDialog.Builder(this).setTitle("Connection required")
+                .setMessage("Set your HTTPS server and device token in Connection settings first.")
+                .setPositiveButton("OK",null).show()
+            return
+        }
+        Thread {
+            try {
+                val request=Request.Builder().url("$base/api/device/projects")
+                    .header("X-Device-Token",device).build()
+                val result=OkHttpClient().newCall(request).execute().use { response ->
+                    if(!response.isSuccessful) throw IllegalStateException("Server HTTP ${response.code}")
+                    org.json.JSONArray(response.body?.string() ?: "[]")
+                }
+                runOnUiThread {
+                    val names=Array(result.length()) { i ->
+                        val item=result.getJSONObject(i)
+                        "${item.optString("name")}  ·  ${item.optString("id")}  (${item.optInt("clips")} clips)"
+                    }
+                    AlertDialog.Builder(this).setTitle("Projects")
+                        .setItems(names) { _,index ->
+                            val item=result.getJSONObject(index)
+                            activateProject(item.getString("id"),item.optString("name","Project"))
+                        }
+                        .setPositiveButton("New project") { _,_ -> createProjectDialog() }
+                        .setNegativeButton("Close",null).show()
+                }
+            }catch(e:Exception) {
+                runOnUiThread {
+                    AlertDialog.Builder(this).setTitle("Projects unavailable")
+                        .setMessage(e.localizedMessage ?: "Check your connection.")
+                        .setPositiveButton("OK",null).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun createProjectDialog() {
+        val name=field("Project name","")
+        val container=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),0)
+            addView(name)
+        }
+        AlertDialog.Builder(this).setTitle("Create project")
+            .setView(container)
+            .setNegativeButton("Cancel",null)
+            .setPositiveButton("Create") { _,_ ->
+                val projectName=name.text.toString().trim()
+                if(projectName.isBlank()) {
+                    AlertDialog.Builder(this).setMessage("Project name is required.")
+                        .setPositiveButton("OK",null).show()
+                } else {
+                    val base=server.text.toString().trim().trimEnd('/')
+                    val device=token.text.toString().trim()
+                    Thread {
+                        try {
+                            val body=JSONObject().put("name",projectName).put("public_review",false)
+                                .toString().toRequestBody("application/json".toMediaType())
+                            val req=Request.Builder().url("$base/api/device/projects")
+                                .header("X-Device-Token",device).post(body).build()
+                            val result=OkHttpClient().newCall(req).execute().use { response ->
+                                if(!response.isSuccessful) throw IllegalStateException("Server HTTP ${response.code}")
+                                JSONObject(response.body?.string() ?: "{}")
+                            }
+                            runOnUiThread {
+                                val id=result.getString("id")
+                                activateProject(id,projectName)
+                                AlertDialog.Builder(this).setTitle("Project created")
+                                    .setMessage("Project: $projectName\nID: $id\nReview PIN: ${result.optString("pin")}\n\nSave the PIN now; it is only shown when the project is created.")
+                                    .setPositiveButton("OK",null).show()
+                            }
+                        }catch(e:Exception) {
+                            runOnUiThread {
+                                AlertDialog.Builder(this).setTitle("Could not create project")
+                                    .setMessage(e.localizedMessage ?: "Check connection.")
+                                    .setPositiveButton("OK",null).show()
+                            }
+                        }
+                    }.start()
+                }
+            }.show()
+    }
+
     private fun testConnection() {
         val base=server.text.toString().trim().trimEnd('/')
         val pid=project.text.toString().trim()
