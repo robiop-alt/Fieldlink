@@ -240,8 +240,22 @@ def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(defau
 def list_projects(request:Request, x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
     with db() as c:
-        rows=c.execute('SELECT p.id,p.name,p.slug,p.created,p.public_review,COUNT(cl.id) clips FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
+        rows=c.execute('SELECT p.id,p.name,p.slug,p.created,p.public_review,COUNT(cl.id) clips,COALESCE(SUM(CASE WHEN cl.status=\'ready\' THEN cl.size ELSE 0 END),0) storage_bytes FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
     return [dict(r) for r in rows]
+
+class ProjectUpdateIn(BaseModel):
+    name: str = Field(min_length=1,max_length=120)
+
+@app.patch('/api/admin/projects/{project_id}')
+def update_project(project_id:str, body:ProjectUpdateIn, request:Request, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
+    name=body.name.strip()
+    if not name: raise HTTPException(422,'Project name is required')
+    with db() as c:
+        existing=c.execute('SELECT id FROM projects WHERE id=?',(project_id,)).fetchone()
+        if not existing: raise HTTPException(404,'Project not found')
+        c.execute('UPDATE projects SET name=? WHERE id=?',(name,project_id))
+    return {'id':project_id,'name':name}
 
 @app.delete('/api/admin/projects/{project_id}')
 def delete_project(project_id:str,request:Request,confirm_clips:bool=False,x_admin_key:str=Header(default='')):
