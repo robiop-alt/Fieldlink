@@ -797,71 +797,103 @@ class MainActivity : Activity() {
             .setView(scroll).setPositiveButton("Close",null).show()
     }
 
+    private fun showQrDialog(url:String,pinless:Boolean,projectName:String,bitmap:Bitmap) {
+        val image=ImageView(this).apply {
+            setImageBitmap(bitmap)
+            setPadding(dp(8),dp(8),dp(8),dp(8))
+            adjustViewBounds=true
+            setBackgroundColor(Color.WHITE)
+        }
+        var shareDialog:AlertDialog?=null
+        val layout=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(18),dp(4),dp(18),dp(5))
+            addView(text(if(pinless) "PIN-free access · expires after 24 hours" else
+                "Recipient enters the project PIN",11f,muted))
+            addView(image,LinearLayout.LayoutParams(dp(280),dp(280)).apply {
+                gravity=android.view.Gravity.CENTER_HORIZONTAL
+            })
+            addView(Switch(this@MainActivity).apply {
+                text="Open without PIN · 24h"
+                textSize=12f
+                setTextColor(Color.WHITE)
+                isChecked=pinless
+                setPadding(0,dp(5),0,0)
+                setOnCheckedChangeListener { _,enabled ->
+                    shareDialog?.dismiss()
+                    showProjectShare(enabled)
+                }
+            })
+        }
+        AlertDialog.Builder(this).setTitle("Share · $projectName")
+            .setView(layout)
+            .setPositiveButton("Share link") { _,_ ->
+                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                    type="text/plain"
+                    putExtra(Intent.EXTRA_TEXT,url)
+                },"Share OFFSET project"))
+            }
+            .setNegativeButton("Close",null)
+            .create().also { dialog ->
+                shareDialog=dialog
+                dialog.show()
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.isAllCaps=false
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.isAllCaps=false
+            }
+    }
+
     private fun showProjectShare(pinless:Boolean=false) {
-        val base=server.text.toString().trim().trimEnd('/')
+        val base=normalizedServerUrl(server.text.toString())
         val pid=project.text.toString().trim()
         val device=token.text.toString().trim()
         if(!base.startsWith("https://") || pid.isBlank() || device.isBlank()) {
-            AlertDialog.Builder(this).setMessage("Enter HTTPS server, project ID and device token first.")
-                .setPositiveButton("OK",null).show()
+            showOffsetError("Project link unavailable",
+                "Choose a project and configure your server connection first.")
             return
+        }
+        val key="$base|$pid"
+        val projectName=prefs.getString("project_name","Project").orEmpty()
+        if(!pinless) {
+            val ready=if(cachedQrProject==key) cachedQrBitmap else null
+            if(ready!=null && cachedQrUrl.isNotBlank()) {
+                showQrDialog(cachedQrUrl,false,projectName,ready)
+                return
+            }
+            val saved=prefs.getString("qr_project_url","").orEmpty()
+            if(prefs.getString("qr_project_key","")==key &&
+                saved.startsWith("$base/r/") && '#' !in saved) {
+                // Offline fallback: saved standard link is still PIN-protected.
+                val bitmap=makeQrBitmap(saved)
+                cachedQrProject=key;cachedQrUrl=saved;cachedQrBitmap=bitmap
+                showQrDialog(saved,false,projectName,bitmap)
+                return
+            }
         }
         Thread {
             try {
-                val request=Request.Builder().url("$base/api/device/projects/$pid/share?pinless=$pinless")
-                    .header("X-Device-Token",device).build()
-                val response=OkHttpClient().newCall(request).execute().use { res ->
-                    if(!res.isSuccessful) throw IllegalStateException("Server responded with ${res.code}")
+                val request=Request.Builder()
+                    .url("$base/api/device/projects/${Uri.encode(pid)}/share?pinless=$pinless")
+                    .header("X-Device-Token",device).get().build()
+                val result=OkHttpClient().newCall(request).execute().use { res ->
+                    if(!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
                     JSONObject(res.body?.string() ?: "{}")
                 }
-                val url=response.getString("url")
-                val projectName=response.optString("name","Project")
-                val size=640
-                val matrix=MultiFormatWriter().encode(url,BarcodeFormat.QR_CODE,size,size)
-                val pixels=IntArray(size*size) { index ->
-                    if(matrix[index%size,index/size]) Color.BLACK else Color.WHITE
-                }
-                val bitmap=Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888)
-                bitmap.setPixels(pixels,0,size,0,0,size,size)
+                val url=result.getString("url")
+                val name=result.optString("name",projectName)
+                val bitmap=makeQrBitmap(url)
                 runOnUiThread {
-                    val image=ImageView(this).apply {
-                        setImageBitmap(bitmap)
-                        setPadding(dp(20),dp(12),dp(20),dp(12))
-                        adjustViewBounds=true
+                    if(project.text.toString().trim()!=pid) return@runOnUiThread
+                    if(!pinless && url.startsWith("$base/r/") && '#' !in url) {
+                        cachedQrProject=key;cachedQrUrl=url;cachedQrBitmap=bitmap
+                        prefs.edit().putString("qr_project_key",key)
+                            .putString("qr_project_url",url).apply()
                     }
-                    var shareDialog:AlertDialog?=null
-                    val layout=LinearLayout(this).apply {
-                        orientation=LinearLayout.VERTICAL
-                        addView(Switch(this@MainActivity).apply {
-                            text="Open without PIN (valid for 24 hours)"
-                            setTextColor(Color.DKGRAY)
-                            isChecked=pinless
-                            setPadding(dp(14),dp(8),dp(14),dp(8))
-                            setOnCheckedChangeListener { _,enabled ->
-                                shareDialog?.dismiss()
-                                showProjectShare(enabled)
-                            }
-                        })
-                        addView(image)
-                    }
-                    AlertDialog.Builder(this)
-                        .setTitle("Share $projectName")
-                        .setMessage(if(pinless) "Anyone with this link can access without a PIN for 24 hours. Share only with trusted people." else "Recipient must enter the project PIN.")
-                        .setView(layout)
-                        .setPositiveButton("Share link") { _,_ ->
-                            val share=Intent(Intent.ACTION_SEND).apply {
-                                type="text/plain"
-                                putExtra(Intent.EXTRA_TEXT,url)
-                            }
-                            startActivity(Intent.createChooser(share,"Share OFFSET project"))
-                        }
-                        .setNegativeButton("Close",null).create().also { shareDialog=it; it.show() }
+                    showQrDialog(url,pinless,name,bitmap)
                 }
-            } catch(e:Exception) {
+            }catch(e:Exception) {
                 runOnUiThread {
                     showOffsetError("Share link unavailable",
-                        "We couldn't generate a project link. Check your connection and try again.",
-                        e.message)
+                        "Check your server connection and try again.",e.localizedMessage)
                 }
             }
         }.start()
