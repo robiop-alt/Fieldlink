@@ -339,33 +339,57 @@ def update_project(project_id:str, body:ProjectUpdateIn, request:Request, x_admi
 class ProjectReviewSettingsIn(BaseModel):
     allow_downloads: bool
     public_review: bool | None = None
+    pin_days: int | None = None
+    renew_pin: bool = False
+
+@app.get('/api/admin/projects/{project_id}/review-settings')
+def admin_project_review_settings(project_id:str, request:Request, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
+    with db() as c:
+        p=c.execute('SELECT public_review,allow_downloads,pin_secret,pin_days,pin_expires_at FROM projects WHERE id=?',(project_id,)).fetchone()
+    if not p: raise HTTPException(404,'Project not found')
+    return JSONResponse({'public_review':bool(p['public_review']),
+        'allow_downloads':bool(p['allow_downloads']),
+        'pin':reveal_pin(p['pin_secret']) if not p['public_review'] else None,
+        'pin_days':p['pin_days'],'pin_expires_at':p['pin_expires_at'],
+        'pin_expired':bool(not p['public_review'] and p['pin_expires_at'] and p['pin_expires_at']<=int(time.time())),
+        'legacy_pin':bool(not p['public_review'] and not p['pin_secret'])},
+        headers={'Cache-Control':'no-store'})
 
 @app.patch('/api/admin/projects/{project_id}/review-settings')
 def update_project_review_settings(project_id:str, body:ProjectReviewSettingsIn,
                                    request:Request, x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
-    new_pin=None
+    now=int(time.time())
     with db() as c:
-        existing=c.execute('SELECT id,public_review FROM projects WHERE id=?',(project_id,)).fetchone()
+        existing=c.execute('SELECT public_review,pin_days,pin_secret FROM projects WHERE id=?',(project_id,)).fetchone()
         if not existing: raise HTTPException(404,'Project not found')
-        is_public=bool(existing['public_review'])
-        new_public=is_public if body.public_review is None else body.public_review
-        if new_public!=is_public:
-            # Never reuse the old PIN. Changing access immediately revokes all
-            # previously issued review sessions, including PIN-free sessions.
-            new_pin=f'{secrets.randbelow(1_000_000):06d}' if not new_public else None
-            nonce=secrets.token_hex(16)
-            if new_pin is not None:
-                c.execute('UPDATE projects SET allow_downloads=?,public_review=?,pin_hash=?,access_nonce=? WHERE id=?',
-                    (int(body.allow_downloads),int(new_public),pin_digest(new_pin),nonce,project_id))
+        days=body.pin_days if body.pin_days is not None else existing['pin_days']
+        if days not in PIN_ALLOWED_DAYS: raise HTTPException(422,'Unsupported PIN duration')
+        old_public=bool(existing['public_review'])
+        new_public=old_public if body.public_review is None else body.public_review
+        changed_mode=new_public!=old_public
+        changed_duration=days!=existing['pin_days']
+        new_pin=None
+        if new_public:
+            if changed_mode:
+                c.execute('UPDATE projects SET public_review=1,allow_downloads=?,pin_secret=?,pin_expires_at=0,access_nonce=? WHERE id=?',
+                    (int(body.allow_downloads),'',secrets.token_hex(16),project_id))
             else:
-                c.execute('UPDATE projects SET allow_downloads=?,public_review=?,access_nonce=? WHERE id=?',
-                    (int(body.allow_downloads),int(new_public),nonce,project_id))
+                c.execute('UPDATE projects SET allow_downloads=? WHERE id=?',(int(body.allow_downloads),project_id))
         else:
-            c.execute('UPDATE projects SET allow_downloads=? WHERE id=?',
-                      (int(body.allow_downloads),project_id))
-    return {'id':project_id,'allow_downloads':body.allow_downloads,
-            'public_review':new_public,'pin':new_pin}
+            rotate=changed_mode or body.renew_pin or not existing['pin_secret']
+            if rotate:
+                new_pin=f'{secrets.randbelow(1_000_000):06d}'
+                c.execute('UPDATE projects SET public_review=0,allow_downloads=?,pin_secret=?,pin_hash=?,pin_days=?,pin_expires_at=?,access_nonce=? WHERE id=?',
+                    (int(body.allow_downloads),protect_pin(new_pin),pin_digest(new_pin),days,now+days*86400,secrets.token_hex(16),project_id))
+            elif changed_duration:
+                c.execute('UPDATE projects SET allow_downloads=?,pin_days=?,pin_expires_at=?,access_nonce=? WHERE id=?',
+                    (int(body.allow_downloads),days,now+days*86400,secrets.token_hex(16),project_id))
+            else:
+                c.execute('UPDATE projects SET allow_downloads=? WHERE id=?',(int(body.allow_downloads),project_id))
+    return {'id':project_id,'allow_downloads':body.allow_downloads,'public_review':new_public,
+            'pin':new_pin,'pin_days':days}
 
 @app.get('/api/review/{slug}/settings')
 def review_settings(slug:str, authorization:str=Header(default=''), session:str=''):
