@@ -1365,6 +1365,7 @@ class MainActivity : Activity() {
                 if(project.text.toString().trim()!=pid) return@runOnUiThread
                 val ledger=ProjectLedger(this)
                 val queued=ledger.queueUris(pid)
+                val priorityUris=ledger.urgentUris(pid).toSet()
                 val remoteByName=remote.associateBy { it.filename }
                 val localNames=clips.mapNotNull { it.file.name }.toSet()
                 val uploaded=clips.count { (it.file.name ?: "") in remoteByName }
@@ -1393,6 +1394,7 @@ class MainActivity : Activity() {
                     val localState=ledger.stateFor(file.uri.toString(),pid)
                     val label=when {
                         cloud!=null -> "UPLOADED"
+                        file.uri.toString() in priorityUris -> "★ PRIORITY"
                         isQueued -> "QUEUED"
                         localState=="done" -> if(cloudAvailable) "REMOVED FROM REVIEW" else "PREVIOUSLY UPLOADED"
                         localState=="quarantine" -> "EXCLUDED"
@@ -1425,9 +1427,16 @@ class MainActivity : Activity() {
                     val actions=mutableListOf<Pair<String,()->Unit>>()
                     if(cloud!=null && cloudAvailable) {
                         actions.add("Delete from review" to { confirmDeleteCloudClip(pid,cloud.id,name) })
-                    }else if(isQueued) {
-                        actions.add("Upload next" to { ledger.prioritize(file.uri.toString(),pid);showMediaLibraryPage() })
-                        actions.add("Remove from queue" to {
+                    }else if(isQueued || (localState=="pending" && prefs.getString("upload_mode","auto")=="auto")) {
+                        actions.add("Prioritize next" to {
+                            if(ledger.prioritizeNext(file.uri.toString(),pid))showMediaLibraryPage()
+                            else showOffsetError("Priority unavailable","This clip is no longer waiting.")
+                        })
+                        if(file.uri.toString() in priorityUris) actions.add("Clear priority" to {
+                            ledger.clearPriority(file.uri.toString(),pid)
+                            showMediaLibraryPage()
+                        })
+                        if(isQueued) actions.add("Remove from queue" to {
                             stopService(Intent(this,UploadService::class.java))
                             ledger.removeFromQueue(file.uri.toString(),pid)
                             showMediaLibraryPage()
@@ -1585,31 +1594,68 @@ class MainActivity : Activity() {
     }
 
     private fun showUploadQueue() {
-        val pid=project.text.toString().trim()
+        val pid=prefs.getString("project","").orEmpty()
+        if(pid.isBlank()){
+            showOffsetError("Upload queue","Choose a project first.")
+            return
+        }
         val ledger=ProjectLedger(this)
-        val queue=ledger.manualPending(pid)
-        val layout=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(8),dp(14),dp(8)) }
-        layout.addView(text("${queue.size} waiting · Priority clips upload first",13f,Color.DKGRAY))
+        // Includes both auto-discovered DJI clips and explicitly queued files.
+        val queue=ledger.pendingQueue(pid)
+        val layout=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(14),dp(8),dp(14),dp(8))
+        }
+        val urgent=queue.count { it.priority }
+        layout.addView(text("${queue.size} waiting · ${urgent} prioritized · active upload finishes first",
+            12f,Color.DKGRAY))
         var queueDialog:AlertDialog?=null
-        for(uriString in queue.take(150)) {
-            val file=DocumentFile.fromSingleUri(this,Uri.parse(uriString))
-            val line=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL }
-            line.addView(text(file?.name ?: "Clip",13f,Color.BLACK),LinearLayout.LayoutParams(0,-2,1f))
-            line.addView(button("Next") {
-                ledger.prioritize(uriString,pid)
+        if(queue.isEmpty())layout.addView(text(
+            "No clips waiting yet. New DJI clips appear when OFFSET discovers them.",
+            12f,Color.DKGRAY))
+        for(item in queue.take(150)){
+            val file=try { DocumentFile.fromSingleUri(this,Uri.parse(item.uri)) }catch(_:Exception){null}
+            val name=file?.name ?: "Unavailable clip"
+            val line=LinearLayout(this).apply {
+                orientation=LinearLayout.HORIZONTAL
+                gravity=android.view.Gravity.CENTER_VERTICAL
+            }
+            line.addView(text((if(item.priority)"★ " else "")+name+
+                if(item.manual)" · manual" else " · DJI",12f,Color.BLACK).apply {
+                maxLines=2
+                ellipsize=android.text.TextUtils.TruncateAt.MIDDLE
+            },LinearLayout.LayoutParams(0,-2,1f))
+            line.addView(button(if(item.priority)"★ Next" else "Prioritize") {
+                val promoted=ledger.prioritizeNext(item.uri,pid)
+                if(!promoted){
+                    showOffsetError("Priority unavailable","The clip is no longer pending in this project.")
+                }
                 queueDialog?.dismiss()
                 showUploadQueue()
             })
-            line.addView(button("Remove") {
-                ledger.removeFromQueue(uriString,pid)
+            if(item.priority)line.addView(button("Clear") {
+                ledger.clearPriority(item.uri,pid)
                 queueDialog?.dismiss()
                 showUploadQueue()
+            })
+            if(item.manual)line.addView(button("Remove") {
+                // Removing a manually queued clip still requires operator intent.
+                showOffsetConfirm("Remove from queue?",
+                    "Remove ${name} from the upload queue? The DJI original is not deleted.",
+                    "Remove") {
+                    ledger.removeFromQueue(item.uri,pid)
+                    queueDialog?.dismiss()
+                    showUploadQueue()
+                }
             })
             layout.addView(line)
         }
-        AlertDialog.Builder(this).setTitle("Upload queue · $pid")
+        AlertDialog.Builder(this).setTitle("Upload queue · ${pid}")
             .setView(ScrollView(this).apply { addView(layout) })
-            .setPositiveButton("Close",null).create().also { queueDialog=it;it.show() }
+            .setPositiveButton("Close",null).create().also {
+                queueDialog=it
+                it.show()
+            }
     }
     private fun chooseManualFiles() {
         val pid=project.text.toString().trim()
