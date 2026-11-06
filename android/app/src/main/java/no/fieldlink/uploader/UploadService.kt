@@ -174,7 +174,8 @@ class UploadService : Service() {
                     ledger.stateFor(it.uri.toString(),sessionProject)=="pending"
                 })
                 val urgent=ledger.urgentUris(sessionProject).mapNotNull { uri ->
-                    if(manualMode && uri !in manualSet)return@mapNotNull null
+                    // Explicitly marking a discovered clip urgent also opts that
+                    // clip into upload when the operator selected manual mode.
                     val file=try { DocumentFile.fromSingleUri(this,Uri.parse(uri)) }catch(_:Exception){null}
                     if(file?.isFile==true && file.length()>0L)file
                     else { ledger.clearPriority(uri,sessionProject);null }
