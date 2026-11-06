@@ -56,7 +56,6 @@ private enum Theme {
 struct HomeView: View {
     @EnvironmentObject private var store: ProjectStore
     @State private var showingAdd = false
-    @State private var selected: SavedProject?
 
     var body: some View {
         NavigationStack {
@@ -74,9 +73,7 @@ struct HomeView: View {
                             }.padding(.vertical, 28)
                         } else {
                             ForEach(store.projects) { project in
-                                Button {
-                                    selected = project
-                                } label: {
+                                NavigationLink(value: project) {
                                     HStack(spacing: 14) {
                                         Image(systemName: "film.stack").foregroundStyle(Theme.green)
                                         VStack(alignment: .leading, spacing: 5) {
@@ -103,7 +100,7 @@ struct HomeView: View {
                 }
             }
             .sheet(isPresented: $showingAdd) { AddProjectView() }
-            .navigationDestination(item: $selected) { project in
+            .navigationDestination(for: SavedProject.self) { project in
                 ReviewView(project: project)
             }
         }
