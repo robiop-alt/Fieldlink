@@ -5,10 +5,12 @@ import pytest
 from fastapi.testclient import TestClient
 import app as backend
 import r2_storage
+import db_persistence
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    monkeypatch.setattr(db_persistence, "snapshot", lambda *args: None)
     monkeypatch.setattr(backend, "DEVICE", "ci-device")
     monkeypatch.setattr(backend, "TMP", tmp_path / "tmp")
     monkeypatch.setattr(backend, "FILES", tmp_path / "files")
