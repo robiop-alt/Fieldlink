@@ -205,7 +205,15 @@ class MainActivity : Activity() {
                     AlertDialog.Builder(this).setTitle("Projects")
                         .setItems(names) { _,index ->
                             val item=result.getJSONObject(index)
-                            activateProject(item.getString("id"),item.optString("name","Project"))
+                            val id=item.getString("id")
+                            val name=item.optString("name","Project")
+                            val count=item.optInt("clips")
+                            AlertDialog.Builder(this).setTitle(name)
+                                .setMessage("Project ID: $id\\n$count uploaded clips")
+                                .setPositiveButton("Select") { _,_ -> activateProject(id,name) }
+                                .setNeutralButton("Delete") { _,_ -> confirmDeleteProject(id,name,count) }
+                                .setNegativeButton("Back") { _,_ -> showProjects() }
+                                .show()
                         }
                         .setPositiveButton("New project") { _,_ -> createProjectDialog() }
                         .setNegativeButton("Close",null).show()
@@ -218,6 +226,53 @@ class MainActivity : Activity() {
                 }
             }
         }.start()
+    }
+
+    private fun confirmDeleteProject(id:String,name:String,count:Int) {
+        val confirmation=field("Type DELETE","")
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),0)
+            addView(text("Permanently delete $name ($id)?\\n$count uploaded clips will also be deleted.",14f,Color.BLACK))
+            if(count>0) addView(confirmation)
+        }
+        AlertDialog.Builder(this).setTitle("Delete project")
+            .setView(body).setNegativeButton("Cancel",null)
+            .setPositiveButton("Delete") { _,_ ->
+                if(count>0 && confirmation.text.toString().trim()!="DELETE") {
+                    AlertDialog.Builder(this).setMessage("Deletion cancelled. Type DELETE to confirm.")
+                        .setPositiveButton("OK",null).show()
+                } else {
+                    val base=server.text.toString().trim().trimEnd('/')
+                    val device=token.text.toString().trim()
+                    Thread {
+                        val error=try {
+                            val req=Request.Builder()
+                                .url("$base/api/device/projects/${Uri.encode(id)}?confirm_clips=${count>0}")
+                                .header("X-Device-Token",device).delete().build()
+                            OkHttpClient().newCall(req).execute().use { response ->
+                                if(response.isSuccessful) null
+                                else "Server HTTP ${response.code}: ${response.body?.string()?.take(200)}"
+                            }
+                        }catch(e:Exception) { e.localizedMessage ?: "Network error" }
+                        runOnUiThread {
+                            if(error==null) {
+                                if(project.text.toString().trim()==id) {
+                                    stopService(Intent(this,UploadService::class.java))
+                                    project.setText("")
+                                    prefs.edit().remove("project").remove("project_name").apply()
+                                    projectSummary.text="PROJECT  ·  NOT SET"
+                                }
+                                AlertDialog.Builder(this).setTitle("Project deleted")
+                                    .setMessage("$name has been deleted.")
+                                    .setPositiveButton("OK") { _,_ -> showProjects() }.show()
+                            } else {
+                                AlertDialog.Builder(this).setTitle("Delete failed")
+                                    .setMessage(error).setPositiveButton("OK",null).show()
+                            }
+                        }
+                    }.start()
+                }
+            }.show()
     }
 
     private fun createProjectDialog() {
