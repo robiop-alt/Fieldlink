@@ -275,6 +275,37 @@ def signed_share_token(project_id, expiry):
     signature=hmac.new(SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
     return f"{payload}:{signature}"
 
+@app.get('/api/device/projects')
+def device_list_projects(x_device_token:str=Header(default='')):
+    require_device(x_device_token)
+    with db() as conn:
+        rows=conn.execute(
+            'SELECT p.id,p.name,p.created,COUNT(cl.id) AS clips FROM projects p '
+            'LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC'
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+@app.post('/api/device/projects')
+def device_create_project(body:ProjectIn, x_device_token:str=Header(default='')):
+    # The device token authorizes all projects; keep it secret on trusted controllers.
+    require_device(x_device_token)
+    alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ'
+    with db() as conn:
+        for _ in range(20):
+            pid=''.join(secrets.choice(alphabet) for _ in range(8))
+            if not conn.execute('SELECT 1 FROM projects WHERE id=?',(pid,)).fetchone():
+                break
+        else:
+            raise HTTPException(503,'Could not allocate a unique project ID')
+        slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
+        pin=f'{secrets.randbelow(1_000_000):06d}'
+        conn.execute(
+            'INSERT INTO projects(id,name,slug,pin_hash,created,public_review) VALUES(?,?,?,?,?,?)',
+            (pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review))
+        )
+    return {'id':pid,'name':body.name,'slug':slug,'url_path':f'/r/{slug}',
+            'pin':None if body.public_review else pin,'public_review':body.public_review}
+
 @app.get('/api/device/projects/{project_id}/uploads')
 def device_project_uploads(project_id:str, x_device_token:str=Header(default='')):
     """Authenticated, project-scoped list of completed server uploads."""
