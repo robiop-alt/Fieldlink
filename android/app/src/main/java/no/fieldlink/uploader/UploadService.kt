@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit
 
 /** User-started foreground uploader. File access is through the folder URI explicitly granted by the operator. */
 class UploadService : Service() {
-    private var overlay: OverlayStatus? = null
     private val ledger by lazy { ProjectLedger(this) }
     private var sessionProject = ""
     private var sessionBase = ""
@@ -39,9 +38,8 @@ class UploadService : Service() {
     override fun onCreate() {
         super.onCreate()
         startForeground(42, notification("Starter OFFSET …"))
-        if (prefs.getBoolean("overlay",true)) {
-            overlay=OverlayStatus(this)
-            try { overlay?.show() } catch (_: Exception) { overlay=null }
+        if(prefs.getBoolean("overlay",true)) {
+            try { ControllerOverlayService.launch(this) } catch (_:Exception) {}
         }
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -55,7 +53,7 @@ class UploadService : Service() {
         return START_STICKY
     }
     override fun onBind(intent: Intent?): IBinder? = null
-    override fun onDestroy() { running = false; overlay?.hide(); super.onDestroy() }
+    override fun onDestroy() { running = false; super.onDestroy() }
 
     private fun notification(message: String): Notification {
         val channel = "fieldlink_upload"
@@ -66,7 +64,14 @@ class UploadService : Service() {
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, channel) else Notification.Builder(this)
         return b.setContentTitle("OFFSET · automatisk opplasting").setContentText(message).setSmallIcon(android.R.drawable.stat_sys_upload).setOngoing(true).build()
     }
-    private fun status(s: String) { getSystemService(NotificationManager::class.java).notify(42, notification(s)); overlay?.update(s) }
+    private fun status(s: String) {
+        getSystemService(NotificationManager::class.java).notify(42, notification(s))
+        if(prefs.getBoolean("overlay",true)) {
+            sendBroadcast(Intent(ControllerOverlayService.ACTION_UPDATE)
+                .setPackage(packageName)
+                .putExtra(ControllerOverlayService.EXTRA_STATUS,s))
+        }
+    }
 
     private fun monitorLoop() {
         val tree = prefs.getString("tree_uri", null)?.let(Uri::parse) ?: run { stopSelf(); return }
