@@ -5,3 +5,4 @@ python-multipart==0.0.20
 zipstream-ng>=1.8,<2
 
 boto3>=1.35,<2
+Pillow>=11.3,<13
