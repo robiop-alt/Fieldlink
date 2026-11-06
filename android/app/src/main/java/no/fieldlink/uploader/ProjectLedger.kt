@@ -6,28 +6,74 @@ import android.database.sqlite.SQLiteOpenHelper
 import androidx.documentfile.provider.DocumentFile
 
 /** Persistent fail-closed binding. Never reassign an observed file to another customer. */
-class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", null, 3) {
+class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", null, 4) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE media (uri TEXT PRIMARY KEY, size INTEGER NOT NULL, modified INTEGER NOT NULL, project TEXT, state TEXT NOT NULL, upload_id TEXT, received INTEGER NOT NULL DEFAULT 0)")
         createHistory(db)
         createQueue(db)
+        createPriority(db)
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if(oldVersion<2) createHistory(db)
         if(oldVersion<3) createQueue(db)
+        if(oldVersion<4) createPriority(db)
     }
 
     private fun createQueue(db:SQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS clip_queue (uri TEXT PRIMARY KEY, project TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL)")
     }
+    /** Urgent requests are separate from manual-queue membership. An auto clip
+     * must remain in auto mode, so it never bypasses cache stability checks.
+     */
+    private fun createPriority(db:SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS upload_priority (uri TEXT PRIMARY KEY, project TEXT NOT NULL, priority INTEGER NOT NULL, created INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_upload_priority_project ON upload_priority(project,priority DESC)")
+    }
+    @Synchronized fun prioritizeNext(uri:String,project:String):Boolean {
+        if(project.isBlank())return false
+        val db=writableDatabase
+        db.rawQuery("SELECT state FROM media WHERE uri=? AND project=?",
+            arrayOf(uri,project)).use { row ->
+            if(!row.moveToFirst() || row.getString(0)!="pending")return false
+        }
+        val max=db.rawQuery("SELECT COALESCE(MAX(priority),0) FROM upload_priority WHERE project=?",
+            arrayOf(project)).use { row -> row.moveToFirst();row.getInt(0) }
+        db.execSQL("INSERT OR REPLACE INTO upload_priority(uri,project,priority,created) VALUES(?,?,?,?)",
+            arrayOf(uri,project,max+1,System.currentTimeMillis()))
+        return true
+    }
+    @Synchronized fun clearPriority(uri:String,project:String) {
+        writableDatabase.execSQL("DELETE FROM upload_priority WHERE uri=? AND project=?",arrayOf(uri,project))
+    }
+    @Synchronized fun urgentUris(project:String):List<String> {
+        val result=mutableListOf<String>()
+        readableDatabase.rawQuery("SELECT p.uri FROM upload_priority p JOIN media m ON p.uri=m.uri AND p.project=m.project WHERE p.project=? AND m.state='pending' ORDER BY p.priority DESC,p.created DESC",
+            arrayOf(project)).use { rows -> while(rows.moveToNext())result.add(rows.getString(0)) }
+        return result
+    }
+    data class QueueEntry(val uri:String,val priority:Boolean,val manual:Boolean)
+    @Synchronized fun pendingQueue(project:String):List<QueueEntry> {
+        val items=mutableListOf<QueueEntry>()
+        readableDatabase.rawQuery(
+            "SELECT m.uri,CASE WHEN p.uri IS NULL THEN 0 ELSE 1 END,CASE WHEN q.uri IS NULL THEN 0 ELSE 1 END FROM media m "+
+            "LEFT JOIN upload_priority p ON m.uri=p.uri AND m.project=p.project "+
+            "LEFT JOIN clip_queue q ON m.uri=q.uri AND m.project=q.project "+
+            "WHERE m.project=? AND m.state='pending' ORDER BY COALESCE(p.priority,0) DESC,m.uri",
+            arrayOf(project)
+        ).use { rows ->
+            while(rows.moveToNext())items.add(QueueEntry(rows.getString(0),rows.getInt(1)!=0,rows.getInt(2)!=0))
+        }
+        return items
+    }
     private fun addToQueue(db:SQLiteDatabase,uri:String,project:String) {
         db.execSQL("INSERT OR REPLACE INTO clip_queue(uri,project,priority,created) VALUES(?,?,0,?)",arrayOf(uri,project,System.currentTimeMillis()))
     }
     @Synchronized fun prioritize(uri:String,project:String) {
-        writableDatabase.execSQL("UPDATE clip_queue SET priority=(SELECT COALESCE(MAX(priority),0)+1 FROM clip_queue) WHERE uri=? AND project=?",arrayOf(uri,project))
+        prioritizeNext(uri,project)
     }
     @Synchronized fun removeFromQueue(uri:String,project:String) {
         writableDatabase.execSQL("DELETE FROM clip_queue WHERE uri=? AND project=?",arrayOf(uri,project))
+        clearPriority(uri,project)
         writableDatabase.execSQL("UPDATE media SET state='quarantine',upload_id=NULL,received=0 WHERE uri=? AND project=? AND state='pending'",arrayOf(uri,project))
     }
     @Synchronized fun stateFor(uri:String,project:String):String {
@@ -52,6 +98,7 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
             }
         }
         db.execSQL("DELETE FROM clip_queue WHERE uri=? AND project=?",arrayOf(uri,project))
+        clearPriority(uri,project)
     }
     @Synchronized fun queueUris(project:String):Set<String> {
         val result=mutableSetOf<String>()
@@ -106,6 +153,7 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
                 // A reused URI or modified file is not safe to automatically reassign.
                 if (size!=oldSize || modified!=oldModified) {
                     db.execSQL("UPDATE media SET size=?,modified=?,state='quarantine',upload_id=NULL,received=0 WHERE uri=?", arrayOf(size,modified,key))
+                    if(owner!=null) clearPriority(key,owner)
                     return "quarantine"
                 }
                 return if (owner==activeProject) state else "other"
@@ -161,6 +209,7 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
     }
     @Synchronized fun markDone(f: DocumentFile, project: String) {
         writableDatabase.execSQL("DELETE FROM clip_queue WHERE uri=? AND project=?",arrayOf(f.uri.toString(),project))
+        clearPriority(f.uri.toString(),project)
         writableDatabase.execSQL("UPDATE media SET state='done',upload_id=NULL,received=0 WHERE uri=? AND project=? AND state='pending'", arrayOf(f.uri.toString(),project))
     }
     @Synchronized fun getUploadId(f: DocumentFile, project: String): String? {
