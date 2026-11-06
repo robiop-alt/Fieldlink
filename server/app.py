@@ -50,6 +50,8 @@ def ensure_project_access_schema():
         columns={row['name'] for row in c.execute('PRAGMA table_info(projects)').fetchall()}
         if 'public_review' not in columns:
             c.execute('ALTER TABLE projects ADD COLUMN public_review INTEGER NOT NULL DEFAULT 0')
+        if 'allow_downloads' not in columns:
+            c.execute('ALTER TABLE projects ADD COLUMN allow_downloads INTEGER NOT NULL DEFAULT 1')
 ensure_project_access_schema()
 
 # Editable public website copy; changes are stored in the durable project database.
@@ -277,7 +279,7 @@ def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(defau
 def list_projects(request:Request, x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
     with db() as c:
-        rows=c.execute('SELECT p.id,p.name,p.slug,p.created,p.public_review,COUNT(cl.id) clips,COALESCE(SUM(CASE WHEN cl.status=\'ready\' THEN cl.size ELSE 0 END),0) storage_bytes FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
+        rows=c.execute('SELECT p.id,p.name,p.slug,p.created,p.public_review,p.allow_downloads,COUNT(cl.id) clips,COALESCE(SUM(CASE WHEN cl.status=\'ready\' THEN cl.size ELSE 0 END),0) storage_bytes FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
     return [dict(r) for r in rows]
 
 class ProjectUpdateIn(BaseModel):
@@ -293,6 +295,26 @@ def update_project(project_id:str, body:ProjectUpdateIn, request:Request, x_admi
         if not existing: raise HTTPException(404,'Project not found')
         c.execute('UPDATE projects SET name=? WHERE id=?',(name,project_id))
     return {'id':project_id,'name':name}
+
+class ProjectReviewSettingsIn(BaseModel):
+    allow_downloads: bool
+
+@app.patch('/api/admin/projects/{project_id}/review-settings')
+def update_project_review_settings(project_id:str, body:ProjectReviewSettingsIn,
+                                   request:Request, x_admin_key:str=Header(default='')):
+    require_admin(x_admin_key,request)
+    with db() as c:
+        exists=c.execute('SELECT 1 FROM projects WHERE id=?',(project_id,)).fetchone()
+        if not exists: raise HTTPException(404,'Project not found')
+        c.execute('UPDATE projects SET allow_downloads=? WHERE id=?',
+                  (int(body.allow_downloads),project_id))
+    return {'id':project_id,'allow_downloads':body.allow_downloads}
+
+@app.get('/api/review/{slug}/settings')
+def review_settings(slug:str, authorization:str=Header(default=''), session:str=''):
+    token=authorization.removeprefix('Bearer ').strip() or session
+    p=review_project(slug,token)
+    return {'allow_downloads':bool(p['allow_downloads'])}
 
 @app.delete('/api/admin/projects/{project_id}')
 def delete_project(project_id:str,request:Request,confirm_clips:bool=False,x_admin_key:str=Header(default='')):
@@ -634,6 +656,8 @@ def clip_file(slug:str,clip_id:str,request:Request,authorization:str=Header(defa
     token=authorization.removeprefix('Bearer ').strip() or session; p=review_project(slug,token)
     with db() as c: clip=c.execute('SELECT * FROM clips WHERE id=? AND project_id=? AND status="ready"',(clip_id,p['id'])).fetchone()
     if not clip: raise HTTPException(404,'Clip not found')
+    if download and not p['allow_downloads']:
+        raise HTTPException(403,'Downloads disabled for this project')
     if not download and r2_enabled():
         # Let R2 serve Safari's byte-range requests directly, rather than first
         # downloading the entire video to Render and proxying each range.
@@ -858,6 +882,8 @@ def duration(slug:str,clip_id:str,session:str=''):
 def download_selected(slug:str,ids:str='',session:str=''):
     import zipstream
     p=review_project(slug,session)
+    if not p['allow_downloads']:
+        raise HTTPException(403,'Downloads disabled for this project')
     wanted=list(dict.fromkeys(x for x in ids.split(',') if re.fullmatch(r'[0-9a-f]{32}',x)))
     if not wanted or len(wanted)>100: raise HTTPException(400,'Select 1-100 clips')
     with db() as c:
