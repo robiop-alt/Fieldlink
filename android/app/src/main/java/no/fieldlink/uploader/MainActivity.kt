@@ -17,6 +17,7 @@ import org.json.JSONObject
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import java.util.concurrent.TimeUnit
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -111,10 +112,10 @@ class MainActivity : Activity() {
             if(parent is ViewGroup) parent.removeView(config)
             AlertDialog.Builder(this).setTitle("Connection settings")
                 .setView(config).setPositiveButton("Save") { _,_ ->
-                    prefs.edit().putString("server",server.text.toString().trim())
+                    prefs.edit().putString("server",normalizedServerUrl(server.text.toString()))
                         .putString("project",project.text.toString().trim())
                         .putString("token",token.text.toString().trim()).apply()
-                    projectSummary.text="PROJECT  ·  ${project.text.toString().ifBlank { "NOT SET" }}"
+                    server.setText(normalizedServerUrl(server.text.toString()))
                 }.show()
         }
         root.addView(connectionButton)
@@ -182,7 +183,7 @@ class MainActivity : Activity() {
     }
 
     private fun showProjects() {
-        val base=server.text.toString().trim().trimEnd('/')
+        val base=normalizedServerUrl(server.text.toString())
         val device=token.text.toString().trim()
         if(!base.startsWith("https://") || device.isBlank()) {
             AlertDialog.Builder(this).setTitle("Connection required")
@@ -365,38 +366,40 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun normalizedServerUrl(raw:String):String {
+        val input=raw.trim().trimEnd('/')
+        return try {
+            val uri=Uri.parse(input)
+            if(uri.scheme!="https" || uri.host.isNullOrBlank()) input
+            else "https://${uri.authority}"
+        }catch(_:Exception) { input }
+    }
+
     private fun testConnection() {
-        val base=server.text.toString().trim().trimEnd('/')
-        val pid=project.text.toString().trim()
+        val base=normalizedServerUrl(server.text.toString())
         val device=token.text.toString().trim()
-        if(!base.startsWith("https://") || pid.isBlank() || device.isBlank()) {
+        if(!base.startsWith("https://") || device.isBlank()) {
             AlertDialog.Builder(this).setTitle("Connection details required")
-                .setMessage("Enter a valid HTTPS server URL, project ID and device token.")
+                .setMessage("Enter your HTTPS server URL and device token. Select a project separately under Projects.")
                 .setPositiveButton("OK",null).show()
             return
         }
         Thread {
             val result=try {
-                val request=Request.Builder()
-                    .url("$base/api/device/projects/${Uri.encode(pid)}/share")
+                val request=Request.Builder().url("$base/api/device/projects")
                     .header("X-Device-Token",device).build()
-                OkHttpClient().newCall(request).execute().use { response ->
-                    if(!response.isSuccessful) {
-                        when(response.code) {
-                            401,403 -> "Device token rejected. Check your token."
-                            404 -> "Project not found. Check the project ID."
-                            else -> "Server returned HTTP ${response.code}. Please retry."
-                        }
-                    } else {
-                        val data=JSONObject(response.body?.string() ?: "{}")
-                        "Connected to project."
+                OkHttpClient.Builder().connectTimeout(45,TimeUnit.SECONDS)
+                    .readTimeout(45,TimeUnit.SECONDS).build().newCall(request).execute().use { response ->
+                    when(response.code) {
+                        401,403 -> "Device token rejected. Check your token."
+                        in 200..299 -> "Connected successfully. Open Projects to select or create a project."
+                        else -> "Server returned HTTP ${response.code}. Please retry."
                     }
                 }
-            }catch(e:Exception){"Connection failed: ${e.localizedMessage ?: "Check network and server URL."}"}
+            }catch(e:Exception) { "Connection failed: ${e.localizedMessage ?: "Check network and server URL."}" }
             runOnUiThread {
                 AlertDialog.Builder(this).setTitle("Connection test")
-                    .setMessage(result)
-                    .setPositiveButton("OK",null).show()
+                    .setMessage(result).setPositiveButton("OK",null).show()
             }
         }.start()
     }
