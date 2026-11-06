@@ -351,6 +351,20 @@ class MainActivity : Activity() {
             "Off (default): send original DJI cache. On: create a smaller 480p copy for new clips, keeping the original untouched. Existing uploads keep their original quality.",
             11f,muted
         ))
+        val lowBattery=Switch(this).apply {
+            text="Low Battery Protection · 20%"
+            textSize=13f
+            setTextColor(Color.WHITE)
+            isChecked=prefs.getBoolean("low_battery_protection",true)
+            setOnCheckedChangeListener { _,enabled ->
+                prefs.edit().putBoolean("low_battery_protection",enabled).apply()
+            }
+        }
+        settings.addView(lowBattery)
+        settings.addView(text(
+            "On (default): pause uploading below 20% controller battery. Resume automatically at 25%. Queued clips and upload progress are preserved.",
+            11f,muted
+        ))
         val startOnBoot=Switch(this).apply {
             text="Start on boot"
             setTextColor(Color.WHITE)
