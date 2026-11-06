@@ -58,3 +58,16 @@ def upload_clip_if_enabled(local_path, clip_id):
         return False
     upload_file(local_path, f"clips/{clip_id}")
     return True
+
+def presigned_clip_url(clip_id, expires_seconds=900):
+    """Temporary read-only R2 URL. Only call after project review authorization."""
+    return r2_client().generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": os.environ.get("R2_BUCKET", "offset-rushes"),
+            "Key": f"clips/{clip_id}",
+            "ResponseContentType": "video/mp4",
+            "ResponseContentDisposition": "inline",
+        },
+        ExpiresIn=expires_seconds,
+    )
