@@ -227,8 +227,10 @@ def session_token(project_id, expiry):
     # Bind review sessions to the project's current access generation.
     # The empty nonce preserves old sessions on untouched projects.
     with db() as c:
-        row=c.execute('SELECT access_nonce FROM projects WHERE id=?',(project_id,)).fetchone()
+        row=c.execute('SELECT access_nonce,public_review,pin_expires_at FROM projects WHERE id=?',(project_id,)).fetchone()
     if not row: raise HTTPException(404,'Project not found')
+    if not row['public_review'] and row['pin_expires_at'] and row['pin_expires_at']<=int(time.time()):
+        raise HTTPException(403,'Project PIN expired')
     payload=f'{project_id}:{expiry}'
     signing=payload+row['access_nonce']
     sig=hmac.new(SECRET.encode(),signing.encode(),hashlib.sha256).hexdigest()
@@ -239,8 +241,9 @@ def check_session(token, project_id):
         pid, exp, sig=token.split(':')
         if pid!=project_id or int(exp)<=int(time.time()): return False
         with db() as c:
-            row=c.execute('SELECT access_nonce FROM projects WHERE id=?',(project_id,)).fetchone()
+            row=c.execute('SELECT access_nonce,public_review,pin_expires_at FROM projects WHERE id=?',(project_id,)).fetchone()
         if not row: return False
+        if not row['public_review'] and row['pin_expires_at'] and row['pin_expires_at']<=int(time.time()): return False
         signing=f'{pid}:{exp}'+row['access_nonce']
         expected=hmac.new(SECRET.encode(),signing.encode(),hashlib.sha256).hexdigest()
         return hmac.compare_digest(sig,expected)
@@ -308,7 +311,8 @@ def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(defau
         else: raise HTTPException(503,'Could not allocate a unique project ID')
     slug=secrets.token_urlsafe(8).replace('-','').replace('_','')
     pin=f'{secrets.randbelow(1_000_000):06d}'
-    with db() as c: c.execute('INSERT INTO projects(id,name,slug,pin_hash,created,public_review) VALUES(?,?,?,?,?,?)',(pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review)))
+    expires=int(time.time())+14*86400 if not body.public_review else 0
+    with db() as c: c.execute('INSERT INTO projects(id,name,slug,pin_hash,created,public_review,pin_secret,pin_days,pin_expires_at) VALUES(?,?,?,?,?,?,?,?,?)',(pid,body.name,slug,pin_digest(pin),int(time.time()),int(body.public_review),protect_pin(pin) if not body.public_review else '',14,expires))
     return {'id':pid,'name':body.name,'slug':slug,'url_path':f'/r/{slug}','pin':None if body.public_review else pin,'public_review':body.public_review}
 
 @app.get('/api/admin/projects')
@@ -566,7 +570,10 @@ def public_unlock(slug:str):
 @app.post('/api/review/{slug}/unlock')
 def unlock(slug:str, body:PinIn):
     with db() as c: p=c.execute('SELECT * FROM projects WHERE slug=?',(slug,)).fetchone()
-    if not p or not hmac.compare_digest(p['pin_hash'],pin_digest(body.pin)): raise HTTPException(403,'Wrong link or PIN')
+    if not p or p['public_review'] or not hmac.compare_digest(p['pin_hash'],pin_digest(body.pin)):
+        raise HTTPException(403,'Wrong link or PIN')
+    if p['pin_expires_at'] and p['pin_expires_at']<=int(time.time()):
+        raise HTTPException(403,'Project PIN expired; contact the administrator')
     expiry=int(time.time())+8*3600
     return {'token':session_token(p['id'],expiry),'expires':expiry}
 
