@@ -69,8 +69,11 @@ internal class SdRushesMirror(private val context: Context) {
                 prefs.edit().putInt(yearKey, it).commit()
             }
         val projectFolder = safeProjectFolder(year, projectName)
-        val offsetDir = root.findFile("offset") ?: root.createDirectory("offset")
-            ?: throw IOException("Cannot create offset folder on SD card")
+        // Android 11+ may block choosing the SD volume root. In that case
+        // select/create the offset folder itself in the Android picker.
+        val offsetDir = if(root.name.equals("offset", ignoreCase=true)) root
+            else root.findFile("offset") ?: root.createDirectory("offset")
+                ?: throw IOException("Cannot create offset folder on SD card")
         val destination = offsetDir.findFile(projectFolder) ?: offsetDir.createDirectory(projectFolder)
             ?: throw IOException("Cannot create project folder on SD card")
         if (!destination.isDirectory || !destination.canWrite()) throw IOException("SD card is not writable")

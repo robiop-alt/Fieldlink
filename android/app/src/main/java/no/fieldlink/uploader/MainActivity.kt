@@ -373,7 +373,7 @@ class MainActivity : Activity() {
         sdCopySwitch=sdCopy
         settings.addView(sdCopy)
         settings.addView(text(
-            "Off by default. When enabled, copy original rushes to SD card / OFFSET / year_project name. Files are verified and never removed from DJI cache. Works without Wi-Fi.",
+            "Off by default. Select the offset folder on your SD card (create it in the picker if needed). Original clips are verified and copied to offset/year_project name without deleting DJI cache files. Works without Wi-Fi.",
             11f,muted
         ))
         settings.addView(button("Choose SD card / change folder") { chooseSdCard() })
@@ -1551,7 +1551,7 @@ class MainActivity : Activity() {
                     val granted=data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or
                         Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                     val needed=Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                    if(granted!=needed) throw SecurityException("Select a writable SD card folder")
+                    if(granted!=needed) throw SecurityException("Select the writable offset folder on your SD card")
                     contentResolver.takePersistableUriPermission(uri,needed)
                     val root=DocumentFile.fromTreeUri(this,uri)
                     if(root?.isDirectory!=true || !root.canWrite()) throw SecurityException("SD root is not writable")
@@ -1559,13 +1559,13 @@ class MainActivity : Activity() {
                         .putBoolean("sd_copy_enabled",true).commit()
                     sdCopySwitch?.isChecked=true
                     AlertDialog.Builder(this).setTitle("SD backup enabled")
-                        .setMessage("OFFSET will copy original rushes to OFFSET/year_project name on the selected SD card. The source files will remain untouched.")
+                        .setMessage("OFFSET will copy original rushes to offset/year_project name on the selected SD card. The source files will remain untouched.")
                         .setPositiveButton("OK",null).show()
                 } catch(e:Exception) {
                     sdCopySwitch?.isChecked=false
                     prefs.edit().putBoolean("sd_copy_enabled",false).apply()
                     showOffsetError("SD card access needed",
-                        "Choose the SD card folder and grant both read and write access.",
+                        "Choose the offset folder on the SD card (create it in the file picker if needed) and grant both read and write access.",
                         e.localizedMessage,"Choose SD card"){ chooseSdCard() }
                 }
             }
