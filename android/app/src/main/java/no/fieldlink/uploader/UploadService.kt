@@ -128,7 +128,8 @@ class UploadService : Service() {
                     publishIncoming(ledger.manualPending(sessionProject).mapNotNull { uri ->
                         try { DocumentFile.fromSingleUri(this,Uri.parse(uri)) }catch(_:Exception){null}
                     }.filter { it.isFile && it.length()>0L })
-                    status("Manual mode: waiting for selected clips")
+                    if(lowBatteryPause()) lowBatteryStatus()
+                    else status("Manual mode: waiting for selected clips")
                     Thread.sleep(12000)
                     continue
                 }
