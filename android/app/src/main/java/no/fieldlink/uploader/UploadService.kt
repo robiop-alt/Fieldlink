@@ -5,6 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -37,6 +39,7 @@ class UploadService : Service() {
     @Volatile private var loopStarted = false
     private data class FileState(val size: Long, val modified: Long, val stableScans: Int)
     private val seen = mutableMapOf<String, FileState>()
+    private var batteryPaused=false
 
     override fun onCreate() {
         super.onCreate()
@@ -85,6 +88,11 @@ class UploadService : Service() {
         catch (e: Exception) { status("Kan ikke sikre cache: ${e.message}"); stopSelf(); return }
         while (running) {
             try {
+                if (lowBatteryPause()) {
+                    lowBatteryStatus()
+                    Thread.sleep(12000)
+                    continue
+                }
                 if (!hasNetwork()) {
                     status("Waiting for network · uploads paused")
                     Thread.sleep(12000)
@@ -102,7 +110,10 @@ class UploadService : Service() {
                 // Auto mode will publish the complete pending list further below.
                 if(prefs.getString("upload_mode","auto")=="manual") publishIncoming(manuallyQueued)
                 for(uriString in ledger.manualPending(sessionProject)) {
-                    if(!running) break
+                    if(!running || lowBatteryPause()) {
+                        if(running) lowBatteryStatus()
+                        break
+                    }
                     try {
                         val file=DocumentFile.fromSingleUri(this,Uri.parse(uriString)) ?: continue
                         if(!file.isFile || file.length()<=0L) continue
@@ -136,7 +147,10 @@ class UploadService : Service() {
                 publishIncoming(eligible + manuallyQueued.filter { doc -> ledger.stateFor(doc.uri.toString(),sessionProject)=="pending" })
                 var uploaded = 0
                 for (f in ordered) {
-                    if (!running) break
+                    if (!running || lowBatteryPause()) {
+                        if(running) lowBatteryStatus()
+                        break
+                    }
                     val key = f.uri.toString(); val stamp = f.lastModified(); val size = f.length()
                     val old = seen[key]
                     val binding=ledger.observe(f,sessionProject,true)
@@ -159,10 +173,38 @@ class UploadService : Service() {
                         break // Do not let newer clips overtake a failed upload.
                     }
                 }
-                status(if (uploaded > 0) "$uploaded klipp sendt · overvåker nye filer" else "Overvåker · ${ledger.countQuarantined()} gamle/ukjente filer blokkert")
+                if(lowBatteryPause()) lowBatteryStatus()
+                else status(if (uploaded > 0) "$uploaded klipp sendt · overvåker nye filer" else "Overvåker · ${ledger.countQuarantined()} gamle/ukjente filer blokkert")
             } catch (e: Exception) { status("Venter på nett / tilgang · ${e.message?.take(70) ?: "feil"}") }
             try { Thread.sleep(12000) } catch (_: InterruptedException) { }
         }
+    }
+
+    /**
+     * Pause new upload work below 20%. Resume at 25% to prevent repeatedly
+     * starting and stopping near the threshold. Keep all upload IDs and bytes.
+     * An unavailable battery reading must not falsely indicate a low battery.
+     */
+    private fun lowBatteryPause():Boolean {
+        if(!prefs.getBoolean("low_battery_protection",true)) {
+            batteryPaused=false
+            return false
+        }
+        val battery=registerReceiver(null,IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level=battery?.getIntExtra(BatteryManager.EXTRA_LEVEL,-1) ?: -1
+        val scale=battery?.getIntExtra(BatteryManager.EXTRA_SCALE,-1) ?: -1
+        if(level<0 || scale<=0) return batteryPaused
+        val percent=(level*100)/scale
+        if(batteryPaused) {
+            if(percent>=25) batteryPaused=false
+        }else if(percent<20) {
+            batteryPaused=true
+        }
+        return batteryPaused
+    }
+
+    private fun lowBatteryStatus() {
+        status("Low battery · uploads paused below 20% · resumes at 25%")
     }
 
     private fun hasNetwork(): Boolean {
@@ -253,6 +295,7 @@ class UploadService : Service() {
 
     @androidx.media3.common.util.UnstableApi
     private fun upload(doc: DocumentFile, size: Long): Boolean {
+        if(lowBatteryPause()) { lowBatteryStatus(); return false }
         val base = sessionBase
         val project = sessionProject
         val token = sessionToken
@@ -327,6 +370,8 @@ class UploadService : Service() {
                 if(n<=0) { if(input.read()==-1) return false else skipped++ } else skipped+=n
             }
             while(offset<uploadSize && running) {
+                // Finish the current HTTP chunk, then pause before the next one.
+                if(lowBatteryPause()) { lowBatteryStatus(); return false }
                 val len=minOf(chunkSize.toLong(),uploadSize-offset).toInt()
                 val temp=File(cacheDir,"fl_${uploadId}_$offset.tmp")
                 try {
@@ -357,6 +402,7 @@ class UploadService : Service() {
             }
         } ?: return false
         if(offset!=uploadSize) return false
+        if(lowBatteryPause()) { lowBatteryStatus(); return false }
         val localDigest=sha256(sourceUri) ?: return false
         val complete=execute(Request.Builder().url("$base/api/upload/$uploadId/complete")
             .header("X-Device-Token",token).header("X-Content-SHA256",localDigest)
