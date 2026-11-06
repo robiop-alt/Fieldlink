@@ -457,7 +457,7 @@ def clip_file(slug:str,clip_id:str,request:Request,authorization:str=Header(defa
     if range_header:
         # Safari may request suffix ranges (bytes=-N) to read MP4 metadata
         # from the end of the file. A missing start is NOT byte zero.
-        m=re.fullmatch(r'bytes=(\\d*)-(\\d*)',range_header.strip())
+        m=re.fullmatch(r'bytes=(\d*)-(\d*)',range_header.strip())
         if not m or (not m.group(1) and not m.group(2)):
             return Response(status_code=416,headers={**headers,'Content-Range':f'bytes */{size}'})
         if m.group(1):
