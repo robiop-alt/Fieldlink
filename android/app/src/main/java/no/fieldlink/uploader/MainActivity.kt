@@ -263,7 +263,7 @@ class MainActivity : Activity() {
         root.addView(header)
         server=field("HTTPS server",prefs.getString("server","")?:"")
         project=field("Project ID",prefs.getString("project","")?:"")
-        token=field("Device token",prefs.getString("token","")?:"",true)
+        token=field("Device token",prefs.getString("token",null) ?: BuildConfig.DEFAULT_DEVICE_TOKEN,true)
         val config=card("CONNECTION")
         config.addView(server)
         config.addView(token)
