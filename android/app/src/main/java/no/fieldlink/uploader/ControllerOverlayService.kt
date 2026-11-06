@@ -11,6 +11,8 @@ import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 
 /**
@@ -33,10 +35,33 @@ class ControllerOverlayService : Service() {
         }
     }
     private var overlay:OverlayStatus?=null
+    private val handler=Handler(Looper.getMainLooper())
+    private var latestStatus="Ready"
+    private val visibilityCheck=object:Runnable {
+        override fun run() {
+            syncVisibility()
+            handler.postDelayed(this,1500)
+        }
+    }
+    private fun syncVisibility() {
+        val allowed=prefs.getBoolean("overlay",true) &&
+            (Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this))
+        val onlyPilot=prefs.getBoolean("overlay_pilot_only",false)
+        val shouldShow=allowed && (!onlyPilot || PilotForeground.isPilotVisible(this))
+        if(shouldShow && overlay==null) {
+            try {
+                overlay=OverlayStatus(this).also { it.show(); it.update(latestStatus) }
+            }catch(_:Exception) { overlay=null }
+        } else if(!shouldShow && overlay!=null) {
+            overlay?.hide()
+            overlay=null
+        }
+    }
     private val updates=object:BroadcastReceiver() {
         override fun onReceive(context:Context?,intent:Intent?) {
             if(intent?.action==ACTION_UPDATE)
-                overlay?.update(intent.getStringExtra(EXTRA_STATUS) ?: "Ready")
+                latestStatus=intent.getStringExtra(EXTRA_STATUS) ?: "Ready"
+                overlay?.update(latestStatus)
         }
     }
     private val prefs by lazy {getSharedPreferences("fieldlink",MODE_PRIVATE)}
@@ -60,6 +85,7 @@ class ControllerOverlayService : Service() {
         val filter=IntentFilter(ACTION_UPDATE)
         if(Build.VERSION.SDK_INT>=33) registerReceiver(updates,filter,Context.RECEIVER_NOT_EXPORTED)
         else registerReceiver(updates,filter)
+        handler.post(visibilityCheck)
     }
     override fun onStartCommand(intent:Intent?, flags:Int, startId:Int):Int {
         if(!prefs.getBoolean("overlay",true) || Build.VERSION.SDK_INT<23 ||
@@ -67,19 +93,14 @@ class ControllerOverlayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if(overlay==null) {
-            overlay=OverlayStatus(this)
-            try { overlay?.show() }catch(_:Exception) {
-                overlay=null
-                stopSelf()
-                return START_NOT_STICKY
-            }
+        if(intent?.action==ACTION_UPDATE) {
+            latestStatus=intent.getStringExtra(EXTRA_STATUS) ?: "Ready"
         }
-        if(intent?.action==ACTION_UPDATE)
-            overlay?.update(intent.getStringExtra(EXTRA_STATUS) ?: "Ready")
+        syncVisibility()
         return START_STICKY
     }
     override fun onDestroy() {
+        handler.removeCallbacks(visibilityCheck)
         try {unregisterReceiver(updates)}catch(_:Exception){}
         overlay?.hide()
         overlay=null
