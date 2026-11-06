@@ -220,6 +220,10 @@ class UploadService : Service() {
                             ledger.logEvent(sessionProject,f.name ?: "clip.mp4","done",
                                 "Upload verified · ${size/1048576} MB")
                             uploaded++
+                            // Re-evaluate the urgent queue after each completed
+                            // clip. A priority chosen while this clip was active
+                            // must be first on the next pass.
+                            break
                         }else{
                             ledger.logEvent(sessionProject,f.name ?: "clip.mp4","waiting","Waiting for safe retry")
                             recoveryFailure()
