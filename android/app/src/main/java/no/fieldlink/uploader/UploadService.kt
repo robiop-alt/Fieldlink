@@ -94,6 +94,11 @@ class UploadService : Service() {
                         }
                     }catch(e:Exception) { status("Manual upload waiting: ${e.message?.take(55)}") }
                 }
+                if (prefs.getString("upload_mode","auto")=="manual") {
+                    status("Manual mode: waiting for selected clips")
+                    Thread.sleep(12000)
+                    continue
+                }
                 val candidates = mutableListOf<DocumentFile>()
                 collect(root, candidates, 0)
                 // DJI filenames encode reel and clip sequence. Always process oldest first;
