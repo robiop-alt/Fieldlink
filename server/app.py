@@ -412,19 +412,20 @@ def device_delete_uploaded_clip(project_id:str, clip_id:str, x_device_token:str=
 
 @app.get('/api/device/projects/{project_id}/share')
 def device_project_share(project_id:str, request:Request, pinless:bool=False, x_device_token:str=Header(default='')):
-    """Generate a standard PIN link or an expiring bearer link for the device operator."""
+    """Canonical project QR follows the project's public_review setting.
+
+    The URL never contains an expiring access token. A public project is
+    unlocked by the existing /public-unlock endpoint; private projects ask
+    for their configured PIN. The legacy pinless query has no effect.
+    """
     require_device(x_device_token)
     with db() as c:
-        p=c.execute('SELECT id,name,slug FROM projects WHERE id=?',(project_id,)).fetchone()
+        p=c.execute('SELECT id,name,slug,public_review FROM projects WHERE id=?',(project_id,)).fetchone()
     if not p: raise HTTPException(404,'Project not found')
     base=str(request.base_url).rstrip('/')
     url=f"{base}/r/{p['slug']}"
-    if pinless:
-        expiry=int(time.time())+24*3600
-        share=signed_share_token(p['id'],expiry)
-        # Fragment is not sent to the web server or included in HTTP referrers.
-        url+=f"#share={share}"
-    return {'name':p['name'],'url':url,'pinless':pinless}
+    is_public=bool(p['public_review'])
+    return {'name':p['name'],'url':url,'pinless':is_public,'public_review':is_public}
 
 class ShareIn(BaseModel):
     share_token: str
