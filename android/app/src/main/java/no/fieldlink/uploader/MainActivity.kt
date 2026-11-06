@@ -234,10 +234,16 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
-        // Seed the personal-controller default once, preserving user overrides.
-        if (!prefs.contains("server")) {
-            prefs.edit().putString("server","https://fieldlink-xrd1.onrender.com").apply()
+        // Seed defaults before creating the fields or starting the uploader.
+        // Existing controller-specific overrides always take precedence.
+        val initial=prefs.edit()
+        if(!prefs.contains("server")) {
+            initial.putString("server","https://fieldlink-xrd1.onrender.com")
         }
+        if(!prefs.contains("token") && BuildConfig.DEFAULT_DEVICE_TOKEN.isNotBlank()) {
+            initial.putString("token",BuildConfig.DEFAULT_DEVICE_TOKEN)
+        }
+        initial.apply()
         window.statusBarColor=bg;window.navigationBarColor=bg
         val root=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
@@ -510,7 +516,11 @@ class MainActivity : Activity() {
         val change=project.text.toString().trim()!=id
         if(change) stopService(Intent(this,UploadService::class.java))
         project.setText(id)
-        prefs.edit().putString("project",id).putString("project_name",name).apply()
+        // Project selection is the only routine setup step. Persist the
+        // already-prefilled connection before the automatic service restart.
+        prefs.edit().putString("server",normalizedServerUrl(server.text.toString()))
+            .putString("token",token.text.toString().trim())
+            .putString("project",id).putString("project_name",name).commit()
         projectSummary.text="$name  ·  $id"
         prefetchReviewQr()
         showMediaLibraryPage()
