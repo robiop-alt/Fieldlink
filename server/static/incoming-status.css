@@ -13,3 +13,7 @@
 .offset-incoming-track{height:4px;background:#455354;border-radius:99px;overflow:hidden}
 .offset-incoming-track div{height:100%;background:#b7f34d;border-radius:99px;transition:width .35s ease}
 @media(max-width:650px){.offset-incoming-head{align-items:flex-start;flex-direction:column;gap:4px}}
+
+.offset-incoming-art{position:relative;overflow:hidden;background:#121719}
+.offset-incoming-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.offset-incoming-art:has(img:not([style*="display: none"])) span{display:none}
