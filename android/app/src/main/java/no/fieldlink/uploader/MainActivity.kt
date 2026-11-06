@@ -236,6 +236,13 @@ class MainActivity : Activity() {
         root.addView(footer)
         root.addView(text("OFFSET  /  CONTROLLER",10f,muted))
         setContentView(ScrollView(this).apply { addView(root) })
+        if(prefs.getBoolean("boot_resume_pending",false)) {
+            prefs.edit().putBoolean("boot_resume_pending",false).apply()
+            AlertDialog.Builder(this).setTitle("Resume OFFSET uploads?")
+                .setMessage("The controller has restarted. Resume monitoring the selected project?")
+                .setPositiveButton("Resume") { _,_ -> saveAndStart() }
+                .setNegativeButton("Not now",null).show()
+        }
     }
     private fun showConnectionSettings() {
         val body=LinearLayout(this).apply {
