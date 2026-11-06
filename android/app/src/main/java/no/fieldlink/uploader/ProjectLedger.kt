@@ -6,13 +6,34 @@ import android.database.sqlite.SQLiteOpenHelper
 import androidx.documentfile.provider.DocumentFile
 
 /** Persistent fail-closed binding. Never reassign an observed file to another customer. */
-class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", null, 2) {
+class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", null, 3) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE media (uri TEXT PRIMARY KEY, size INTEGER NOT NULL, modified INTEGER NOT NULL, project TEXT, state TEXT NOT NULL, upload_id TEXT, received INTEGER NOT NULL DEFAULT 0)")
         createHistory(db)
+        createQueue(db)
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if(oldVersion<2) createHistory(db)
+        if(oldVersion<3) createQueue(db)
+    }
+
+    private fun createQueue(db:SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS clip_queue (uri TEXT PRIMARY KEY, project TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL)")
+    }
+    private fun addToQueue(db:SQLiteDatabase,uri:String,project:String) {
+        db.execSQL("INSERT OR REPLACE INTO clip_queue(uri,project,priority,created) VALUES(?,?,0,?)",arrayOf(uri,project,System.currentTimeMillis()))
+    }
+    @Synchronized fun prioritize(uri:String,project:String) {
+        writableDatabase.execSQL("UPDATE clip_queue SET priority=(SELECT COALESCE(MAX(priority),0)+1 FROM clip_queue) WHERE uri=? AND project=?",arrayOf(uri,project))
+    }
+    @Synchronized fun removeFromQueue(uri:String,project:String) {
+        writableDatabase.execSQL("DELETE FROM clip_queue WHERE uri=? AND project=?",arrayOf(uri,project))
+        writableDatabase.execSQL("UPDATE media SET state='quarantine',upload_id=NULL,received=0 WHERE uri=? AND project=? AND state='pending'",arrayOf(uri,project))
+    }
+    @Synchronized fun queueUris(project:String):Set<String> {
+        val result=mutableSetOf<String>()
+        readableDatabase.rawQuery("SELECT uri FROM clip_queue WHERE project=?",arrayOf(project)).use { rows -> while(rows.moveToNext()) result.add(rows.getString(0)) }
+        return result
     }
     private fun createHistory(db:SQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS upload_history (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, filename TEXT NOT NULL, status TEXT NOT NULL, detail TEXT, created INTEGER NOT NULL)")
@@ -87,21 +108,24 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
                 if(state=="pending" && owner==project) return "Already queued"
                 db.execSQL("UPDATE media SET project=?,state='pending',size=?,modified=?,upload_id=NULL,received=0 WHERE uri=?",
                     arrayOf(project,f.length(),f.lastModified(),key))
+                addToQueue(db,key,project)
                 return "Queued"
             }
         }
         db.execSQL("INSERT INTO media(uri,size,modified,project,state) VALUES(?,?,?,?,'pending')",
             arrayOf(key,f.length(),f.lastModified(),project))
+        addToQueue(db,key,project)
         return "Queued"
     }
     @Synchronized fun manualPending(project:String):List<String> {
         val result=mutableListOf<String>()
-        readableDatabase.rawQuery("SELECT uri FROM media WHERE project=? AND state='pending'",arrayOf(project)).use { rows ->
+        readableDatabase.rawQuery("SELECT m.uri FROM media m JOIN clip_queue q ON q.uri=m.uri AND q.project=m.project WHERE m.project=? AND m.state='pending' ORDER BY q.priority DESC,q.created ASC",arrayOf(project)).use { rows ->
             while(rows.moveToNext()) result.add(rows.getString(0))
         }
         return result
     }
     @Synchronized fun markDone(f: DocumentFile, project: String) {
+        writableDatabase.execSQL("DELETE FROM clip_queue WHERE uri=? AND project=?",arrayOf(f.uri.toString(),project))
         writableDatabase.execSQL("UPDATE media SET state='done',upload_id=NULL,received=0 WHERE uri=? AND project=? AND state='pending'", arrayOf(f.uri.toString(),project))
     }
     @Synchronized fun getUploadId(f: DocumentFile, project: String): String? {
