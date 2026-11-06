@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.IBinder
 import android.content.Context
@@ -83,6 +85,11 @@ class UploadService : Service() {
         catch (e: Exception) { status("Kan ikke sikre cache: ${e.message}"); stopSelf(); return }
         while (running) {
             try {
+                if (!hasNetwork()) {
+                    status("Waiting for network · uploads paused")
+                    Thread.sleep(12000)
+                    continue
+                }
                 if (prefs.getString("project", "") != sessionProject) {
                     status("Prosjekt endret: stopp og start OFFSET på nytt"); stopSelf(); return
                 }
@@ -156,6 +163,13 @@ class UploadService : Service() {
             } catch (e: Exception) { status("Venter på nett / tilgang · ${e.message?.take(70) ?: "feil"}") }
             try { Thread.sleep(12000) } catch (_: InterruptedException) { }
         }
+    }
+
+    private fun hasNetwork(): Boolean {
+        val manager=getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val active=manager.activeNetwork ?: return false
+        val capabilities=manager.getNetworkCapabilities(active) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     private val publishedPreviews=mutableSetOf<String>()
@@ -250,7 +264,15 @@ class UploadService : Service() {
             ledger.setUploadId(doc,project,uploadId)
         }
         val state = execute(Request.Builder().url("$base/api/upload/$uploadId").header("X-Device-Token", token).get().build()) ?: return false
-        var offset = JSONObject(state).getLong("received")
+        val initialState=JSONObject(state)
+        if (initialState.optString("status")=="ready") {
+            return verifyCompleted(doc,size,initialState)
+        }
+        var offset = initialState.getLong("received")
+        if (offset<0 || offset>size || initialState.optLong("total",size)!=size) {
+            status("Upload state mismatch · manual check needed")
+            return false
+        }
         val chunkSize = 4 * 1024 * 1024
         contentResolver.openInputStream(doc.uri)?.use { input ->
             var skipped = 0L
@@ -279,15 +301,45 @@ class UploadService : Service() {
             }
         } ?: return false
         if (offset != size) return false
-        val complete = execute(Request.Builder().url("$base/api/upload/$uploadId/complete").header("X-Device-Token", token).post("".toRequestBody(null)).build()) ?: return false
-        ledger.clearUploadId(doc,project)
+        val localDigest=sha256(doc) ?: return false
+        val complete = execute(Request.Builder().url("$base/api/upload/$uploadId/complete")
+            .header("X-Device-Token",token).header("X-Content-SHA256",localDigest)
+            .post("".toRequestBody(null)).build()) ?: return false
         val result=JSONObject(complete)
-        if(result.optString("status")=="ready") {
+        if(result.optString("status")!="ready" || result.optLong("size",-1)!=size ||
+            !result.optString("sha256").equals(localDigest,true)) {
+            status("Integrity check failed · keeping upload queued")
+            return false
+        }
+        ledger.clearUploadId(doc,project)
+        val clipId=result.optString("clip_id")
+        if(clipId.isNotBlank()) sendDjiThumbnail(doc,clipId)
+        return true
+    }
+
+    private fun sha256(doc:DocumentFile):String? = try {
+        val hash=MessageDigest.getInstance("SHA-256")
+        contentResolver.openInputStream(doc.uri)?.use { input ->
+            val bytes=ByteArray(1024*1024)
+            while(true) {
+                val n=input.read(bytes)
+                if(n<0) break
+                if(n>0) hash.update(bytes,0,n)
+            }
+            hash.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        }
+    }catch(_:Exception) { null }
+
+    private fun verifyCompleted(doc:DocumentFile,size:Long,result:JSONObject):Boolean {
+        val localDigest=sha256(doc) ?: return false
+        val safe=result.optString("status")=="ready" && result.optLong("total",-1)==size &&
+            result.optString("sha256").equals(localDigest,true)
+        if(safe) {
+            ledger.clearUploadId(doc,sessionProject)
             val clipId=result.optString("clip_id")
             if(clipId.isNotBlank()) sendDjiThumbnail(doc,clipId)
-            return true
-        }
-        return false
+        } else status("Integrity check failed · keeping upload queued")
+        return safe
     }
 
     private fun sendDjiThumbnail(video: DocumentFile, clipId: String) {
