@@ -17,6 +17,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import org.json.JSONArray
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -87,6 +88,10 @@ class UploadService : Service() {
                 }
                 // Explicitly queued older files may be outside the monitored DJI folder.
                 // Only the operator can bind them to the selected project.
+                val manuallyQueued=ledger.manualPending(sessionProject).mapNotNull { uri ->
+                    try { DocumentFile.fromSingleUri(this,Uri.parse(uri)) }catch(_:Exception) { null }
+                }.filter { it.isFile && it.length()>0L }
+                publishIncoming(manuallyQueued)
                 for(uriString in ledger.manualPending(sessionProject)) {
                     if(!running) break
                     try {
@@ -113,6 +118,10 @@ class UploadService : Service() {
                         .thenBy { it.lastModified() }
                         .thenBy { it.name ?: "" }
                 )
+                val eligible=ordered.filter { file ->
+                    try { ledger.observe(file,sessionProject,true)=="pending" }catch(_:Exception) { false }
+                }
+                publishIncoming(eligible + manuallyQueued.filter { doc -> ledger.stateFor(doc.uri.toString(),sessionProject)=="pending" })
                 var uploaded = 0
                 for (f in ordered) {
                     if (!running) break
@@ -142,6 +151,30 @@ class UploadService : Service() {
             } catch (e: Exception) { status("Venter på nett / tilgang · ${e.message?.take(70) ?: "feil"}") }
             try { Thread.sleep(12000) } catch (_: InterruptedException) { }
         }
+    }
+
+    private val manifestHttp=OkHttpClient.Builder()
+        .connectTimeout(8,TimeUnit.SECONDS).readTimeout(8,TimeUnit.SECONDS)
+        .writeTimeout(8,TimeUnit.SECONDS).build()
+
+    private fun publishIncoming(files:List<DocumentFile>) {
+        if(!sessionBase.startsWith("https://") || sessionProject.isBlank()) return
+        try {
+            val names=HashSet<String>()
+            val clips=JSONArray()
+            for(doc in files) {
+                val name=doc.name ?: continue
+                if(!name.endsWith(".mp4",true) || !names.add(name)) continue
+                clips.put(JSONObject().put("filename",name).put("size",doc.length()))
+                if(clips.length()>=500) break
+            }
+            val request=Request.Builder()
+                .url("$sessionBase/api/device/projects/$sessionProject/incoming")
+                .header("X-Device-Token",sessionToken)
+                .put(JSONObject().put("clips",clips).toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            manifestHttp.newCall(request).execute().use { /* best-effort status; do not stop uploads */ }
+        }catch(_:Exception) { }
     }
 
     private fun djiSequenceKey(filename:String):String {
