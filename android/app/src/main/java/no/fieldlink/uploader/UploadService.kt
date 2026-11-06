@@ -270,6 +270,17 @@ class UploadService : Service() {
             val prepared=if(uploadId!=null) {
                 if(lowFile.isFile && lowFile.length()>0) lowFile else null
             } else {
+                // Low-data transcoding must not compete with DJI Pilot when
+                // the controller is hot or almost out of working space.
+                val power=getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                val hot=Build.VERSION.SDK_INT>=29 &&
+                    power.currentThermalStatus>=android.os.PowerManager.THERMAL_STATUS_SEVERE
+                val free=filesDir.usableSpace
+                if(hot || free < size.coerceAtMost(512L*1024*1024)) {
+                    status(if(hot) "Waiting for controller to cool · Low Data Mode"
+                        else "Low Data Mode waiting for storage space")
+                    return false
+                }
                 status("Compressing $originalName · Low Data Mode")
                 compressor.compress(doc.uri,lowFile,size)
             }
