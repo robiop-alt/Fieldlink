@@ -5,9 +5,11 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 import app as backend
+import db_persistence
 
 @pytest.fixture
 def project(monkeypatch):
+    monkeypatch.setattr(db_persistence, 'snapshot', lambda *args: None)
     monkeypatch.setattr(backend, "ADMIN_USER", "")
     monkeypatch.setattr(backend, "ADMIN", "local-admin-test-key")
     monkeypatch.setattr(backend, "r2_enabled", lambda: False)
