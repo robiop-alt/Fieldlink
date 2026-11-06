@@ -30,6 +30,29 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
         writableDatabase.execSQL("DELETE FROM clip_queue WHERE uri=? AND project=?",arrayOf(uri,project))
         writableDatabase.execSQL("UPDATE media SET state='quarantine',upload_id=NULL,received=0 WHERE uri=? AND project=? AND state='pending'",arrayOf(uri,project))
     }
+    @Synchronized fun stateFor(uri:String,project:String):String {
+        readableDatabase.rawQuery("SELECT project,state FROM media WHERE uri=?",arrayOf(uri)).use { row ->
+            if(!row.moveToFirst()) return "new"
+            val owner=if(row.isNull(0)) null else row.getString(0)
+            return if(owner!=null && owner!=project) "other" else row.getString(1)
+        }
+    }
+    @Synchronized fun excludeFromAuto(f:DocumentFile,project:String) {
+        if(project.isBlank() || !f.isFile) return
+        val uri=f.uri.toString()
+        val db=writableDatabase
+        db.rawQuery("SELECT project FROM media WHERE uri=?",arrayOf(uri)).use { row ->
+            if(row.moveToFirst()) {
+                if(!row.isNull(0) && row.getString(0)!=project) return
+                db.execSQL("UPDATE media SET state='quarantine',project=?,size=?,modified=?,upload_id=NULL,received=0 WHERE uri=?",
+                    arrayOf(project,f.length(),f.lastModified(),uri))
+            }else{
+                db.execSQL("INSERT INTO media(uri,size,modified,project,state) VALUES(?,?,?,?,'quarantine')",
+                    arrayOf(uri,f.length(),f.lastModified(),project))
+            }
+        }
+        db.execSQL("DELETE FROM clip_queue WHERE uri=? AND project=?",arrayOf(uri,project))
+    }
     @Synchronized fun queueUris(project:String):Set<String> {
         val result=mutableSetOf<String>()
         readableDatabase.rawQuery("SELECT uri FROM clip_queue WHERE project=?",arrayOf(project)).use { rows -> while(rows.moveToNext()) result.add(rows.getString(0)) }
