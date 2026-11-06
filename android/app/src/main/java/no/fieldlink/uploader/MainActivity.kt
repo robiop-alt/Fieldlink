@@ -38,6 +38,8 @@ import android.media.projection.MediaProjectionManager
 class MainActivity : Activity() {
     private val pickFolder=4101
     private val pickManual=4102
+    private val pickSdCard=4103
+    private var sdCopySwitch:Switch?=null
     private val prefs by lazy { getSharedPreferences("fieldlink",MODE_PRIVATE) }
     // Only PIN-protected review links are cached: never store a 24h PIN-free bearer URL.
     private var cachedQrProject=""
@@ -351,6 +353,30 @@ class MainActivity : Activity() {
             "Off (default): send original DJI cache. On: create a smaller 480p copy for new clips, keeping the original untouched. Existing uploads keep their original quality.",
             11f,muted
         ))
+        val sdCopy=Switch(this).apply {
+            text="Copy rushes to SD card"
+            textSize=13f
+            setTextColor(Color.WHITE)
+            isChecked=prefs.getBoolean("sd_copy_enabled",false)
+            setOnCheckedChangeListener { _,enabled ->
+                if(!enabled) {
+                    prefs.edit().putBoolean("sd_copy_enabled",false).apply()
+                } else if(sdCardAccessOk()) {
+                    prefs.edit().putBoolean("sd_copy_enabled",true).apply()
+                } else {
+                    // One-time Android permission choice, never assume SD root access.
+                    isChecked=false
+                    chooseSdCard()
+                }
+            }
+        }
+        sdCopySwitch=sdCopy
+        settings.addView(sdCopy)
+        settings.addView(text(
+            "Off by default. Select the offset folder on your SD card (create it in the picker if needed). Original clips are verified and copied to offset/year_project name without deleting DJI cache files. Works without Wi-Fi.",
+            11f,muted
+        ))
+        settings.addView(button("Choose SD card / change folder") { chooseSdCard() })
         val lowBattery=Switch(this).apply {
             text="Low Battery Protection · 20%"
             textSize=13f
@@ -519,6 +545,11 @@ class MainActivity : Activity() {
         val local=mutableListOf<String>()
         val folderReady=cacheAccessOk()
         local.add(if(folderReady) "✓ DJI cache access" else "✕ DJI cache permission missing")
+        if(prefs.getBoolean("sd_copy_enabled",false)) {
+            local.add(if(sdCardAccessOk()) "✓ SD backup access ready"
+                      else "✕ SD backup selected but card unavailable or read-only")
+        } else local.add("· SD backup disabled")
+
         val auto=prefs.getBoolean("start_on_boot",true)
         local.add(if(auto) "✓ Auto-resume enabled" else "· Auto-resume disabled")
         val overlayEnabled=prefs.getBoolean("overlay",true)
@@ -1478,6 +1509,22 @@ class MainActivity : Activity() {
         else dialog.setNeutralButton("Change folder") { _,_ -> chooseFolder() }
         dialog.show()
     }
+    private fun sdCardAccessOk():Boolean {
+        val saved=prefs.getString("sd_tree_uri",null)?.let(Uri::parse) ?: return false
+        val permission=contentResolver.persistedUriPermissions.any {
+            it.uri==saved && it.isReadPermission && it.isWritePermission
+        }
+        return permission && (DocumentFile.fromTreeUri(this,saved)?.canWrite()==true)
+    }
+
+    private fun chooseSdCard() {
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        },pickSdCard)
+    }
+
     private fun chooseFolder() {
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
@@ -1497,6 +1544,33 @@ class MainActivity : Activity() {
     return
 }
         if(requestCode==pickManual && resultCode==RESULT_OK) { queueManualFiles(data);return }
+        if(requestCode==pickSdCard) {
+            if(resultCode==RESULT_OK) {
+                val uri=data?.data ?: return
+                try {
+                    val granted=data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    val needed=Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    if(granted!=needed) throw SecurityException("Select the writable offset folder on your SD card")
+                    contentResolver.takePersistableUriPermission(uri,needed)
+                    val root=DocumentFile.fromTreeUri(this,uri)
+                    if(root?.isDirectory!=true || !root.canWrite()) throw SecurityException("SD root is not writable")
+                    prefs.edit().putString("sd_tree_uri",uri.toString())
+                        .putBoolean("sd_copy_enabled",true).commit()
+                    sdCopySwitch?.isChecked=true
+                    AlertDialog.Builder(this).setTitle("SD backup enabled")
+                        .setMessage("OFFSET will copy original rushes to offset/year_project name on the selected SD card. The source files will remain untouched.")
+                        .setPositiveButton("OK",null).show()
+                } catch(e:Exception) {
+                    sdCopySwitch?.isChecked=false
+                    prefs.edit().putBoolean("sd_copy_enabled",false).apply()
+                    showOffsetError("SD card access needed",
+                        "Choose the offset folder on the SD card (create it in the file picker if needed) and grant both read and write access.",
+                        e.localizedMessage,"Choose SD card"){ chooseSdCard() }
+                }
+            }
+            return
+        }
         if(requestCode==pickFolder && resultCode==RESULT_OK) {
             val uri=data?.data?:return
             try {
