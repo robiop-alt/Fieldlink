@@ -85,6 +85,17 @@ class MainActivity : Activity() {
         orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(14),dp(18),dp(14));background=rounded(panel,Color.rgb(57,65,67))
         addView(text(title,15f))
     }
+    override fun onResume() {
+        super.onResume()
+        // Restore the pill after an in-place upgrade or the first overlay grant.
+        // No permission dialog is shown if Android already granted access.
+        if(prefs.getBoolean("start_on_boot",false) &&
+            prefs.getBoolean("overlay",true) &&
+            (Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this))) {
+            try { ControllerOverlayService.launch(this) }catch(_:Exception) {}
+        }
+    }
+
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor=bg;window.navigationBarColor=bg
