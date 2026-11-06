@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
@@ -31,6 +33,12 @@ class ControllerOverlayService : Service() {
         }
     }
     private var overlay:OverlayStatus?=null
+    private val updates=object:BroadcastReceiver() {
+        override fun onReceive(context:Context?,intent:Intent?) {
+            if(intent?.action==ACTION_UPDATE)
+                overlay?.update(intent.getStringExtra(EXTRA_STATUS) ?: "Ready")
+        }
+    }
     private val prefs by lazy {getSharedPreferences("fieldlink",MODE_PRIVATE)}
     override fun onCreate() {
         super.onCreate()
@@ -49,6 +57,9 @@ class ControllerOverlayService : Service() {
             .setOngoing(true)
             .build()
         startForeground(3091,notification)
+        val filter=IntentFilter(ACTION_UPDATE)
+        if(Build.VERSION.SDK_INT>=33) registerReceiver(updates,filter,Context.RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(updates,filter)
     }
     override fun onStartCommand(intent:Intent?, flags:Int, startId:Int):Int {
         if(!prefs.getBoolean("overlay",true) || Build.VERSION.SDK_INT<23 ||
@@ -69,6 +80,7 @@ class ControllerOverlayService : Service() {
         return START_STICKY
     }
     override fun onDestroy() {
+        try {unregisterReceiver(updates)}catch(_:Exception){}
         overlay?.hide()
         overlay=null
         super.onDestroy()
