@@ -274,10 +274,6 @@ class MainActivity : Activity() {
         server=field("HTTPS server",prefs.getString("server","")?:"")
         project=field("Project ID",prefs.getString("project","")?:"")
         token=field("Device token",prefs.getString("token",null) ?: BuildConfig.DEFAULT_DEVICE_TOKEN,true)
-        val config=card("CONNECTION")
-        config.addView(server)
-        config.addView(token)
-        config.addView(button("Test connection") { testConnection() })
         val active=card("ACTIVE PROJECT")
         projectSummary=text(
             prefs.getString("project_name","")?.takeIf { it.isNotBlank() }
@@ -291,7 +287,13 @@ class MainActivity : Activity() {
                 ?: "Choose or create a project to begin",
             11f,muted
         ))
-        active.addView(primaryButton("Manage projects") { showProjects() })
+        active.addView(LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            addView(primaryButton("Choose project") { showProjects() },
+                LinearLayout.LayoutParams(0,dp(38),1f).apply { rightMargin=dp(5) })
+            addView(button("Share / QR") { showProjectShare() },
+                LinearLayout.LayoutParams(0,dp(38),1f))
+        })
         root.addView(active,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
         val upload=card("UPLOAD CONTROL")
         folderLabel=text("",12f,muted)
@@ -314,18 +316,24 @@ class MainActivity : Activity() {
         ))
         root.addView(upload,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
         refreshFolderLabel()
-        val tools=card("PROJECT TOOLS")
+        val tools=card("MORE TOOLS")
         tools.addView(row(
             button("Server history") { showServerUploadHistory() },
             button("Local history") { showUploadHistory() }
         ))
-        tools.addView(row(
-            button("Share / QR") { showProjectShare() },
-            button("Camera metadata") { startMetadataCapture() }
-        ))
-        root.addView(tools,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
+        tools.addView(button("Camera metadata") { startMetadataCapture() })
+        val moreTools=button("More tools") {
+            val parent=tools.parent
+            if(parent is ViewGroup) parent.removeView(tools)
+            AlertDialog.Builder(this).setTitle("More tools")
+                .setView(ScrollView(this).apply { addView(tools) })
+                .setPositiveButton("Close",null).show()
+        }
+        root.addView(moreTools,LinearLayout.LayoutParams(-1,dp(38)).apply { bottomMargin=dp(6) })
         if(server.text.isBlank() || token.text.isBlank()) {
-            root.post { showConnectionSettings() }
+            // Do not repeatedly interrupt the operator with a connection popup.
+            // The compact Settings entry remains available for first-time setup.
+            folderLabel.text="Connection setup needed · open Settings"
         }
         val settings=card("Upload preferences")
         val lowData=Switch(this).apply {
@@ -556,16 +564,9 @@ class MainActivity : Activity() {
                     AlertDialog.Builder(this).setTitle("Manage projects")
                         .setItems(names) { _,index ->
                             val item=result.getJSONObject(index)
-                            val id=item.getString("id")
-                            val name=item.optString("name","Project")
-                            val count=item.optInt("clips")
-                            AlertDialog.Builder(this).setTitle(name)
-                                .setMessage("Project ID: $id\\nStatus: ${if(id==project.text.toString().trim()) "ACTIVE" else "Available"}\\nUploaded clips: $count")
-                                .setPositiveButton("Select") { _,_ -> activateProject(id,name) }
-                                .setNeutralButton("Delete") { _,_ -> confirmDeleteProject(id,name,count) }
-                                .setNegativeButton("Back") { _,_ -> showProjects() }
-                                .show()
+                            activateProject(item.getString("id"),item.optString("name","Project"))
                         }
+                        .setNeutralButton("Manage / delete") { _,_ -> showProjectManagement(result) }
                         .setPositiveButton("New project") { _,_ -> createProjectDialog() }
                         .setNegativeButton("Close",null).show()
                 }
@@ -577,6 +578,20 @@ class MainActivity : Activity() {
                 }
             }
         }.start()
+    }
+
+    private fun showProjectManagement(projects:org.json.JSONArray) {
+        val names=Array(projects.length()) { i ->
+            val item=projects.getJSONObject(i)
+            "${item.optString("name")} · ${item.optInt("clips")} clips"
+        }
+        AlertDialog.Builder(this).setTitle("Manage projects")
+            .setItems(names) { _,index ->
+                val item=projects.getJSONObject(index)
+                confirmDeleteProject(item.getString("id"),
+                    item.optString("name","Project"),item.optInt("clips"))
+            }
+            .setNegativeButton("Close",null).show()
     }
 
     private fun confirmDeleteProject(id:String,name:String,count:Int) {
