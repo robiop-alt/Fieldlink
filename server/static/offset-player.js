@@ -186,9 +186,13 @@
     listen(fullscreen,'click',async()=>{
       if(player.classList.contains('offset-player-theater')){exitTheater();return}
       if(document.fullscreenElement){await document.exitFullscreen?.();return}
-      if(player.requestFullscreen){
+      // iOS can delegate video fullscreen to the native player, which
+      // cannot display HTML overlays. Always use inline theater on iOS.
+      const ios=/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+      if(!ios && player.requestFullscreen){
         try{await player.requestFullscreen();updateFullscreenButton();return}
-        catch(_){/* iPhone Safari may not allow element fullscreen */ }
+        catch(_){/* Element fullscreen unavailable: use inline theater. */ }
       }
       enterTheater();
     });
@@ -209,6 +213,18 @@
     listen(video,'error',()=>{loading=false;error.hidden=false;updateButtons()});
     listen(video,'playing',()=>{loading=false;error.hidden=true});
     listen(window,'resize',updateFrames);
+    listen(window,'orientationchange',()=>requestAnimationFrame(updateFrames));
+    // Fullscreen changes available space without a window resize on some
+    // browsers; observe the real video stage, not only the outer viewport.
+    const frameObserver=typeof ResizeObserver!=='undefined'
+      ? new ResizeObserver(()=>updateFrames()) : null;
+    frameObserver?.observe(stage);
+    listen(video,'webkitbeginfullscreen',()=>{
+      // A browser-native video surface cannot contain HTML frame guides.
+      // Return to inline playback whenever that native surface appears.
+      try {video.webkitExitFullscreen?.()} catch(_){}
+      if(!isFullscreen()) enterTheater();
+    });
 
     cards.forEach((card,i)=>{
       const old=card.querySelector('.offset-video-stage');
@@ -229,6 +245,7 @@
     });
     choose(0,false);
     destroy=()=>{
+      frameObserver?.disconnect();
       if(player.classList.contains('offset-player-theater'))exitTheater();
       if(document.fullscreenElement===player)document.exitFullscreen?.().catch(()=>{});
       video.pause();video.removeAttribute('src');video.load();
