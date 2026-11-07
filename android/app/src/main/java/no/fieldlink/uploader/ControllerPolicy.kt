@@ -42,14 +42,16 @@ internal object ControllerPolicy {
 
     /** Small intentional delay between chunks. Never slow DJI Pilot or its network calls. */
     fun throttleMillis(context:Context,prefs:android.content.SharedPreferences):Long {
-        if(!prefs.getBoolean("adaptive_speed",false))return 0
         val power=context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val hot=Build.VERSION.SDK_INT>=29 &&
             power.currentThermalStatus>=PowerManager.THERMAL_STATUS_MODERATE
         if(hot)return 1800L
-        // Usage access is optional. Without it, stay conservative.
-        if(!PilotForeground.permissionGranted(context))return 800L
-        return if(PilotForeground.isPilotVisible(context))900L else 0L
+        // Always protect DJI Pilot when visible; the optional setting additionally
+        // enables conservative throttling when foreground access is unavailable.
+        if(PilotForeground.permissionGranted(context) && PilotForeground.isPilotVisible(context))
+            return 900L
+        if(!prefs.getBoolean("adaptive_speed",false))return 0L
+        return if(!PilotForeground.permissionGranted(context))800L else 0L
     }
 
     fun sdFreeBytes(context:Context):Long? {
