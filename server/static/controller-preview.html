@@ -5,8 +5,8 @@
 <meta name="robots" content="noindex,nofollow,noarchive">
 <title>OFFSET · Controller Design Preview</title>
 <link rel="icon" href="/pwa/iphone-logo-v2-192.png">
-<link rel="stylesheet" href="/static/controller-preview.css?v=3">
-<script src="/static/controller-preview.js?v=3" defer></script>
+<link rel="stylesheet" href="/static/controller-preview.css?v=5">
+<script src="/static/controller-preview.js?v=5" defer></script>
 </head><body>
 <div class="studio">
   <header class="studio-head">
@@ -14,12 +14,12 @@
     <div class="studio-title"><strong>Controller Design Preview</strong><span>Interactive demo · No live DJI or production data</span></div>
     <a class="back" href="/">Admin ↗</a>
   </header>
-  <div class="studio-layout">
+  <div class="studio-layout wide-preview-layout">
     <aside class="controls">
       <div class="eyebrow">PREVIEW CONTROLS</div>
       <h1>Test the experience.</h1>
       <p>Try the buttons and settings without a controller. Everything here is simulated; nothing is uploaded or changed on the server.</p>
-      <label for="deviceView">Preview frame</label><select id="deviceView"><option value="screen" selected>Screen only · original</option><option value="controller">DJI RC Plus controller</option></select><label for="deviceSize">Display size</label>
+      <label for="deviceView">Preview frame</label><select id="deviceView"><option value="controller" selected>DJI RC Plus · widescreen</option><option value="screen">Screen only · widescreen</option></select><label for="deviceSize">Display size</label>
       <select id="deviceSize"><option value="tablet">DJI RC Plus · wide</option><option value="mobile">iPhone / compact</option></select>
       <label for="demoScenario">Simulate upload state</label>
       <select id="demoScenario"><option value="idle">Connected · idle</option><option value="uploading">Uploading clips</option><option value="waiting">Network interrupted</option><option value="error">Action needed</option></select>
@@ -27,12 +27,12 @@
       <div class="safe-notice"><span>●</span><div><strong>Sandbox preview</strong><p>Fake project names, fake footage, fake progress. No access to device files, accounts, production endpoints or DJI hardware.</p></div></div>
       <p class="note">This is a browser-based design model, not an Android emulator. Platform permissions, cache browsing, uploads and SD writes still require testing on the controller.</p>
     </aside>
-    <section class="stage" aria-label="Controller preview">
-      <div class="controller-shell screen-only" id="controllerShell"><div class="controller-antenna left"></div><div class="controller-antenna right"></div><div class="controller-shoulder left"></div><div class="controller-shoulder right"></div><div class="frame" id="deviceFrame">
+    <section class="stage" aria-label="Controller preview"><div class="landscape-hint">RC Plus · 1920 × 1200 · landscape simulation</div><div class="landscape-viewport">
+      <div class="controller-shell" id="controllerShell"><div class="controller-antenna left"></div><div class="controller-antenna right"></div><div class="controller-shoulder left"></div><div class="controller-shoulder right"></div><div class="frame" id="deviceFrame">
         <div class="device-top"><span class="dot"></span><span>OFFSET · CONTROLLER</span><span class="top-time">DEMO MODE</span></div>
         <div id="app"></div>
       </div><div class="controller-hardware"><div class="stick"><span></span></div><div class="controller-center"><span>DJI</span><div class="hardware-buttons"><i></i><i></i><i></i></div></div><div class="stick"><span></span></div></div><div class="controller-grips"><span></span><span></span></div></div>
-      <p class="stage-foot">Design preview · changes in this page do not change the real APK</p>
+      </div><p class="stage-foot">Design preview · changes in this page do not change the real APK</p>
     </section>
   </div>
 </div>
