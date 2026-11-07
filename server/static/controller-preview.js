@@ -14,6 +14,7 @@
     {name:'DJI_0003.MP4',size:'526 MB',bytes:526},
     {name:'DJI_0004.MP4',size:'709 MB',bytes:709}
   ];
+  const demoMetadata=[{format:'ProRes RAW',lens:'35 mm',fps:'25 fps',iso:'800',wb:'5600 K',shutter:'180°'},{format:'ProRes',lens:'24 mm',fps:'25 fps',iso:'400',wb:'5600 K',shutter:'180°'},{format:'ProRes RAW',lens:'50 mm',fps:'50 fps',iso:'800',wb:'4300 K',shutter:'180°'},{format:'ProRes',lens:'18 mm',fps:'25 fps',iso:'400',wb:'5600 K',shutter:'180°'}];
   const defaults={
     wifi_only:false,charging_only:false,error_alerts:true,
     sd_backup_status:true,startup_health_check:true,
@@ -95,7 +96,7 @@
     const mediaHeader='<div class="offset-media-top">'+button(state.powered?'● OFFSET ON':'○ OFFSET OFF','power',state.powered?'offset-power':'offset-power off')+'<button data-action="projects" type="button" class="offset-project-picker">'+escapeHTML(projects[state.project])+'⌄</button>'+
       '<span class="offset-root-label">▱ Project root ⌄</span><span class="offset-top-spacer"></span>'+
       button('▦ QR','qr')+'<span class="offset-live-dot"></span>'+button('⚙ Settings','settings')+'</div>';
-    const filters=(state.powered?'':'<div class="offset-power-note">OFFSET paused · file monitoring and library remain available</div>')+'<div class="offset-meta-strip"><span>ProRes RAW</span><span>35 mm</span><span>25 fps</span><span>ISO 800</span><span>WB 5600 K</span><span>Shutter 180°</span><span>Screen-captured metadata · demo</span></div>'+'<div class="offset-media-toolbar">'+
+    const filters=(state.powered?'':'<div class="offset-power-note">OFFSET paused · file monitoring and library remain available</div>')+'<div class="offset-media-toolbar">'+
       button('All clips','filterAll')+
       '<span class="offset-status-pill">☁ '+all+' clips · '+(state.upload==='uploading'?'1 uploading · ':'')+waiting+' waiting · '+state.demoExcluded.length+' excluded</span>'+
       button('Upload '+waiting,'queue')+
@@ -115,7 +116,7 @@
         '<div class="offset-media-info"><label class="offset-media-name">'+
           '<input aria-label="Select '+f.name+'" class="demo-check" type="checkbox" data-demo-select="'+i+'" '+(state.selectedMedia.includes(i)?'checked':'')+'>'+
           '<strong>'+f.name+'</strong></label>'+
-          '<span class="offset-media-sub">'+f.size+' · '+(urgent?'PRIORITY':excluded?'EXCLUDED':'Metadata arrives with upload')+'</span>'+
+          '<span class="offset-media-sub">'+f.size+' · '+(urgent?'PRIORITY':excluded?'EXCLUDED':'Ready')+'</span>'+ '<span class="offset-clip-meta">'+demoMetadata[i].format+' · '+demoMetadata[i].lens+' · '+demoMetadata[i].fps+'</span>'+
           '<div class="offset-media-foot"><span>7 Nov, 14:08</span>'+button(urgent?'Clear ★':'★ Priority','togglePriority:'+i)+'</div></div></div>';
     }).join('');
     return mediaHeader+filters+batch+
@@ -182,6 +183,7 @@
   function renderPlayer(){
     if(state.playerIndex==null)return;
     const i=state.playerIndex, f=sampleFiles[i], duration=playerDurations[i];
+    const meta=demoMetadata[i];
     const seconds=Math.min(duration,state.playerSeconds||0);
     modal.hidden=false;
     modal.innerHTML='<div class="offset-player-backdrop" data-action="closePlayer"></div>'+
@@ -197,7 +199,8 @@
       button('Next ▶','playerNext')+'</div>'+
       '<div class="offset-player-details">Clip '+(i+1)+' of '+sampleFiles.length+
       ' · 3840 × 2160 · '+f.size+' · Modified: 7 Nov 2026</div>'+
-      '<p class="hint">Interactive playback simulation only. The APK uses local MP4 files.</p></div>';
+      '<div class="offset-player-metadata"><span>'+meta.format+'</span><span>'+meta.lens+'</span><span>'+meta.fps+'</span><span>ISO '+meta.iso+'</span><span>WB '+meta.wb+'</span><span>Shutter '+meta.shutter+'</span></div>'+ 
+      '<p class="hint">Sample camera metadata · preview only. Interactive playback simulation; no real video loaded.</p></div>';
   }
   function openPlayer(i){
     state.playerIndex=Math.max(0,Math.min(sampleFiles.length-1,i));
