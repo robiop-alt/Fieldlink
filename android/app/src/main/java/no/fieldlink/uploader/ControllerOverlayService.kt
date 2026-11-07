@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.net.Uri
 
 /**
  * Long-lived user-enabled DJI controller status overlay, separate from the
@@ -37,7 +38,29 @@ class ControllerOverlayService : Service() {
     private var overlay:OverlayStatus?=null
     private val handler=Handler(Looper.getMainLooper())
     private var latestStatus="Ready"
+    private var permissionCheckAt=0L
+    private var missingPermission:String?=null
+    private fun permissionNotice():String? {
+        val now=System.currentTimeMillis()
+        if(now-permissionCheckAt<8000L)return missingPermission
+        permissionCheckAt=now
+        missingPermission=try {
+            val tree=prefs.getString("tree_uri",null)
+            val granted=if(tree.isNullOrBlank())false else {
+                val uri=Uri.parse(tree)
+                contentResolver.persistedUriPermissions.any { it.uri==uri && it.isReadPermission }
+            }
+            when {
+                !granted -> "Permission needed · DJI cache folder"
+                prefs.getBoolean("overlay_pilot_only",false) &&
+                    !PilotForeground.permissionGranted(this) -> "Permission needed · DJI Pilot visibility"
+                else -> null
+            }
+        }catch(_:Exception) { "Permission needed · DJI cache folder" }
+        return missingPermission
+    }
     private fun showStatus():String {
+        permissionNotice()?.let { return it }
         val until=prefs.getLong("overlay_notice_until",0L)
         val critical=prefs.getString("overlay_notice",null)
         if(!critical.isNullOrBlank() && until>System.currentTimeMillis()) return "Attention · $critical"
