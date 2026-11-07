@@ -71,6 +71,15 @@ def ensure_project_access_schema():
             c.execute('ALTER TABLE projects ADD COLUMN pin_expires_at INTEGER NOT NULL DEFAULT 0')
 ensure_project_access_schema()
 
+def ensure_project_archive_schema():
+    with db() as c:
+        columns={row['name'] for row in c.execute('PRAGMA table_info(projects)').fetchall()}
+        if 'archived' not in columns:
+            c.execute('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
+        if 'archived_at' not in columns:
+            c.execute('ALTER TABLE projects ADD COLUMN archived_at INTEGER NOT NULL DEFAULT 0')
+ensure_project_archive_schema()
+
 # Preserve last byte-level progress independently from the upload start time.
 def ensure_upload_progress_schema():
     with db() as c:
@@ -348,8 +357,71 @@ def create_project(body:ProjectIn, request:Request, x_admin_key:str=Header(defau
 def list_projects(request:Request, x_admin_key:str=Header(default='')):
     require_admin(x_admin_key,request)
     with db() as c:
-        rows=c.execute('SELECT p.id,p.name,p.slug,p.created,p.public_review,p.allow_downloads,COUNT(cl.id) clips,COALESCE(SUM(CASE WHEN cl.status=\'ready\' THEN cl.size ELSE 0 END),0) storage_bytes,MAX(CASE WHEN cl.status=\'ready\' THEN cl.created ELSE NULL END) last_uploaded_at FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
+        rows=c.execute('SELECT p.id,p.name,p.slug,p.created,p.public_review,p.allow_downloads,p.archived,p.archived_at,COUNT(cl.id) clips,COALESCE(SUM(CASE WHEN cl.status=\'ready\' THEN cl.size ELSE 0 END),0) storage_bytes,MAX(CASE WHEN cl.status=\'ready\' THEN cl.created ELSE NULL END) last_uploaded_at FROM projects p LEFT JOIN clips cl ON cl.project_id=p.id GROUP BY p.id ORDER BY p.created DESC').fetchall()
     return [dict(r) for r in rows]
+
+
+class ProjectArchiveIn(BaseModel):
+    archived: bool
+
+@app.patch('/api/admin/projects/{project_id}/archive')
+def set_project_archive(project_id:str, body:ProjectArchiveIn, request:Request,
+                        x_admin_key:str=Header(default='')):
+    """Soft archive: preserve clips and review links; pause new clip uploads."""
+    require_admin(x_admin_key,request)
+    with db() as c:
+        project=c.execute('SELECT id,archived FROM projects WHERE id=?',(project_id,)).fetchone()
+        if not project: raise HTTPException(404,'Project not found')
+        if body.archived and not project['archived']:
+            pending=c.execute('SELECT COUNT(*) AS n FROM uploads WHERE project_id=?',(project_id,)).fetchone()['n']
+            if pending: raise HTTPException(409,'An upload is active. Archive after it finishes.')
+        c.execute('UPDATE projects SET archived=?,archived_at=? WHERE id=?',
+                  (int(body.archived),int(time.time()) if body.archived else 0,project_id))
+    return {'id':project_id,'archived':body.archived}
+
+@app.get('/api/admin/projects/{project_id}/activity')
+def admin_project_activity(project_id:str, request:Request, x_admin_key:str=Header(default='')):
+    """Project-scoped, server-authoritative recent transfers and actionable warnings."""
+    require_admin(x_admin_key,request)
+    now=int(time.time())
+    with db() as c:
+        p=c.execute('SELECT id,archived FROM projects WHERE id=?',(project_id,)).fetchone()
+        if not p: raise HTTPException(404,'Project not found')
+        clips=c.execute('SELECT id,filename,size,created FROM clips WHERE project_id=? AND status=? ORDER BY created DESC LIMIT 30',
+                        (project_id,'ready')).fetchall()
+        active=c.execute('SELECT id,filename,total,received,created,updated FROM uploads WHERE project_id=? ORDER BY created DESC LIMIT 30',
+                         (project_id,)).fetchall()
+    activity=[{'kind':'received','filename':r['filename'],'time':r['created'],'size':r['size']}
+              for r in clips]
+    warnings=[]
+    for r in active:
+        last=r['updated'] or r['created']
+        delayed=now-last>90
+        activity.append({'kind':'stalled' if delayed else 'uploading','filename':r['filename'],
+                         'time':last,'size':r['total'],'received':r['received']})
+        if delayed:
+            warnings.append({'kind':'stalled','filename':r['filename'],
+                             'message':'No upload progress in over 90 seconds'})
+    activity.sort(key=lambda x:x['time'],reverse=True)
+    return JSONResponse({'activity':activity[:40],'warnings':warnings,
+        'archived':bool(p['archived'])},headers={'Cache-Control':'no-store'})
+
+@app.get('/api/admin/projects/{project_id}/qr')
+def admin_project_qr(project_id:str, request:Request, x_admin_key:str=Header(default='')):
+    """QR always points at canonical project URL, honoring current PIN settings."""
+    require_admin(x_admin_key,request)
+    with db() as c:
+        p=c.execute('SELECT slug FROM projects WHERE id=?',(project_id,)).fetchone()
+    if not p: raise HTTPException(404,'Project not found')
+    import io, qrcode, qrcode.image.svg
+    url=str(request.base_url).rstrip('/')+'/r/'+p['slug']
+    qr=qrcode.QRCode(version=None,error_correction=qrcode.constants.ERROR_CORRECT_M,
+                     box_size=5,border=2)
+    qr.add_data(url);qr.make(fit=True)
+    output=io.BytesIO()
+    qr.make_image(image_factory=qrcode.image.svg.SvgPathImage).save(output)
+    return Response(content=output.getvalue(),media_type='image/svg+xml',
+                    headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
 class ProjectUpdateIn(BaseModel):
     name: str = Field(min_length=1,max_length=120)
@@ -454,6 +526,7 @@ def _delete_project(project_id:str,confirm_clips:bool=False):
             conn.execute('DELETE FROM clip_metadata WHERE clip_id=?',(cid,))
             conn.execute('DELETE FROM camera_metadata WHERE clip_id=?',(cid,))
         conn.execute('DELETE FROM clips WHERE project_id=?',(project_id,))
+        conn.execute('DELETE FROM incoming_clips WHERE project_id=?',(project_id,))
         conn.execute('DELETE FROM projects WHERE id=?',(project_id,))
     return {'deleted':True,'clips_deleted':len(clips)}
 
@@ -882,6 +955,11 @@ def upload_init(body:UploadInit,x_device_token:str=Header(default='')):
     with db() as c: p=c.execute('SELECT id FROM projects WHERE id=?',(body.project_id,)).fetchone()
     if not p: raise HTTPException(404,'Project not found')
     if body.total_size > LIMIT_BYTES: raise HTTPException(413,'Clip exceeds 6 GB limit')
+    with db() as c:
+        project=c.execute('SELECT archived FROM projects WHERE id=?',(body.project_id,)).fetchone()
+    if not project: raise HTTPException(404,'Project not found')
+    if project['archived']: raise HTTPException(409,'Project is archived; restore in admin to upload')
+
     uid=uuid.uuid4().hex; tmp=TMP/uid
     tmp.touch()
     with db() as c: c.execute('INSERT INTO uploads(id,project_id,filename,total,received,temp_path,created,updated) VALUES(?,?,?,?,?,?,?,?)',(uid,body.project_id,safe_name(body.filename),body.total_size,0,str(tmp),int(time.time()),int(time.time())))
