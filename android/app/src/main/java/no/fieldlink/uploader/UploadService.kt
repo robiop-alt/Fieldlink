@@ -128,6 +128,7 @@ class UploadService : Service() {
         catch (e: Exception) { status("Kan ikke sikre cache: ${e.message}");alertProblem("cache","DJI cache inspection failed"); stopSelf(); return }
         while (running) {
             try {
+                if(!prefs.getBoolean("offset_enabled",true)) { stopSelf();return }
                 if (lowBatteryPause()) {
                     lowBatteryStatus()
                     Thread.sleep(12000)
@@ -184,10 +185,11 @@ class UploadService : Service() {
                 // Highest priority first, then explicit/manual queue, then the
                 // normal DJI sequence. A file appears once, regardless of source.
                 val unique=HashSet<String>()
-                val work=(urgent+manualFiles+ordered).filter { unique.add(it.uri.toString()) }
+                val work=(if(manualMode) manualFiles else urgent+manualFiles+ordered)
+                    .filter { unique.add(it.uri.toString()) }
                 var uploaded=0
                 for((index,f) in work.withIndex()) {
-                    if(!running || lowBatteryPause()) {
+                    if(!running || !prefs.getBoolean("offset_enabled",true) || lowBatteryPause()) {
                         if(running) lowBatteryStatus()
                         break
                     }
