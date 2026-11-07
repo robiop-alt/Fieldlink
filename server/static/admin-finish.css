@@ -1,0 +1,255 @@
+/* OFFSET Admin — calm operational dashboard, scoped away from Rushes. */
+body.offset-admin{
+  background:radial-gradient(ellipse 65% 26% at 78% -12%,rgba(100,143,89,.10),transparent 78%),#0b0e10;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+.offset-admin .shell{max-width:1200px}
+.offset-admin .top{min-height:62px;padding-bottom:16px;border-bottom:1px solid rgba(162,184,176,.16)}
+.offset-admin .top .tag{font-size:10px;letter-spacing:.12em;color:#9aaaa6}
+.offset-admin .hero{padding:32px 0 22px}
+.offset-admin .hero .eyebrow{font-size:10px;letter-spacing:.14em;margin:0 0 8px;color:#b7f34d}
+.offset-admin .hero h1{
+  font-size:clamp(30px,4vw,48px);
+  line-height:1.09;
+  letter-spacing:-.045em;
+  margin:0 0 11px;
+  max-width:900px;
+}
+.offset-admin .hero h1 em{color:#b7f34d}
+.offset-admin .hero .muted{margin:0;font-size:12px;max-width:640px;line-height:1.55;color:#9eaea8}
+.offset-admin.offset-signed-in .hero{padding:24px 0 13px}
+.offset-admin.offset-signed-in .hero h1{font-size:clamp(26px,3vw,37px);margin-bottom:6px}
+.offset-admin.offset-signed-in .hero .muted{font-size:11px}
+.offset-admin .panel{
+  border:1px solid #2d3b3d;
+  background:linear-gradient(155deg,#171e20 0%,#111719 85%);
+  border-radius:12px;
+  padding:21px 22px;
+  margin:12px 0;
+  box-shadow:0 6px 30px rgba(0,0,0,.10);
+}
+.offset-admin .panel-head{gap:10px;align-items:center;flex-wrap:wrap}
+.offset-admin .panel-head h2{
+  font-size:19px;
+  line-height:1.25;
+  letter-spacing:-.025em;
+  margin:2px 0 0;
+}
+.offset-admin .panel-head .eyebrow{font-size:10px;letter-spacing:.11em;margin:0;color:#9cbd85}
+.offset-admin .panel-head h2 small{font-size:12px;font-weight:500;letter-spacing:0}
+.offset-admin label{font-size:12px;font-weight:500;color:#bfccc6;margin:14px 0 0}
+.offset-admin input,.offset-admin select,.offset-admin textarea{
+  border:1px solid #374648;
+  background:#0d1315;
+  border-radius:7px;
+  color:#eef4ef;
+  margin-top:7px;
+  padding:10px 12px;
+  min-height:40px;
+  font:13px 'DM Sans',sans-serif;
+  transition:border-color .15s,box-shadow .15s;
+}
+.offset-admin input::placeholder,.offset-admin textarea::placeholder{color:#72847d}
+.offset-admin input:focus,.offset-admin textarea:focus,.offset-admin select:focus{
+  outline:none;border-color:#91b967;box-shadow:0 0 0 2px rgba(183,243,77,.11)
+}
+.offset-admin button{
+  min-height:34px;
+  padding:7px 12px;
+  font-size:11px;
+  font-weight:650;
+  line-height:1.25;
+  border-radius:7px;
+  background:#b7f34d;
+  color:#15200f;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.offset-admin button:hover:not(:disabled){background:#cbff79}
+.offset-admin button.secondary{
+  background:#202b2e;color:#d0dad5;
+  border:1px solid #3b4d4f;
+}
+.offset-admin button.secondary:hover:not(:disabled){background:#2a3739;border-color:#627770}
+.offset-admin button:disabled{opacity:.5;cursor:not-allowed}
+.offset-admin :is(button,a,summary,input,select,textarea):focus-visible{
+  outline:2px solid #b7f34d;outline-offset:3px
+}
+.offset-admin #login-panel{max-width:550px;margin:18px auto 28px}
+.offset-admin #login-form button{margin-top:17px;min-width:110px}
+.offset-admin #account-panel{padding:11px 17px;margin:12px 0 17px;background:#111719}
+.offset-admin #account-panel .panel-head .eyebrow{font-size:9px}
+.offset-admin #account-panel h2{font-size:12px;letter-spacing:0;color:#cad6ce;font-family:'DM Sans',sans-serif;font-weight:500}
+.offset-admin #account-panel #logout{padding:6px 11px;min-height:30px}
+.offset-admin .create-actions{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0 0;
+}
+.offset-admin .create-actions button{flex:0 1 auto;white-space:normal;min-height:38px;padding:9px 13px}
+.offset-admin .create-actions button.secondary{font-weight:550}
+.offset-admin #name{max-width:650px}
+.offset-admin #created{
+  margin:17px 0 0;
+  border:1px solid #456641;
+  background:#18271c;
+  border-radius:9px;
+  padding:15px;
+  font-size:12px;
+  line-height:1.6;
+}
+.offset-admin #created p{margin:8px 0}
+.offset-admin #created a{overflow-wrap:anywhere}
+.offset-admin #created .pin{font-size:21px;color:#b7f34d}
+.offset-admin #project-search{max-width:480px}
+.offset-admin #projects-summary{font-size:11px;color:#9fb0a8;margin:9px 0 12px}
+.offset-admin .project-table-wrap{border:1px solid #2d3c3d;border-radius:9px;overflow-x:auto}
+.offset-admin .project-table{border-collapse:separate;border-spacing:0}
+.offset-admin .project-table th{
+  color:#a4b5ac;
+  background:#192225;
+  border-bottom:1px solid #354448;
+  padding:12px 11px;
+  font-size:10px;
+  font-weight:600;
+  letter-spacing:.09em;
+  white-space:nowrap;
+}
+.offset-admin .project-table td{
+  color:#b6c5bd;
+  padding:14px 11px;
+  font-size:11px;
+  font-variant-numeric:tabular-nums;
+  border-bottom:1px solid #2a3737;
+}
+.offset-admin .project-table tbody tr:last-child td{border-bottom:0}
+.offset-admin .project-table tbody tr:nth-child(even) td{background:#121a1c}
+@media(hover:hover){.offset-admin .project-table tbody tr:hover td{background:#1c292a}}
+.offset-admin .project-table th:last-child{background:#192225;box-shadow:-7px 0 10px rgba(8,11,12,.5)}
+.offset-admin .project-table td:last-child{background:#151d20;box-shadow:-7px 0 10px rgba(8,11,12,.5)}
+.offset-admin .project-table tr:nth-child(even) td:last-child{background:#121a1c}
+.offset-admin .project-table td strong{font-size:12px;font-weight:600;color:#e6eee8}
+.offset-admin .project-table .hint{color:#81968a;font-size:9px;letter-spacing:0;line-height:1.6}
+.offset-admin .project-table .project-last-upload{white-space:normal}
+.offset-admin .project-last-upload [data-uploaded-at]{font-size:10px;color:#a8d987}
+.offset-admin .project-actions{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+.offset-admin .project-actions button{
+  min-height:31px;
+  padding:6px 9px;
+  font-size:10px;
+  font-weight:600;
+  white-space:nowrap;
+}
+.offset-admin .project-actions .project-review-link{
+  display:inline-flex;
+  justify-content:center;align-items:center;
+  min-height:31px;
+  padding:6px 11px;
+  border-radius:7px;
+  text-decoration:none;
+  background:#2a3c2a;
+  border:1px solid #4c7440;
+  color:#c6f4aa;
+  font-size:10px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.offset-admin .project-actions .project-review-link:hover{background:#344c30;border-color:#8cbe66}
+.offset-admin .project-actions .delete-project{
+  background:transparent;
+  color:#d7a4a4;
+  border-color:#5c4245;
+}
+.offset-admin .project-actions .delete-project:hover{
+  background:#332123;color:#ffd0cc;border-color:#b96e69;
+}
+.offset-admin .project-mobile-list{gap:9px;margin-top:12px}
+.offset-admin .project-mobile-card{
+  background:#11191b;border:1px solid #2f3d3e;border-radius:9px;padding:14px;
+}
+.offset-admin .project-mobile-heading{align-items:baseline}
+.offset-admin .project-mobile-heading strong{font-size:14px;line-height:1.35;color:#e4eee8}
+.offset-admin .project-mobile-heading>.hint{
+  display:inline-flex;align-items:center;
+  padding:4px 7px;border:1px solid #3b4a46;border-radius:5px;
+  font:10px 'DM Mono',monospace;letter-spacing:0;
+  white-space:nowrap;color:#aec0b6;
+}
+.offset-admin .project-mobile-card>.hint{margin-top:7px;font-size:9px;letter-spacing:0;color:#83978d;overflow-wrap:anywhere}
+.offset-admin .project-mobile-details{
+  gap:6px 16px;margin:12px 0 7px;padding-top:10px;
+  border-top:1px solid rgba(168,190,181,.12);
+  font-size:11px;color:#adbbb3;font-variant-numeric:tabular-nums;
+}
+.offset-admin .project-mobile-card .project-actions{
+  padding-top:11px;margin-top:11px;border-top:1px solid rgba(168,190,181,.12)
+}
+.offset-admin .project-mobile-card .project-actions button,
+.offset-admin .project-mobile-card .project-actions a{
+  font-size:11px;padding:7px 11px;min-height:34px;display:inline-flex;align-items:center;
+}
+.offset-admin .project-review-settings-popover{
+  padding:16px!important;
+  margin:12px 0!important;
+  background:#152022!important;
+  border:1px solid #48615a!important;
+  border-radius:10px!important;
+  box-shadow:0 14px 38px rgba(0,0,0,.19)
+}
+.offset-admin .project-review-settings-popover>strong{font-size:14px;color:#f2f8f0}
+.offset-admin .project-review-settings-popover .hint{font-size:10px;letter-spacing:0;color:#afc2b8;line-height:1.45}
+.offset-admin .project-review-settings-popover label{font-size:12px}
+.offset-admin .project-review-settings-popover input[type=checkbox]{width:18px;min-height:18px;accent-color:#b7f34d}
+.offset-admin .settings-disclosure{margin:21px 0 0}
+.offset-admin .settings-disclosure>summary{
+  padding:16px 8px;
+  border-top:1px solid #2c3c3b;
+  font-size:12px;color:#bac9bf;
+  border-radius:5px;
+}
+.offset-admin .settings-disclosure>summary span{font-size:11px;color:#82988d}
+.offset-admin .settings-disclosure>.panel{margin:0 0 18px}
+.offset-admin #settings h3{
+  font-size:13px;
+  margin:22px 0 12px;
+  padding-top:14px;
+  border-top:1px solid #2a3b3c
+}
+.offset-admin #settings .muted{font-size:12px}
+.offset-admin footer{
+  margin-top:18px;padding-top:22px;
+  border-top:1px solid rgba(161,184,176,.12);
+  font-size:10px;letter-spacing:.11em;color:#7b9085;
+}
+@media(min-width:901px){
+  .offset-admin .project-table{min-width:820px}
+  .offset-admin .project-table th:last-child,
+  .offset-admin .project-table td:last-child{min-width:255px}
+}
+@media(max-width:900px){
+  .offset-admin .shell{max-width:720px}
+  .offset-admin .project-table-wrap{display:none}
+  .offset-admin .project-mobile-list{display:grid}
+}
+@media(max-width:650px){
+  .offset-admin .hero{padding:21px 0 13px}
+  .offset-admin .hero h1{font-size:clamp(28px,8vw,37px);line-height:1.12}
+  .offset-admin.offset-signed-in .hero h1{font-size:28px}
+  .offset-admin .panel{padding:16px 14px;margin:10px 0}
+  .offset-admin .panel-head h2{font-size:18px}
+  .offset-admin .top{min-height:50px;padding-bottom:12px}
+  .offset-admin .create-actions{gap:7px}
+  .offset-admin .create-actions button{flex:1 1 auto;min-width:0}
+  .offset-admin .project-mobile-card{padding:12px}
+  .offset-admin .project-mobile-heading strong{font-size:13px}
+  .offset-admin .project-mobile-heading>.hint{font-size:9px}
+  .offset-admin .project-actions{gap:6px}
+  .offset-admin .project-mobile-card .project-actions button,
+  .offset-admin .project-mobile-card .project-actions a{min-height:36px}
+}
+@media(pointer:coarse){
+  .offset-admin button,.offset-admin .project-actions .project-review-link{min-height:44px}
+  .offset-admin input,.offset-admin select,.offset-admin textarea{min-height:44px;font-size:16px}
+  .offset-admin .project-review-settings-popover input[type=checkbox]{min-height:20px;width:20px}
+}
+@media(prefers-reduced-motion:reduce){
+ .offset-admin button,.offset-admin input,.offset-admin textarea{transition:none}
+}
