@@ -326,7 +326,7 @@
   document.getElementById('resetDemo').addEventListener('click',()=>{
     closePlayer();settings={...defaults};
     state={powered:true,screen:'library',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null,selectedMedia:[],demoExcluded:[],demoPriority:[],playerIndex:null,playerSeconds:0,playerPlaying:false};
-    scenario.value='idle';screenSize.value='tablet';frame.classList.remove('mobile');render();
+    scenario.value='idle';screenSize.value='tablet';frame.classList.remove('mobile');document.getElementById('deviceView').value='screen';document.getElementById('controllerShell').classList.add('screen-only');render();
   });
   setInterval(()=>{
     if(state.upload==='uploading' && state.progress<100){
