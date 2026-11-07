@@ -144,4 +144,4 @@ $('projects').addEventListener('click',e=>{const button=e.target.closest('button
 $('project-search').oninput=renderProjects;
 $('refresh').onclick=load;async function load(){try{allProjects=await api('/api/admin/projects');renderProjects()}catch(e){$('projects').textContent=e.message}}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}loadSiteCopy();fetch('/api/admin/me',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d)setSignedIn(d.username)}).catch(()=>{});
-</script><script defer src="/static/admin-project-tools.js?v=1"></script><script defer src="/static/offset-pwa.js?v=1"></script></body></html>
+</script><script defer src="/static/admin-project-tools.js?v=2"></script><script defer src="/static/offset-pwa.js?v=1"></script></body></html>
