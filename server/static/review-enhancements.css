@@ -22,3 +22,15 @@
  .review-panel .clipgrid{grid-template-columns:1fr}
  .review-panel #offset-tools button{padding:6px 9px}
 }
+
+/* Original recording settings only; proxy technical metadata stays out of the review. */
+.offset-camera-meta{margin-top:9px}
+.offset-camera-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.offset-camera-field{display:flex;flex-direction:column;gap:3px;min-width:0;padding:7px 8px;background:#20292b;border:1px solid #303d3e;border-radius:6px}
+.offset-camera-label{font-size:9px;letter-spacing:.08em;color:#94a5a2}
+.offset-camera-field strong{font-size:11px;font-weight:600;color:#e8efed;overflow-wrap:anywhere}
+.offset-camera-field:first-child strong,.offset-camera-field:nth-child(2) strong{color:#b7f34d}
+.offset-camera-source{display:block;margin-top:5px;font-size:10px;color:#91a09d}
+@media(max-width:520px){.review-panel{padding:12px}.review-panel .clipgrid{grid-template-columns:minmax(0,1fr)}.review-panel #offset-tools button{padding:7px 9px}.offset-camera-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.offset-new-badge{position:absolute;top:9px;left:9px;background:#b7f34d;color:#17200f;padding:3px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.05em;pointer-events:none}

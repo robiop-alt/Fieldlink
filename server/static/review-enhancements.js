@@ -2,6 +2,10 @@
 const clips=document.getElementById('clips'),toolbar=document.getElementById('offset-tools');
 if(!clips||!toolbar)return;
 let busy=false;
+const seenKey='offset-seen-clips:'+location.pathname;
+let seen=new Set();
+try{seen=new Set(JSON.parse(localStorage.getItem(seenKey)||'[]'))}catch(_){}
+
 function enhance(){
  if(busy)return;busy=true;
  try{
@@ -25,7 +29,20 @@ function enhance(){
    const content=document.createElement('p');content.textContent=small.textContent;
    details.append(summary,content);small.replaceWith(details);
   }
-  const video=card.querySelector('video');if(video){video.setAttribute('preload','none');}
+  const video=card.querySelector('video');if(video){
+   video.setAttribute('preload','none');
+   const id=video.getAttribute('src')?.match(/\/clips\/([^/]+)\/file/)?.[1];
+   if(id&&!seen.has(id)){
+    const badge=document.createElement('span');
+    badge.className='offset-new-badge';badge.textContent='NEW';
+    card.querySelector('.offset-video-stage')?.append(badge);
+    video.addEventListener('play',()=>{
+     seen.add(id);
+     try{localStorage.setItem(seenKey,JSON.stringify([...seen].slice(-3000)))}catch(_){}
+     badge.remove();
+    },{once:true});
+   }
+  }
  });
  }finally{busy=false}
 }
