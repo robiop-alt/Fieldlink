@@ -44,7 +44,7 @@ class ControllerOverlayService : Service() {
         }
     }
     private fun syncVisibility() {
-        val allowed=prefs.getBoolean("overlay",true) &&
+        val allowed=prefs.getBoolean("offset_enabled",true) && prefs.getBoolean("overlay",true) &&
             (Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this))
         val onlyPilot=prefs.getBoolean("overlay_pilot_only",false)
         val shouldShow=allowed && (!onlyPilot || PilotForeground.isPilotVisible(this))
