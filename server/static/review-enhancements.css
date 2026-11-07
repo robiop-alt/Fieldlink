@@ -56,3 +56,18 @@
 @media (prefers-reduced-motion:reduce){
  .review-panel .clip,.review-panel .clip *{scroll-behavior:auto;transition:none}
 }
+
+/* OFFSET review: three-up on iPad and Mac, one-up on iPhone.
+   Keep the explicitly selected list view independent of column count. */
+@media (min-width:768px){
+  .shell:has(.review-panel){max-width:1320px}
+  .review-panel .clipgrid:not(.list-view){
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:14px;
+  }
+  .review-panel .clipgrid:not(.list-view) .clip{min-width:0}
+  .review-panel .clipgrid:not(.list-view) .offset-clip-preview{width:100%}
+}
+@media (max-width:767px){
+  .review-panel .clipgrid:not(.list-view){grid-template-columns:minmax(0,1fr)}
+}
