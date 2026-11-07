@@ -22,7 +22,7 @@ object PilotMetadataTimeline {
         val cutoff=capturedAt-MAX_AGE_MS
         for(i in 0 until existing.length()) {
             val item=existing.optJSONObject(i) ?: continue
-            if(item.optLong("at")>=cutoff && kept.length()<MAX_ENTRIES-1)kept.put(item)
+            if(item.optLong("at")>=cutoff)kept.put(item)
         }
         kept.put(JSONObject().put("project",project).put("at",capturedAt)
             .put("text",text.take(1200)))
