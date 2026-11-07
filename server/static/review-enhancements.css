@@ -32,3 +32,5 @@
 .offset-camera-field:first-child strong,.offset-camera-field:nth-child(2) strong{color:#b7f34d}
 .offset-camera-source{display:block;margin-top:5px;font-size:10px;color:#91a09d}
 @media(max-width:520px){.review-panel{padding:12px}.review-panel .clipgrid{grid-template-columns:minmax(0,1fr)}.review-panel #offset-tools button{padding:7px 9px}.offset-camera-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.offset-new-badge{position:absolute;top:9px;left:9px;background:#b7f34d;color:#17200f;padding:3px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.05em;pointer-events:none}
