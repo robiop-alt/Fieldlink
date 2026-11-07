@@ -165,3 +165,18 @@ body.offset-theater-open{overflow:hidden!important}
     max-width:60%;
   }
 }
+
+/* Safari touch controls: finger-sized targets without stealing screen space. */
+@media(pointer:coarse){
+ .offset-player-controls button,.offset-player-btn{min-width:44px;min-height:44px}
+ .offset-player-seek{min-height:44px;touch-action:pan-x}
+ .offset-player-options select{min-height:44px;font-size:16px}
+ .clipgrid .clip .offset-clip-preview{touch-action:manipulation}
+ .offset-player-controls{touch-action:manipulation}
+}
+@media(max-width:767px){
+ .offset-player,.offset-player-stage,.offset-player-controls{max-width:100%;min-width:0}
+ .offset-player-controls{gap:4px}
+ .offset-player-clock{font-variant-numeric:tabular-nums}
+ .offset-player-title{overflow-wrap:anywhere}
+}
