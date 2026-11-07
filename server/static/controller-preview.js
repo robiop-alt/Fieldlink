@@ -167,7 +167,64 @@
     if(state.screen!=='library')state.screen='library';
     render();
   }
+  // Static simulated playback: no media requests, video decoding or device access.
+  let playerTicker=null;
+  const playerDurations=[13,52,33,64];
+  function closePlayer(){
+    if(playerTicker!==null){clearInterval(playerTicker);playerTicker=null;}
+    modal.hidden=true;
+    modal.innerHTML='';
+  }
+  function playerClock(seconds){
+    const n=Math.max(0,Math.floor(seconds));
+    return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+  }
+  function renderPlayer(){
+    if(state.playerIndex==null)return;
+    const i=state.playerIndex, f=sampleFiles[i], duration=playerDurations[i];
+    const seconds=Math.min(duration,state.playerSeconds||0);
+    modal.hidden=false;
+    modal.innerHTML='<div class="offset-player-backdrop" data-action="closePlayer"></div>'+
+      '<div class="offset-demo-player" role="dialog" aria-modal="true" aria-label="OFFSET player demo">'+
+      '<div class="offset-player-header"><strong>OFFSET · PLAYER</strong><span>'+escapeHTML(f.name)+'</span>'+
+      button('✕ Close','closePlayer')+'</div>'+
+      '<div class="offset-player-stage"><div class="offset-media-art offset-media-art-'+i+'"></div>'+
+      '<span>DEMO FOOTAGE · NO VIDEO PLAYBACK</span></div>'+
+      '<div class="offset-player-seek"><input type="range" min="0" max="'+duration+'" value="'+seconds+
+      '" aria-label="Seek through demo clip" id="demoPlayerSeek"><span>'+playerClock(seconds)+' / '+playerClock(duration)+'</span></div>'+
+      '<div class="offset-player-controls">'+button('◀ Previous','playerPrev')+
+      button(state.playerPlaying?'❚❚ Pause':'▶ Play','playerToggle')+
+      button('Next ▶','playerNext')+'</div>'+
+      '<div class="offset-player-details">Clip '+(i+1)+' of '+sampleFiles.length+
+      ' · 3840 × 2160 · '+f.size+' · Modified: 7 Nov 2026</div>'+
+      '<p class="hint">Interactive playback simulation only. The APK uses local MP4 files.</p></div>';
+  }
+  function openPlayer(i){
+    state.playerIndex=Math.max(0,Math.min(sampleFiles.length-1,i));
+    state.playerSeconds=0;
+    state.playerPlaying=false;
+    renderPlayer();
+    if(playerTicker!==null)clearInterval(playerTicker);
+    playerTicker=setInterval(()=>{
+      if(!state.playerPlaying || state.playerIndex==null || modal.hidden)return;
+      state.playerSeconds=Math.min(playerDurations[state.playerIndex],state.playerSeconds+0.25);
+      if(state.playerSeconds>=playerDurations[state.playerIndex])state.playerPlaying=false;
+      const slider=document.getElementById('demoPlayerSeek');
+      if(slider)slider.value=String(state.playerSeconds);
+      const time=modal.querySelector('.offset-player-seek span');
+      if(time)time.textContent=playerClock(state.playerSeconds)+' / '+playerClock(playerDurations[state.playerIndex]);
+      const play=modal.querySelector('[data-action="playerToggle"]');
+      if(play)play.textContent=state.playerPlaying?'❚❚ Pause':'▶ Play';
+    },250);
+  }
   function action(code){
+    if(code==='closePlayer'){closePlayer();state.playerIndex=null;return}
+    if(code==='playerToggle'){state.playerPlaying=!state.playerPlaying;renderPlayer();return}
+    if(code==='playerPrev'||code==='playerNext'){
+      const next=state.playerIndex+(code==='playerNext'?1:-1);
+      if(next>=0&&next<sampleFiles.length){state.playerIndex=next;state.playerSeconds=0;state.playerPlaying=false;renderPlayer()}
+      return;
+    }
     if(code==='closeModal'){modal.hidden=true;modal.replaceChildren();return}
     if(code==='home'){setScreen('library');return}
     if(code==='gridView'){state.mediaLayout='grid';render();return}
@@ -181,9 +238,7 @@
     if(code.startsWith('project:')){state.project=Number(code.split(':')[1])||0;setScreen('library');return}
     if(code.startsWith('file:')){
       const f=sampleFiles[Number(code.split(':')[1])];
-      if(f)showModal('▶ '+f.name,
-        'Demo-only preview · Duration: 00:34 · Resolution: 3840 × 2160 · Size: '+f.size+
-        '. The real app opens a local video player on tap, never automatically while flying.');
+      if(f)openPlayer(Number(code.split(':')[1]));
       return;
     }
     if(['batchQueue','batchPriority','batchExclude'].includes(code)){
@@ -239,6 +294,13 @@
       settings[target.dataset.setting]=target.checked;
     }
   });
+  modal.addEventListener('input',event=>{
+    if(event.target.id==='demoPlayerSeek'){
+      state.playerSeconds=Number(event.target.value);
+      const time=modal.querySelector('.offset-player-seek span');
+      if(time)time.textContent=playerClock(state.playerSeconds)+' / '+playerClock(playerDurations[state.playerIndex]);
+    }
+  });
   modal.addEventListener('click',event=>{
     const target=event.target.closest('[data-action]');
     if(target)action(target.dataset.action);
@@ -249,8 +311,8 @@
   scenario.addEventListener('change',()=>simulateScenario(scenario.value));
   document.getElementById('openSettings').addEventListener('click',()=>setScreen('settings'));
   document.getElementById('resetDemo').addEventListener('click',()=>{
-    settings={...defaults};
-    state={screen:'home',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null};
+    closePlayer();settings={...defaults};
+    state={screen:'library',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null,selectedMedia:[],demoExcluded:[],demoPriority:[],playerIndex:null,playerSeconds:0,playerPlaying:false};
     scenario.value='idle';screenSize.value='tablet';frame.classList.remove('mobile');render();
   });
   setInterval(()=>{
