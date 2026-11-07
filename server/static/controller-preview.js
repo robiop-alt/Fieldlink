@@ -23,7 +23,7 @@
     show_upload_status:true,start_on_boot:true
   };
   let settings={...defaults};
-  let state={screen:'home',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null,selectedMedia:[],demoExcluded:[],demoPriority:[]};
+  let state={screen:'library',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null,selectedMedia:[],demoExcluded:[],demoPriority:[]};
   const projects=['DEMO · Northern Light','DEMO · Mountain Unit','DEMO · Second Camera'];
   const escapeHTML=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','&#39;':'&#39;'}[c]||'&#39;'));
   function button(label,action,kind='') {
@@ -88,19 +88,41 @@
   }
   function renderLibrary(){
     const selected=state.selectedMedia.length;
-    return nav('MEDIA LIBRARY · SAMPLE CLIPS')+
-    '<div class="card"><div class="card-head"><h2>MEDIA LIBRARY</h2><span class="tiny-pill">4 sample clips</span></div>'+
-    '<div class="library-row"><span class="hint">DJI visible MP4s: 3.2 GB</span>'+button('Storage','mediaStorage')+'</div>'+
-    '<div class="library-batch"><span class="hint">'+selected+' selected</span>'+
-      button('Queue','batchQueue')+button('Priority','batchPriority')+button('Exclude','batchExclude')+'</div>'+
-    sampleFiles.map((f,i)=>'<div class="library-row">'+
-      '<input aria-label="Select '+f.name+'" class="demo-check" type="checkbox" data-demo-select="'+i+'" '+
-        (state.selectedMedia.includes(i)?'checked':'')+'>'+
-      '<div class="file-thumb"></div><div class="library-meta" style="flex:1"><strong>'+f.name+'</strong>'+
-      '<span class="hint">'+f.size+' · '+(state.demoExcluded.includes(i)?'EXCLUDED':state.demoPriority.includes(i)?'★ PRIORITY':'LOCAL')+'</span>'+
-      '<span class="hint">Modified: 7 Nov 2026</span></div>'+
-      '<button type="button" data-action="file:'+i+'">▶ Preview</button></div>').join('')+
-    '<p class="hint">Previews and bulk actions are simulations only. No actual media is read or modified.</p></div>';
+    const [status,kind,pct]=activeStatus();
+    const all=sampleFiles.length;
+    const waiting=sampleFiles.filter((f,i)=>!state.demoExcluded.includes(i)).length;
+    const cols=state.mediaLayout==='list'?'offset-media-list':'offset-media-grid';
+    const mediaHeader='<div class="offset-media-top"><button data-action="projects" type="button" class="offset-project-picker">'+escapeHTML(projects[state.project])+'⌄</button>'+
+      '<span class="offset-root-label">▱ Project root ⌄</span><span class="offset-top-spacer"></span>'+
+      button('▦ QR','qr')+'<span class="offset-live-dot"></span>'+button('⚙ Settings','settings')+'</div>';
+    const filters='<div class="offset-media-toolbar">'+
+      button('All clips','filterAll')+
+      '<span class="offset-status-pill">☁ '+all+' clips · '+(state.upload==='uploading'?'1 uploading · ':'')+waiting+' waiting · '+state.demoExcluded.length+' excluded</span>'+
+      button('Upload '+waiting,'queue')+
+      button('▦','gridView')+button('☷','listView')+button('⋯','tools')+'</div>';
+    const batch='<div class="offset-media-batch"><span class="hint">'+selected+' selected</span>'+
+      button('Queue','batchQueue')+button('Priority','batchPriority')+button('Exclude','batchExclude')+
+      button('Storage','mediaStorage')+'</div>';
+    const cards=sampleFiles.map((f,i)=>{
+      const excluded=state.demoExcluded.includes(i);
+      const urgent=state.demoPriority.includes(i);
+      const duration=['0:13','0:52','0:33','1:04'][i];
+      const badge=excluded?'Excluded':urgent?'★ Priority':state.upload==='uploading'&&i===0?'Uploading':'Queued';
+      return '<div class="offset-media-card">'+
+        '<div class="offset-media-image" data-action="file:'+i+'" role="button" tabindex="0" aria-label="Preview '+f.name+'">'+
+          '<div class="offset-media-art offset-media-art-'+i+'"></div>'+
+          '<span class="offset-image-status">☁ '+badge+'</span><span class="offset-image-duration">'+duration+'</span></div>'+
+        '<div class="offset-media-info"><label class="offset-media-name">'+
+          '<input aria-label="Select '+f.name+'" class="demo-check" type="checkbox" data-demo-select="'+i+'" '+(state.selectedMedia.includes(i)?'checked':'')+'>'+
+          '<strong>'+f.name+'</strong></label>'+
+          '<span class="offset-media-sub">'+f.size+' · '+(urgent?'PRIORITY':excluded?'EXCLUDED':'Metadata arrives with upload')+'</span>'+
+          '<div class="offset-media-foot"><span>7 Nov, 14:08</span>'+button('⋮','file:'+i)+'</div></div></div>';
+    }).join('');
+    return mediaHeader+filters+batch+
+      '<div class="'+cols+'">'+cards+'</div>'+
+      '<div class="offset-media-bottom"><span class="hint">'+status+'</span>'+
+      button('Upload queue','queue')+button('SD backup','sd')+'</div>'+
+      '<p class="offset-media-disclaimer">DEMO · Sample clips only. No device media accessed.</p>';
   }
   function renderQueue(){
     const rows=sampleFiles.slice(1,4).map((f,i)=>({file:f,index:i}));
@@ -142,18 +164,21 @@
   function setScreen(v){state.screen=v;render();app.scrollIntoView({behavior:'smooth',block:'nearest'});}
   function simulateScenario(v) {
     state.upload=v;state.progress=v==='uploading'?42:v==='waiting'?62:v==='error'?18:0;
-    if(state.screen!=='home')state.screen='home';
+    if(state.screen!=='library')state.screen='library';
     render();
   }
   function action(code){
     if(code==='closeModal'){modal.hidden=true;modal.replaceChildren();return}
-    if(code==='home'){setScreen('home');return}
+    if(code==='home'){setScreen('library');return}
+    if(code==='gridView'){state.mediaLayout='grid';render();return}
+    if(code==='listView'){state.mediaLayout='list';render();return}
+    if(code==='filterAll'){state.selectedMedia=[];render();return}
     if(['settings','projects','qr','library','queue','tools','sd'].includes(code)){setScreen(code);return}
     if(code==='start'){simulateScenario('uploading');scenario.value='uploading';return}
     if(code==='stop'){simulateScenario('idle');scenario.value='idle';return}
     if(code==='startSd'){state.sdRunning=true;state.sdProgress=0;render();return}
     if(code==='stopSd'){state.sdRunning=false;render();return}
-    if(code.startsWith('project:')){state.project=Number(code.split(':')[1])||0;setScreen('home');return}
+    if(code.startsWith('project:')){state.project=Number(code.split(':')[1])||0;setScreen('library');return}
     if(code.startsWith('file:')){
       const f=sampleFiles[Number(code.split(':')[1])];
       if(f)showModal('▶ '+f.name,
@@ -235,7 +260,7 @@
         state.upload='idle';scenario.value='idle';
         showModal('Demo transfer completed','Sample clips are now marked complete. No data was uploaded.');
       }
-      if(state.screen==='home')render();
+      if(state.screen==='library')render();
     }
     if(state.sdRunning) {
       state.sdProgress=Math.min(100,state.sdProgress+6);

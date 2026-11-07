@@ -1433,25 +1433,25 @@ class MainActivity : Activity() {
             orientation=LinearLayout.HORIZONTAL
             gravity=android.view.Gravity.CENTER_VERTICAL
         }
-        val heading=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        heading.addView(text("OFFSET.   MEDIA LIBRARY",20f,Color.WHITE).apply {
-            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        // Media Library is the actual launcher screen. Keep project, QR and
+        // settings immediately available, with no intermediate dashboard.
+        header.addView(button(
+            (prefs.getString("project_name",null)?.takeIf { it.isNotBlank() } ?: "Select project")+"  ▾"
+        ) { showProjects() },LinearLayout.LayoutParams(0,dp(37),1f))
+        header.addView(button("▣ QR") { showProjectShare() })
+        header.addView(button("⚙ Settings") {
+            dashboardView?.let { setContentView(it) }
         })
-        heading.addView(text(
-            (prefs.getString("project_name",null)?.takeIf { it.isNotBlank() } ?: "Select project")+
-                if(pid.isNotBlank()) "  ·  $pid" else "",
-            12f,accent
-        ))
-        header.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
-        header.addView(button("Settings") { dashboardView?.let { setContentView(it) } })
         root.addView(header)
-        val nav=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        nav.addView(primaryButton("QR · Share") { showProjectShare() },
-            LinearLayout.LayoutParams(0,dp(33),1f).apply { rightMargin=dp(5) })
-        nav.addView(button("Projects") { showProjects() },
-            LinearLayout.LayoutParams(0,dp(33),1f).apply { rightMargin=dp(5) })
-        nav.addView(button("Refresh") { showMediaLibraryPage() },
-            LinearLayout.LayoutParams(0,dp(33),1f))
+        val nav=LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            gravity=android.view.Gravity.CENTER_VERTICAL
+        }
+        nav.addView(text("OFFSET.  /  MEDIA LIBRARY",12f,accent).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        },LinearLayout.LayoutParams(0,-2,1f))
+        nav.addView(button("Queue") { showUploadQueue() })
+        nav.addView(button("Refresh") { showMediaLibraryPage() })
         root.addView(nav)
         val status=text("Loading media…",12f,muted)
         root.addView(status)
