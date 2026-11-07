@@ -1355,6 +1355,72 @@ class MainActivity : Activity() {
         builder.show()
     }
 
+    private fun performMediaBatchAction(pid:String,selected:List<DocumentFile>,action:String) {
+        if(selected.isEmpty())return
+        val title=when(action) {
+            "queue" -> "Add selected clips to queue?"
+            "priority" -> "Prioritize selected clips?"
+            "exclude" -> "Exclude selected clips?"
+            else -> return
+        }
+        val description=when(action) {
+            "queue" -> "Add ${selected.size} selected clips to the current project's upload queue. Recently modified files will be skipped."
+            "priority" -> "Mark ${selected.size} selected clips as urgent. Only pending, project-owned clips can be prioritized."
+            else -> "Exclude ${selected.size} selected clips from automatic uploads? "+
+                "This does not delete the DJI originals. Active or resumable uploads will be skipped."
+        }
+        showOffsetConfirm(title,description,
+            if(action=="exclude")"Exclude" else "Continue",
+            destructive=action=="exclude") {
+            Thread {
+                val ledger=ProjectLedger(this)
+                var changed=0
+                var skipped=0
+                val current=prefs.getString("project","").orEmpty()
+                if(current!=pid){
+                    runOnUiThread { showOffsetError("Project changed","Select the project again before changing its media.") }
+                    return@Thread
+                }
+                for(file in selected){
+                    if(prefs.getString("project","")!=pid)break
+                    if(!file.isFile || file.length()<=0 || !file.name.orEmpty().endsWith(".mp4",true)){
+                        skipped++;continue
+                    }
+                    val uri=file.uri.toString()
+                    val state=ledger.stateFor(uri,pid)
+                    if(state=="other" || state=="done"){
+                        skipped++;continue
+                    }
+                    try {
+                        val ok=when(action) {
+                            "queue" -> {
+                                // Do not queue an MP4 still being written by DJI.
+                                val last=file.lastModified()
+                                if(last<=0 || System.currentTimeMillis()-last<45000L)false
+                                else ledger.enqueueManual(file,pid)=="Queued"
+                            }
+                            "priority" -> state=="pending" &&
+                                ledger.getUploadId(file,pid)==null &&
+                                ledger.prioritizeNext(uri,pid)
+                            "exclude" -> state=="pending" &&
+                                ledger.getUploadId(file,pid)==null &&
+                                run { ledger.excludeFromAuto(file,pid);true }
+                            else -> false
+                        }
+                        if(ok)changed++ else skipped++
+                    }catch(_:Exception){skipped++}
+                }
+                runOnUiThread {
+                    if(prefs.getString("project","")==pid)showMediaLibraryPage()
+                    AlertDialog.Builder(this).setTitle("Media selection updated")
+                        .setMessage("$changed clips updated · $skipped skipped.\n"+
+                            "No original DJI media was deleted.")
+                        .setPositiveButton("Close",null).show()
+                }
+            }.start()
+        }
+    }
+
     /** Main controller screen. Cloud status is authoritative; local media is never deleted. */
     private fun showMediaLibraryPage() {
         val pid=project.text.toString().trim()
