@@ -27,6 +27,7 @@ class OverlayStatus(private val ctx: Context) {
     private var details:TextView?=null
     private var projectLabel:TextView?=null
     private var metadataTap:TextView?=null
+    private var permissionTap:TextView?=null
     private var modeLabel:TextView?=null
     private var waitingLabel:TextView?=null
     private var actionLabel:TextView?=null
@@ -41,7 +42,8 @@ class OverlayStatus(private val ctx: Context) {
         setStroke(dp(1),Color.rgb(88,102,91))
     }
     private fun stateColor():Int=when {
-        last.contains("attention",true)||last.contains("failed",true)||last.contains("error",true)||
+        last.contains("attention",true)||last.contains("permission needed",true)||
+            last.contains("failed",true)||last.contains("error",true)||
             last.contains("feil",true)||last.contains("mismatch",true)||
             last.contains("integrity",true) -> Color.rgb(255,104,106)
         last.contains("battery",true)||last.contains("network",true)||last.contains("low data mode",true)||
@@ -53,7 +55,7 @@ class OverlayStatus(private val ctx: Context) {
     private fun shortText():String {
         val progress=if(last.contains("battery",true)) null else Regex("""(\d{1,3})\s*%""").find(last)?.groupValues?.get(1)
         return when {
-            last.contains("attention",true) -> "!"
+            last.contains("attention",true) || last.contains("permission needed",true) -> "!"
             last.contains("low data mode",true) -> "↓"
             last.contains("battery",true) -> "▰"
             progress!=null -> "↑ $progress%"
@@ -68,7 +70,7 @@ class OverlayStatus(private val ctx: Context) {
         }
     }
     private fun readableStatus():String=when {
-        last.contains("attention",true) -> last
+        last.contains("attention",true) || last.contains("permission needed",true) -> last
         last.contains("low data mode",true) && last.contains("consider",true) ->
             "Slow upload · Low Data Mode can reduce file size. Enable it in OFFSET settings."
         last.contains("battery",true) -> "Low battery · Uploads paused"
@@ -118,7 +120,10 @@ class OverlayStatus(private val ctx: Context) {
             visibility=if(expanded) View.VISIBLE else View.GONE
         }
         actionLabel?.visibility=if(expanded) View.VISIBLE else View.GONE
-        metadataTap?.visibility=if(prefs.getBoolean("metadata_reminder",true) && !prefs.getBoolean("metadata_capture_active",false)) View.VISIBLE else View.GONE
+        permissionTap?.visibility=if(last.contains("permission needed",true)) View.VISIBLE else View.GONE
+        metadataTap?.visibility=if(!last.contains("permission needed",true) &&
+            prefs.getBoolean("metadata_reminder",true) &&
+            !prefs.getBoolean("metadata_capture_active",false)) View.VISIBLE else View.GONE
         root?.background=drawable()
         root?.let { view -> params?.let { p ->
             if(expanded) {
@@ -192,7 +197,22 @@ class OverlayStatus(private val ctx: Context) {
                 }catch(_:Exception){}
             }
         }
-        layout.addView(label);layout.addView(metadata);layout.addView(mode);layout.addView(waiting)
+        val permission=TextView(ctx).apply {
+            text="!  ALLOW ACCESS"
+            textSize=10f
+            setTypeface(null,Typeface.BOLD)
+            setTextColor(Color.rgb(255,194,93))
+            gravity=Gravity.CENTER
+            setPadding(dp(8),dp(7),dp(8),dp(7))
+            setOnClickListener {
+                try {
+                    ctx.startActivity(Intent(ctx,MainActivity::class.java)
+                        .putExtra("request_permission_help",true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                }catch(_:Exception){}
+            }
+        }
+        layout.addView(label);layout.addView(permission);layout.addView(metadata);layout.addView(mode);layout.addView(waiting)
         layout.addView(detail);layout.addView(project);layout.addView(action)
         val display=ctx.resources.displayMetrics
         val savedSide=prefs.getString("overlay_side","right")
@@ -207,7 +227,7 @@ class OverlayStatus(private val ctx: Context) {
             y=prefs.getInt("overlay_y",dp(140)).coerceIn(dp(50),(display.heightPixels-dp(80)).coerceAtLeast(dp(50)))
         }
         root=layout;header=label;details=detail;projectLabel=project
-        metadataTap=metadata
+        metadataTap=metadata;permissionTap=permission
         modeLabel=mode;waitingLabel=waiting;actionLabel=action;params=p
         expanded=style=="classic"
         var downX=0f;var downY=0f;var originX=0;var originY=0;var moved=false
@@ -251,7 +271,7 @@ class OverlayStatus(private val ctx: Context) {
     }
     fun hide() {
         val current=root
-        root=null;header=null;details=null;projectLabel=null;metadataTap=null
+        root=null;header=null;details=null;projectLabel=null;metadataTap=null;permissionTap=null
         modeLabel=null;waitingLabel=null;actionLabel=null;params=null
         if(current!=null) try {wm.removeView(current)}catch(_:Exception){}
     }
