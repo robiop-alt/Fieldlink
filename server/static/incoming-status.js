@@ -23,7 +23,7 @@
   let showList=true, pending=false, lastSuccess=0;
 
   async function refresh(){
-    if(pending||document.hidden||document.getElementById('content')?.classList.contains('hidden'))return;
+    if(!navigator.onLine||pending||document.hidden||document.getElementById('content')?.classList.contains('hidden'))return;
     if(typeof token!=='string'||!token)return;
     pending=true;
     try {
@@ -108,4 +108,5 @@
   setTimeout(refresh,400);
   setInterval(refresh,6000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
+  window.addEventListener('online',refresh);
 })();
