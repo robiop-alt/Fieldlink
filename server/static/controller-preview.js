@@ -23,7 +23,7 @@
     show_upload_status:true,start_on_boot:true
   };
   let settings={...defaults};
-  let state={screen:'home',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null};
+  let state={screen:'home',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null,selectedMedia:[],demoExcluded:[],demoPriority:[]};
   const projects=['DEMO · Northern Light','DEMO · Mountain Unit','DEMO · Second Camera'];
   const escapeHTML=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','&#39;':'&#39;'}[c]||'&#39;'));
   function button(label,action,kind='') {
@@ -87,11 +87,20 @@
     '<div class="toolbar">'+button('Copy demo link','copyDemo')+'</div></div>';
   }
   function renderLibrary(){
+    const selected=state.selectedMedia.length;
     return nav('MEDIA LIBRARY · SAMPLE CLIPS')+
     '<div class="card"><div class="card-head"><h2>MEDIA LIBRARY</h2><span class="tiny-pill">4 sample clips</span></div>'+
-    sampleFiles.map((f,i)=>'<div class="library-row"><div class="file-thumb"></div><div class="library-meta" style="flex:1"><strong>'+f.name+'</strong><span class="hint">'+f.size+' · demo footage</span></div>'+
-      '<button type="button" data-action="file:'+i+'">Info</button></div>').join('')+
-    '<div class="toolbar">'+button('Add proxy files','proxy')+'</div></div>';
+    '<div class="library-row"><span class="hint">DJI visible MP4s: 3.2 GB</span>'+button('Storage','mediaStorage')+'</div>'+
+    '<div class="library-batch"><span class="hint">'+selected+' selected</span>'+
+      button('Queue','batchQueue')+button('Priority','batchPriority')+button('Exclude','batchExclude')+'</div>'+
+    sampleFiles.map((f,i)=>'<div class="library-row">'+
+      '<input aria-label="Select '+f.name+'" class="demo-check" type="checkbox" data-demo-select="'+i+'" '+
+        (state.selectedMedia.includes(i)?'checked':'')+'>'+
+      '<div class="file-thumb"></div><div class="library-meta" style="flex:1"><strong>'+f.name+'</strong>'+
+      '<span class="hint">'+f.size+' · '+(state.demoExcluded.includes(i)?'EXCLUDED':state.demoPriority.includes(i)?'★ PRIORITY':'LOCAL')+'</span>'+
+      '<span class="hint">Modified: 7 Nov 2026</span></div>'+
+      '<button type="button" data-action="file:'+i+'">▶ Preview</button></div>').join('')+
+    '<p class="hint">Previews and bulk actions are simulations only. No actual media is read or modified.</p></div>';
   }
   function renderQueue(){
     const rows=sampleFiles.slice(1,4).map((f,i)=>({file:f,index:i}));
@@ -147,7 +156,26 @@
     if(code.startsWith('project:')){state.project=Number(code.split(':')[1])||0;setScreen('home');return}
     if(code.startsWith('file:')){
       const f=sampleFiles[Number(code.split(':')[1])];
-      if(f)showModal(f.name,f.size+' · Demonstration media only. No actual video or file access.');
+      if(f)showModal('▶ '+f.name,
+        'Demo-only preview · Duration: 00:34 · Resolution: 3840 × 2160 · Size: '+f.size+
+        '. The real app opens a local video player on tap, never automatically while flying.');
+      return;
+    }
+    if(['batchQueue','batchPriority','batchExclude'].includes(code)){
+      const picked=state.selectedMedia;
+      if(!picked.length){showModal('Choose clips','Select one or more sample clips first.');return}
+      if(code==='batchPriority')state.demoPriority=[...new Set([...state.demoPriority,...picked])];
+      if(code==='batchExclude')state.demoExcluded=[...new Set([...state.demoExcluded,...picked])];
+      state.selectedMedia=[];
+      render();
+      showModal('Batch action · demo only',picked.length+' selected clips · '+
+        (code==='batchQueue'?'queued':code==='batchPriority'?'prioritized':'excluded')+
+        ' in the browser preview. No upload queue, production file or setting was changed.');
+      return;
+    }
+    if(code==='mediaStorage'){
+      showModal('Media storage · sample figures',
+        'Visible DJI MP4s: 3.2 GB · OFFSET temporary chunks: 38 MB · Low-data copies: 510 MB · Internal free space: 23.8 GB. Clean old temp files is manual in the real APK. No data is deleted here.');
       return;
     }
     if(code.startsWith('prioritize:')){state.priorityClip=Number(code.split(':')[1]);render();return}
@@ -174,6 +202,14 @@
   });
   app.addEventListener('change',event=>{
     const target=event.target;
+    if(target.matches('[data-demo-select]')){
+      const i=Number(target.dataset.demoSelect);
+      state.selectedMedia=target.checked
+        ?[...new Set([...state.selectedMedia,i])]
+        :state.selectedMedia.filter(x=>x!==i);
+      render();
+      return;
+    }
     if(target.matches('[data-setting]')){
       settings[target.dataset.setting]=target.checked;
     }
