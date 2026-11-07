@@ -556,8 +556,12 @@ class MainActivity : Activity() {
         setContentView(dashboardView)
         showMediaLibraryPage()
         if(intent?.getBooleanExtra("request_metadata_access",false)==true) {
-            showMetadataPermissionPrompt()
+            window.decorView.post { showMetadataPermissionPrompt() }
             intent?.removeExtra("request_metadata_access")
+        }
+        if(intent?.getBooleanExtra("request_permission_help",false)==true) {
+            window.decorView.post { showPermissionStatus() }
+            intent?.removeExtra("request_permission_help")
         }
         // No daily "resume" dialog: restore the last approved project and
         // folder automatically when the user opens OFFSET after boot.
@@ -1267,6 +1271,11 @@ class MainActivity : Activity() {
         super.onNewIntent(intent)
         if(intent?.getBooleanExtra("request_metadata_access",false)==true) {
             showMetadataPermissionPrompt()
+            intent.removeExtra("request_metadata_access")
+        }
+        if(intent?.getBooleanExtra("request_permission_help",false)==true) {
+            showPermissionStatus()
+            intent.removeExtra("request_permission_help")
         }
     }
 
@@ -2090,6 +2099,8 @@ class MainActivity : Activity() {
     private fun showPermissionStatus() {
         val overlayGranted=Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this)
         val cacheGranted=cacheAccessOk()
+        val pilotGranted=!prefs.getBoolean("overlay_pilot_only",false) ||
+            PilotForeground.permissionGranted(this)
         val body=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
             setPadding(dp(20),dp(8),dp(20),dp(6))
@@ -2105,6 +2116,8 @@ class MainActivity : Activity() {
             14f,if(overlayGranted) accent else Color.rgb(255,174,106)))
         body.addView(text("●  CACHE_VIDEO: ${if(cacheGranted) "Ready" else "Permission needed"}",
             14f,if(cacheGranted) accent else Color.rgb(255,174,106)))
+        if(!pilotGranted)body.addView(text(
+            "●  DJI Pilot visibility: Permission needed",14f,Color.rgb(255,174,106)))
         body.addView(text(
             "These permissions are saved across restarts. Android may require new screen capture permission for each metadata session.",
             12f,muted))
@@ -2113,6 +2126,9 @@ class MainActivity : Activity() {
         if(!cacheGranted) dialog.setPositiveButton("Choose folder") { _,_ -> chooseFolder() }
         else if(!overlayGranted) dialog.setPositiveButton("Allow overlay") { _,_ ->
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
+        }
+        else if(!pilotGranted) dialog.setPositiveButton("Allow app visibility") { _,_ ->
+            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
         }
         else dialog.setNeutralButton("Change folder") { _,_ -> chooseFolder() }
         dialog.show()
