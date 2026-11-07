@@ -41,10 +41,11 @@ class OverlayStatus(private val ctx: Context) {
         setStroke(dp(1),Color.rgb(88,102,91))
     }
     private fun stateColor():Int=when {
-        last.contains("failed",true)||last.contains("error",true)||
+        last.contains("attention",true)||last.contains("failed",true)||last.contains("error",true)||
             last.contains("feil",true)||last.contains("mismatch",true)||
             last.contains("integrity",true) -> Color.rgb(255,104,106)
-        last.contains("battery",true)||last.contains("network",true)||last.contains("venter",true)||
+        last.contains("battery",true)||last.contains("network",true)||last.contains("low data mode",true)||
+            last.contains("venter",true)||
             last.contains("waiting",true)||last.contains("blocked",true)||
             last.contains("paused",true) -> Color.rgb(255,194,93)
         else -> accent
@@ -52,6 +53,8 @@ class OverlayStatus(private val ctx: Context) {
     private fun shortText():String {
         val progress=if(last.contains("battery",true)) null else Regex("""(\d{1,3})\s*%""").find(last)?.groupValues?.get(1)
         return when {
+            last.contains("attention",true) -> "!"
+            last.contains("low data mode",true) -> "↓"
             last.contains("battery",true) -> "▰"
             progress!=null -> "↑ $progress%"
             last.contains("compress",true) -> "⇣"
@@ -65,6 +68,9 @@ class OverlayStatus(private val ctx: Context) {
         }
     }
     private fun readableStatus():String=when {
+        last.contains("attention",true) -> last
+        last.contains("low data mode",true) && last.contains("consider",true) ->
+            "Slow upload · Low Data Mode can reduce file size. Enable it in OFFSET settings."
         last.contains("battery",true) -> "Low battery · Uploads paused"
         last.contains("compress",true) -> "Compressing · Low Data Mode"
         last.contains("network",true) || last.contains("nett",true) -> "Waiting for network"
