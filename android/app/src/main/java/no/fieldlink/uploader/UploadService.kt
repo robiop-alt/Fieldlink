@@ -556,7 +556,37 @@ class UploadService : Service() {
         prefs.edit().remove("upload_low_$uploadId").apply()
         lowFile?.delete()
         val clipId=result.optString("clip_id")
-        if(clipId.isNotBlank()) sendDjiThumbnail(doc,clipId)
+        if(clipId.isNotBlank()) {
+            sendCameraSettings(doc,clipId)
+            sendDjiThumbnail(doc,clipId)
+        }
+    }
+
+    /**
+     * Only link a camera reading if at least two identical DJI Pilot OCR samples
+     * match this file's close/last-modified time. Never use proxy ffprobe fields.
+     * A missing or ambiguous reading leaves the review chips empty.
+     */
+    private fun sendCameraSettings(doc:DocumentFile,clipId:String) {
+        try {
+            val matched=CameraSettingsStore.match(this,sessionProject,doc.lastModified())?:return
+            val (values,observedAt)=matched
+            val payload=JSONObject()
+                .put("project_id",sessionProject)
+                .put("observed_at",observedAt/1000L)
+                .put("values",JSONObject(values))
+                .toString().toRequestBody("application/json".toMediaType())
+            val request=Request.Builder()
+                .url("$sessionBase/api/device/clips/$clipId/camera-metadata")
+                .header("X-Device-Token",sessionToken)
+                .put(payload).build()
+            // Camera metadata is best-effort, independent of verified video delivery.
+            http.newCall(request).execute().use { response ->
+                if(!response.isSuccessful)status("Camera settings not attached · clip remains safe")
+            }
+        }catch(_:Exception) {
+            // Never delay or roll back a successfully verified video upload.
+        }
     }
 
     private fun sha256(uri:Uri):String? = try {
