@@ -155,6 +155,29 @@ class UploadService : Service() {
         catch (e: Exception) { status("Kan ikke sikre cache: ${e.message}");alertProblem("cache","DJI cache inspection failed"); stopSelf(); return }
         while (running) {
             try {
+                if (prefs.getString("project", "") != sessionProject) {
+                    status("Prosjekt endret · åpne OFFSET for å gjenoppta"); stopSelf(); return
+                }
+                // File discovery is independent of upload power, battery, and network.
+                // Register only stable, newly observed clips. Never upload while OFF.
+                if(prefs.getBoolean("upload_paused",false)) {
+                    val discovered=mutableListOf<DocumentFile>()
+                    collect(root,discovered,0)
+                    for(file in discovered) {
+                        if(!file.isFile || file.length()<=0L)continue
+                        val key=file.uri.toString()
+                        val old=seen[key]
+                        val size=file.length()
+                        val modified=file.lastModified()
+                        val stable=if(old!=null && old.size==size && old.modified==modified)
+                            (old.stableScans+1).coerceAtMost(3) else 0
+                        seen[key]=FileState(size,modified,stable)
+                        if(stable>=3) ledger.observe(file,sessionProject,true)
+                    }
+                    status("OFFSET off · monitoring DJI files · uploads paused")
+                    Thread.sleep(12000)
+                    continue
+                }
                 if (lowBatteryPause()) {
                     lowBatteryStatus()
                     Thread.sleep(12000)
@@ -214,7 +237,7 @@ class UploadService : Service() {
                 val work=(urgent+manualFiles+ordered).filter { unique.add(it.uri.toString()) }
                 var uploaded=0
                 for((index,f) in work.withIndex()) {
-                    if(!running || lowBatteryPause()) {
+                    if(!running || prefs.getBoolean("upload_paused",false) || lowBatteryPause()) {
                         if(running) lowBatteryStatus()
                         break
                     }
@@ -464,6 +487,7 @@ class UploadService : Service() {
             }
             while(offset<uploadSize && running) {
                 // Finish the current HTTP chunk, then pause before the next one.
+                if(prefs.getBoolean("upload_paused",false)) { status("OFFSET off · upload position saved");return false }
                 if(lowBatteryPause()) { lowBatteryStatus(); return false }
                 ControllerPolicy.pauseReason(this,prefs)?.let { status(it);return false }
                 val len=minOf(chunkSize.toLong(),uploadSize-offset).toInt()
