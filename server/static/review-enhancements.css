@@ -117,3 +117,61 @@
 @media (max-width:767px){
  .review-panel .clipmeta>.offset-camera-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+
+/* Compact colour-coded camera metadata pills. No placeholder for unknown readings. */
+.review-panel .clipmeta>.offset-camera-fields {
+  display:flex;
+  flex:1 0 100%;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:4px 5px;
+  padding:6px 0 1px;
+  border-top:1px solid rgba(165,181,174,.12);
+}
+.review-panel .clipmeta .offset-camera-field {
+  --camera-tone:119,162,151;
+  display:inline-flex;
+  flex:0 0 auto;
+  flex-direction:row;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  max-width:100%;
+  min-height:19px;
+  padding:3px 6px;
+  border-radius:5px;
+  border:1px solid rgba(var(--camera-tone),.27);
+  background:rgba(var(--camera-tone),.075);
+  line-height:1.1;
+  white-space:nowrap;
+}
+.review-panel .clipmeta .offset-camera-field>b {
+  color:rgba(var(--camera-tone),.98);
+  font-size:9px;
+  font-weight:600;
+  letter-spacing:0;
+}
+.review-panel .clipmeta .offset-camera-field>span {
+  color:#e7efeb;
+  font-size:10px;
+  line-height:1.1;
+  font-weight:600;
+  min-height:0;
+  text-align:left;
+  font-variant-numeric:tabular-nums;
+}
+.review-panel .clipmeta .offset-camera-field>span:empty {display:none}
+.review-panel .clipmeta .offset-camera-field[data-filled="false"] {
+  opacity:.48;
+  background:transparent;
+  border-color:rgba(147,163,158,.16);
+}
+.review-panel .offset-camera-recording_format{--camera-tone:183,242,102}
+.review-panel .offset-camera-lens{--camera-tone:119,183,241}
+.review-panel .offset-camera-fps{--camera-tone:183,151,240}
+.review-panel .offset-camera-iso{--camera-tone:241,185,117}
+.review-panel .offset-camera-white_balance{--camera-tone:110,198,183}
+.review-panel .offset-camera-shutter{--camera-tone:219,157,184}
+@media(max-width:767px) {
+  .review-panel .clipmeta>.offset-camera-fields {display:flex;gap:5px}
+}
