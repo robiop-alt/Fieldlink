@@ -115,3 +115,7 @@ button.primary{background:var(--accent);border-color:var(--accent);font-weight:7
 .landscape-viewport .frame.mobile #app{padding:15px 18px}
 @media(max-width:1050px){.wide-preview-layout{grid-template-columns:1fr}.landscape-viewport{padding-top:55px}.landscape-viewport .controller-shell{min-width:760px}.landscape-viewport .offset-media-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.landscape-viewport .offset-media-toolbar{flex-wrap:nowrap}.landscape-viewport .offset-status-pill{order:0;flex-basis:auto}}
 @media(max-width:600px){.landscape-viewport{width:100%;padding:55px 5px 25px}.landscape-viewport .controller-shell{min-width:760px}.landscape-viewport .offset-media-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.landscape-viewport .offset-media-image{height:100px}.landscape-viewport .controller-shell #app{padding:12px 14px}.landscape-viewport .offset-media-top,.landscape-viewport .offset-media-toolbar,.landscape-viewport .offset-media-batch{padding-left:13px;padding-right:13px}.landscape-hint:after{content:' · Swipe horizontally on phone';color:#b7f34d}}
+
+/* Per-clip metadata is secondary, not a global camera status. */
+.offset-clip-meta{display:block;font-size:9px;line-height:1.4;color:#91a59a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 5px}
+.offset-player-metadata{display:flex;gap:6px;flex-wrap:wrap;margin:9px 0}.offset-player-metadata span{font-size:11px;color:#c3d3c8;background:#2a3431;border:1px solid #405049;border-radius:4px;padding:5px 7px}
