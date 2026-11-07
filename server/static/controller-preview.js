@@ -92,7 +92,7 @@
     const all=sampleFiles.length;
     const waiting=sampleFiles.filter((f,i)=>!state.demoExcluded.includes(i)).length;
     const cols=state.mediaLayout==='list'?'offset-media-list':'offset-media-grid';
-    const mediaHeader='<div class="offset-media-top">'+button(state.powered?'● OFFSET ON':'○ OFFSET OFF','power',state.powered?'offset-power':'offset-power off')+<button data-action="projects" type="button" class="offset-project-picker">'+escapeHTML(projects[state.project])+'⌄</button>'+
+    const mediaHeader='<div class="offset-media-top">'+button(state.powered?'● OFFSET ON':'○ OFFSET OFF','power',state.powered?'offset-power':'offset-power off')+'<button data-action="projects" type="button" class="offset-project-picker">'+escapeHTML(projects[state.project])+'⌄</button>'+
       '<span class="offset-root-label">▱ Project root ⌄</span><span class="offset-top-spacer"></span>'+
       button('▦ QR','qr')+'<span class="offset-live-dot"></span>'+button('⚙ Settings','settings')+'</div>';
     const filters=(state.powered?'':'<div class="offset-power-note">OFFSET paused · file monitoring and library remain available</div>')+'<div class="offset-meta-strip"><span>ProRes RAW</span><span>35 mm</span><span>25 fps</span><span>ISO 800</span><span>WB 5600 K</span><span>Shutter 180°</span><span>Screen-captured metadata · demo</span></div>'+'<div class="offset-media-toolbar">'+
