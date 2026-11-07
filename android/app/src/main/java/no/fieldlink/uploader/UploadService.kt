@@ -90,6 +90,12 @@ class UploadService : Service() {
         val now=System.currentTimeMillis()
         if(key==lastAlertKey && now-lastAlertAt<10*60*1000)return
         lastAlertKey=key;lastAlertAt=now
+        // Important incidents survive subsequent routine "monitoring" updates.
+        prefs.edit().putString("overlay_notice",message)
+            .putLong("overlay_notice_until",now+10*60*1000L).apply()
+        if(prefs.getBoolean("overlay",true))
+            sendBroadcast(Intent(ControllerOverlayService.ACTION_UPDATE).setPackage(packageName)
+                .putExtra(ControllerOverlayService.EXTRA_STATUS,message))
         val manager=getSystemService(NotificationManager::class.java)
         val channel="offset_critical_errors_v1"
         if(Build.VERSION.SDK_INT>=26) {
@@ -127,7 +133,9 @@ class UploadService : Service() {
         val last=prefs.getLong("low_data_suggested_at",0L)
         if(now-last<6*60*60*1000L)return
         prefs.edit().putLong("low_data_suggested_at",now)
-            .putBoolean("low_data_suggestion_pending",true).apply()
+            .putBoolean("low_data_suggestion_pending",true)
+            .putString("overlay_suggestion","Slow network · consider Low Data Mode")
+            .apply()
         lastLowDataSuggestion=now
         val manager=getSystemService(NotificationManager::class.java)
         val channel="offset_low_data_suggestion_v1"
@@ -141,6 +149,7 @@ class UploadService : Service() {
     }
 
     private fun recoverySucceeded() {
+        prefs.edit().remove("overlay_notice").remove("overlay_notice_until").apply()
         recoveryFailures=0
         recoveryUntil=0L
     }
