@@ -1461,12 +1461,14 @@ class MainActivity : Activity() {
         val title=when(action) {
             "queue" -> "Add selected clips to queue?"
             "priority" -> "Prioritize selected clips?"
+            "clear_priority" -> "Remove priority from selected clips?"
             "exclude" -> "Exclude selected clips?"
             else -> return
         }
         val description=when(action) {
             "queue" -> "Add ${selected.size} selected clips to the current project's upload queue. Recently modified files will be skipped."
             "priority" -> "Mark ${selected.size} selected clips as urgent. Only pending, project-owned clips can be prioritized."
+            "clear_priority" -> "Return selected urgent clips to normal queue order. Active transfers will not be interrupted."
             else -> "Exclude ${selected.size} selected clips from automatic uploads? "+
                 "This does not delete the DJI originals. Active or resumable uploads will be skipped."
         }
@@ -1503,6 +1505,10 @@ class MainActivity : Activity() {
                             "priority" -> state=="pending" &&
                                 ledger.getUploadId(file,pid)==null &&
                                 ledger.prioritizeNext(uri,pid)
+                            "clear_priority" -> state=="pending" &&
+                                ledger.getUploadId(file,pid)==null &&
+                                uri in ledger.urgentUris(pid) &&
+                                run { ledger.clearPriority(uri,pid);true }
                             "exclude" -> state=="pending" &&
                                 ledger.getUploadId(file,pid)==null &&
                                 run { ledger.excludeFromAuto(file,pid);true }
@@ -1659,17 +1665,22 @@ class MainActivity : Activity() {
                     performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
                         .map { it.file },"priority")
                 }
+                val bulkClearPriority=button("Clear ★") {
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                        .map { it.file },"clear_priority")
+                }
                 val bulkExclude=button("Exclude") {
                     performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
                         .map { it.file },"exclude")
                 }
                 fun refreshBulk() {
                     selectedCount.text="${selection.size} selected"
-                    for(control in listOf(bulkQueue,bulkPriority,bulkExclude))
+                    for(control in listOf(bulkQueue,bulkPriority,bulkClearPriority,bulkExclude))
                         control.isEnabled=selection.isNotEmpty()
                 }
                 bulk.addView(bulkQueue)
                 bulk.addView(bulkPriority)
+                bulk.addView(bulkClearPriority)
                 bulk.addView(bulkExclude)
                 grid.addView(bulk)
                 refreshBulk()
