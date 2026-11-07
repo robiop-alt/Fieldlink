@@ -253,3 +253,68 @@ body.offset-admin{
 @media(prefers-reduced-motion:reduce){
  .offset-admin button,.offset-admin input,.offset-admin textarea{transition:none}
 }
+
+/* Project actions: exactly three visible choices. Secondary actions in Manage. */
+.offset-admin .admin-project-filters{display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px 16px}
+.offset-admin .admin-project-filters>label:first-child{flex:1 1 260px}
+.offset-admin .admin-project-status-label{flex:0 1 170px}
+.offset-admin #project-status-filter{width:100%;height:40px;min-height:40px}
+.offset-admin .project-actions .project-share-action{border-color:#476348;color:#d1e9c5}
+.offset-admin .project-actions .project-manage-action{border-color:#38494a}
+.offset-admin .admin-project-drawer{
+ position:relative;
+ background:linear-gradient(145deg,#1a2525,#11191c);
+ border:1px solid #456056;border-radius:11px;
+ padding:16px 17px;margin:16px 0;
+ box-shadow:0 10px 30px rgba(0,0,0,.17);
+}
+.offset-admin .admin-drawer-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.offset-admin .admin-drawer-heading h3{font:600 18px 'Space Grotesk',sans-serif;letter-spacing:-.025em;margin:4px 0 0}
+.offset-admin .admin-drawer-eyebrow{font:10px 'DM Mono',monospace;letter-spacing:.055em;color:#a9c197}
+.offset-admin .admin-drawer-description{font-size:11px;color:#adc0b5;line-height:1.55;margin:8px 0 15px}
+.offset-admin .admin-share-link{display:flex;align-items:center;gap:8px}
+.offset-admin .admin-share-link input{flex:1;min-width:0;margin:0;background:#0b1214;font-size:12px}
+.offset-admin .admin-share-link button{white-space:nowrap}
+.offset-admin .admin-share-content{display:flex;align-items:flex-start;gap:16px;margin-top:16px;flex-wrap:wrap}
+.offset-admin .admin-share-qr{flex:0 0 160px;min-width:160px;min-height:160px;display:grid;place-items:center;border-radius:8px;background:#f7faf6;padding:7px}
+.offset-admin .admin-share-qr img{max-width:100%;height:auto;display:block;object-fit:contain}
+.offset-admin .admin-share-qr .hint{color:#36463d;letter-spacing:0;text-align:center}
+.offset-admin .admin-share-details{flex:1;min-width:160px;display:grid;gap:8px}
+.offset-admin .admin-drawer-data{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;font-size:11px}
+.offset-admin .admin-drawer-data>span{color:#90a498;min-width:84px}
+.offset-admin .admin-drawer-data>strong{color:#e6efe6;font-weight:600;font-size:12px;overflow-wrap:anywhere}
+.offset-admin .admin-share-pin{display:grid;gap:7px}
+.offset-admin .admin-share-pin button{justify-self:start;min-height:32px}
+.offset-admin .admin-share-pin p{margin:0}
+.offset-admin .admin-drawer-controls{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:18px 0 6px}
+.offset-admin .admin-drawer-feedback{font-size:11px;color:#b7f34d;min-height:13px;margin:6px 0 0}
+.offset-admin .admin-manage-delete{margin-left:auto;background:transparent!important;border-color:#63484b!important;color:#e8aaa7!important}
+.offset-admin .admin-manage-delete:hover{background:#382529!important}
+.offset-admin .admin-activity-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid #354648;margin:16px 0 7px;padding-top:14px}
+.offset-admin .admin-activity-heading h4{font-size:12px;margin:0;color:#d5e0d6}
+.offset-admin .admin-activity-heading button{font-size:10px}
+.offset-admin .admin-activity-list{display:grid;gap:0;max-height:360px;overflow:auto}
+.offset-admin .admin-activity-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid #2e4040;padding:10px 3px}
+.offset-admin .admin-activity-desc{display:grid;gap:3px;min-width:0}
+.offset-admin .admin-activity-desc strong{font-size:11px;overflow-wrap:anywhere;color:#ebf0e9}
+.offset-admin .admin-activity-desc small{color:#91a49b;font-size:10px}
+.offset-admin .admin-activity-stage{flex-shrink:0;font-size:10px;color:#b7c7ba}
+.offset-admin .admin-activity-stage.stage-received{color:#b7f34d}
+.offset-admin .admin-activity-stage.stage-stalled{color:#eabb8d}
+.offset-admin .admin-activity-warning{padding:10px 11px;background:#34291e;border:1px solid #6b5540;border-radius:7px;margin:8px 0}
+.offset-admin .admin-activity-warning strong{font-size:11px;color:#f5cea0}
+.offset-admin .admin-activity-warning p{font-size:11px;margin:5px 0;color:#f0d8b9;overflow-wrap:anywhere}
+@media(max-width:650px){
+ .offset-admin .admin-project-filters>label:first-child{flex:1 1 100%}
+ .offset-admin .admin-project-status-label{flex:1 1 100%;margin-top:0}
+ .offset-admin .admin-project-drawer{padding:14px 12px}
+ .offset-admin .admin-share-content{gap:12px}
+ .offset-admin .admin-share-link{flex-wrap:wrap}
+ .offset-admin .admin-share-link input{flex:1 1 100%}
+ .offset-admin .admin-manage-delete{margin-left:0}
+ .offset-admin .admin-share-qr{flex-basis:144px;min-width:144px;min-height:144px}
+}
+@media(pointer:coarse){
+ .offset-admin #project-status-filter{min-height:44px;font-size:16px}
+ .offset-admin .admin-share-pin button{min-height:44px}
+}
