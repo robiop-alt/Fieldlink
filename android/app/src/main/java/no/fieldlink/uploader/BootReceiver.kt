@@ -22,8 +22,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action != Intent.ACTION_BOOT_COMPLETED && intent?.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val prefs=context.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
-        if(intent.action==Intent.ACTION_BOOT_COMPLETED) prefs.edit().putBoolean("upload_paused",false).apply()
-        if(prefs.getBoolean("upload_paused",false)) return
+        // Do not override the operator's master power choice on reboot.
         if (!prefs.getBoolean("start_on_boot",true)) return
         // The lightweight status pill is independent of the uploader, so it
         // can appear immediately after boot, before DJI Pilot 2 starts.
@@ -39,8 +38,11 @@ class BootReceiver : BroadcastReceiver() {
         val token=prefs.getString("token","").orEmpty()
         val project=prefs.getString("project","").orEmpty()
         val tree=prefs.getString("tree_uri",null)
-        if (!server.startsWith("https://") || token.isBlank() ||
-            project.isBlank() || tree.isNullOrBlank()) return
+        if (project.isBlank() || tree.isNullOrBlank()) return
+        // A paused watcher needs only local file access; credentials are checked
+        // before transfers when OFFSET is enabled.
+        if (!prefs.getBoolean("upload_paused",false) &&
+            (!server.startsWith("https://") || token.isBlank())) return
 
         // Never start a service with a missing/revoked folder permission.
         val treeUri=Uri.parse(tree)
@@ -72,7 +74,8 @@ class BootReceiver : BroadcastReceiver() {
         val builder=Notification.Builder(context,channel)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setContentTitle("OFFSET ready")
-            .setContentText("Tap to resume uploads for $project")
+            .setContentText(if(prefs.getBoolean("upload_paused",false))
+                "OFFSET off · open app to monitor DJI files" else "Tap to resume uploads for $project")
             .setContentIntent(pending)
             .setAutoCancel(true)
         manager.notify(1901,builder.build())
