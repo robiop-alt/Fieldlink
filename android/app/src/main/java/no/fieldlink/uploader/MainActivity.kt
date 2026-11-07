@@ -1274,6 +1274,87 @@ class MainActivity : Activity() {
     private data class LibraryClip(val file:DocumentFile,val thumb:Bitmap?)
     private data class CloudClip(val id:String,val filename:String,val bytes:Long)
 
+    /** Only an explicit tap opens the local decoder. Never preload video during flight. */
+    private fun showLocalClipPreview(file:DocumentFile) {
+        if(!file.isFile || !file.name.orEmpty().endsWith(".mp4",true)) {
+            showOffsetError("Preview unavailable","Select a locally accessible MP4 file.")
+            return
+        }
+        val name=file.name ?: "Clip"
+        val player=android.widget.VideoView(this).apply {
+            setBackgroundColor(Color.BLACK)
+            setVideoURI(file.uri)
+            setOnErrorListener { _,_,_ -> false }
+        }
+        val info=text("Reading clip details…",12f,muted)
+        val content=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(12),dp(8),dp(12),dp(8))
+            addView(player,LinearLayout.LayoutParams(-1,dp(225)))
+            addView(info)
+            addView(button("Play / Pause") {
+                try {
+                    if(player.isPlaying)player.pause() else player.start()
+                }catch(_:Exception){
+                    info.text="This format is not supported by the Android preview."
+                }
+            })
+        }
+        val dialog=AlertDialog.Builder(this).setTitle(name)
+            .setView(content).setPositiveButton("Close",null).create()
+        dialog.setOnDismissListener { try { player.stopPlayback() }catch(_:Exception){} }
+        dialog.show()
+        Thread {
+            val details=ControllerMediaTools.clipInfo(this,file.uri,file.lastModified())
+            val duration=details.durationMs?.let {
+                val seconds=it/1000
+                "%02d:%02d".format(java.util.Locale.US,seconds/60,seconds%60)
+            } ?: "Unavailable"
+            val resolution=if(details.width!=null && details.height!=null)
+                "${details.width} × ${details.height}" else "Unavailable"
+            val summary="Duration: $duration · Resolution: $resolution\n"+
+                "File size: ${ControllerMediaTools.pretty(file.length())}\n"+
+                "Modified: ${details.recordedAt ?: "Unknown"}\n"+
+                "Preview is manual. Full playback depends on Android codec support."
+            runOnUiThread { if(dialog.isShowing)info.text=summary }
+        }.start()
+    }
+
+    private fun showMediaStorage(visibleBytes:Long,visibleCount:Int) {
+        val data=ControllerMediaTools.inspect(this,visibleBytes,visibleCount)
+        val free=data.appFreeBytes?.let(ControllerMediaTools::pretty) ?: "Unavailable"
+        val warning=if(data.appFreeBytes!=null && data.appFreeBytes<1024L*1024*1024)
+            "\n\nLOW SPACE: Less than 1 GB free in OFFSET internal storage." else ""
+        val body="DJI cache · visible MP4 files: ${data.djiVisibleCount}\n"+
+            "DJI cache · visible MP4 size: ${ControllerMediaTools.pretty(data.djiVisibleBytes)}\n"+
+            "OFFSET temporary chunks: ${ControllerMediaTools.pretty(data.appTempBytes)}\n"+
+            "OFFSET low-data copies: ${ControllerMediaTools.pretty(data.lowDataBytes)}\n"+
+            "Free internal storage: $free\n"+
+            "Old temporary chunks (24h+): ${data.oldTempCount} · ${ControllerMediaTools.pretty(data.oldTempBytes)}"+
+            warning+"\n\nDJI cache size includes visible MP4 files only. Android may store "+
+            "the selected DJI folder on a different volume. No originals or "+
+            "resumable low-data copies are ever deleted."
+        val builder=AlertDialog.Builder(this).setTitle("Media storage").setMessage(body)
+            .setNegativeButton("Close",null)
+        if(data.oldTempCount>0)builder.setPositiveButton("Clean old temp files") { _,_ ->
+            showOffsetConfirm("Clean old OFFSET temp files?",
+                "Delete only abandoned OFFSET multipart chunk files older than 24 hours? "+
+                "Original DJI clips, active transfers and resumable low-data copies are protected.",
+                "Clean",destructive=true) {
+                Thread {
+                    val (removed,bytes)=ControllerMediaTools.cleanOldTemporaryChunks(this)
+                    runOnUiThread {
+                        AlertDialog.Builder(this).setTitle("Cleanup complete")
+                            .setMessage("$removed old chunk files removed · "+
+                                ControllerMediaTools.pretty(bytes)+" freed. DJI originals untouched.")
+                            .setPositiveButton("Close",null).show()
+                    }
+                }.start()
+            }
+        }
+        builder.show()
+    }
+
     /** Main controller screen. Cloud status is authoritative; local media is never deleted. */
     private fun showMediaLibraryPage() {
         val pid=project.text.toString().trim()
