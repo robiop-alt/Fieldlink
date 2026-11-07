@@ -101,7 +101,7 @@
       button('Upload '+waiting,'queue')+
       button('▦','gridView')+button('☷','listView')+button('⋯','tools')+'</div>';
     const batch='<div class="offset-media-batch"><span class="hint">'+selected+' selected</span>'+
-      button('Queue','batchQueue')+button('Priority','batchPriority')+button('Exclude','batchExclude')+
+      button('Queue','batchQueue')+button('Priority','batchPriority')+button('Clear ★','batchClearPriority')+button('Exclude','batchExclude')+
       button('Storage','mediaStorage')+'</div>';
     const cards=sampleFiles.map((f,i)=>{
       const excluded=state.demoExcluded.includes(i);
@@ -116,7 +116,7 @@
           '<input aria-label="Select '+f.name+'" class="demo-check" type="checkbox" data-demo-select="'+i+'" '+(state.selectedMedia.includes(i)?'checked':'')+'>'+
           '<strong>'+f.name+'</strong></label>'+
           '<span class="offset-media-sub">'+f.size+' · '+(urgent?'PRIORITY':excluded?'EXCLUDED':'Metadata arrives with upload')+'</span>'+
-          '<div class="offset-media-foot"><span>7 Nov, 14:08</span>'+button('⋮','file:'+i)+'</div></div></div>';
+          '<div class="offset-media-foot"><span>7 Nov, 14:08</span>'+button(urgent?'Clear ★':'★ Priority','togglePriority:'+i)+'</div></div></div>';
     }).join('');
     return mediaHeader+filters+batch+
       '<div class="'+cols+'">'+cards+'</div>'+
@@ -125,13 +125,13 @@
       '<p class="offset-media-disclaimer">DEMO · Sample clips only. No device media accessed.</p>';
   }
   function renderQueue(){
-    const rows=sampleFiles.slice(1,4).map((f,i)=>({file:f,index:i}));
-    rows.sort((a,b)=>Number(b.index===state.priorityClip)-Number(a.index===state.priorityClip)||a.index-b.index);
+    const rows=sampleFiles.slice(1,4).map((f,i)=>({file:f,index:i+1}));
+    rows.sort((a,b)=>Number(state.demoPriority.includes(b.index))-Number(state.demoPriority.includes(a.index))||a.index-b.index);
     return nav('UPLOAD QUEUE · SAMPLE CLIPS')+
     '<div class="card"><h2>UPLOAD QUEUE</h2><p class="hint">Select Prioritize next for an urgent clip. The active upload finishes first, then the chosen clip goes next. Demo only.</p>'+
-    rows.map(({file:f,index:i})=>'<div class="queue-row"><div><strong>'+(i===state.priorityClip?'★ ':'')+f.name+'</strong><span class="hint">'+f.size+' · '+(i===state.priorityClip?'PRIORITY · next': 'Waiting')+'</span></div>'+
-    '<button type="button" data-action="prioritize:'+i+'">'+(i===state.priorityClip?'★ Next':'Prioritize')+'</button>'+
-    (i===state.priorityClip?'<button type="button" data-action="clearPriority">Clear</button>':'')+
+    rows.map(({file:f,index:i})=>'<div class="queue-row"><div><strong>'+(state.demoPriority.includes(i)?'★ ':'')+f.name+'</strong><span class="hint">'+f.size+' · '+(state.demoPriority.includes(i)?'PRIORITY · next': 'Waiting')+'</span></div>'+
+    '<button type="button" data-action="prioritize:'+i+'">'+(state.demoPriority.includes(i)?'★ Next':'Prioritize')+'</button>'+
+    (state.demoPriority.includes(i)?'<button type="button" data-action="togglePriority:'+i+'">Clear ★</button>':'')+
     '</div>').join('')+
     '<div class="toolbar">'+button('Simulate transfer','start','primary')+'</div></div>';
   }
@@ -241,15 +241,16 @@
       if(f)openPlayer(Number(code.split(':')[1]));
       return;
     }
-    if(['batchQueue','batchPriority','batchExclude'].includes(code)){
+    if(['batchQueue','batchPriority','batchClearPriority','batchExclude'].includes(code)){
       const picked=state.selectedMedia;
       if(!picked.length){showModal('Choose clips','Select one or more sample clips first.');return}
       if(code==='batchPriority')state.demoPriority=[...new Set([...state.demoPriority,...picked])];
+      if(code==='batchClearPriority')state.demoPriority=state.demoPriority.filter(i=>!picked.includes(i));
       if(code==='batchExclude')state.demoExcluded=[...new Set([...state.demoExcluded,...picked])];
       state.selectedMedia=[];
       render();
       showModal('Batch action · demo only',picked.length+' selected clips · '+
-        (code==='batchQueue'?'queued':code==='batchPriority'?'prioritized':'excluded')+
+        (code==='batchQueue'?'queued':code==='batchPriority'?'prioritized':code==='batchClearPriority'?'returned to normal priority':'excluded')+
         ' in the browser preview. No upload queue, production file or setting was changed.');
       return;
     }
@@ -258,8 +259,17 @@
         'Visible DJI MP4s: 3.2 GB · OFFSET temporary chunks: 38 MB · Low-data copies: 510 MB · Internal free space: 23.8 GB. Clean old temp files is manual in the real APK. No data is deleted here.');
       return;
     }
-    if(code.startsWith('prioritize:')){state.priorityClip=Number(code.split(':')[1]);render();return}
-    if(code==='clearPriority'){state.priorityClip=null;render();return}
+    if(code.startsWith('prioritize:')){
+      const i=Number(code.split(':')[1]);
+      state.demoPriority=[i,...state.demoPriority.filter(x=>x!==i)];render();return;
+    }
+    if(code.startsWith('togglePriority:')){
+      const i=Number(code.split(':')[1]);
+      state.demoPriority=state.demoPriority.includes(i)
+        ?state.demoPriority.filter(x=>x!==i):[i,...state.demoPriority];
+      render();return;
+    }
+    if(code==='clearPriority'){state.demoPriority=[];state.priorityClip=null;render();return}
     const labels={
       folder:['Cache folder','A real DJI cache folder is only accessible from the Android APK.'],
       proxy:['Add proxy files','Android file picker is disabled in this sandbox preview.'],
