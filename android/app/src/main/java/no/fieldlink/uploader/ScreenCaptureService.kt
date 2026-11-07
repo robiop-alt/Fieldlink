@@ -53,7 +53,8 @@ class ScreenCaptureService : Service() {
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
         val code=intent?.getIntExtra("projection_result_code",-1) ?: -1
         val data=intent?.getParcelableExtra<Intent>("projection_data")
-        if(code!=Activity.RESULT_OK || data==null || !PilotForeground.permissionGranted(this)) {
+        if(!getSharedPreferences("fieldlink",MODE_PRIVATE).getBoolean("offset_enabled",true) ||
+            code!=Activity.RESULT_OK || data==null || !PilotForeground.permissionGranted(this)) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -79,7 +80,8 @@ class ScreenCaptureService : Service() {
             val frame=try {source.acquireLatestImage()}catch(_:Exception){null} ?: return@setOnImageAvailableListener
             try {
                 val now=System.currentTimeMillis()
-                if(stopping || busy || now-lastSample<sampleIntervalMs ||
+                if(stopping || busy || !getSharedPreferences("fieldlink",MODE_PRIVATE).getBoolean("offset_enabled",true) ||
+                    now-lastSample<sampleIntervalMs ||
                     !PilotForeground.isPilotVisible(this))return@setOnImageAvailableListener
                 val project=getSharedPreferences("fieldlink",MODE_PRIVATE)
                     .getString("project","").orEmpty()
@@ -125,7 +127,9 @@ class ScreenCaptureService : Service() {
         val v=value.uppercase(java.util.Locale.ROOT)
         return listOf("ISO","WB","KELVIN","SHUTTER","FPS","FRAME","APERTURE",
             "F/","EV ","PRORES","H.264","H.265","RESOLUTION","4K","5.1K","6K","8K",
-            "1/25","1/50","1/100","1/200").any { v.contains(it) }
+            "1/25","1/50","1/100","1/200","CINEMADNG","RAW","LENS","FOCAL","MM").any { v.contains(it) } ||
+            Regex("""\b[A-Z]\d{3}C\d{4}\b""").containsMatchIn(v) ||
+            Regex("""\b(?:18|24|35|50)\s?MM\b""").containsMatchIn(v)
     }
 
     override fun onBind(intent:Intent?):IBinder?=null
