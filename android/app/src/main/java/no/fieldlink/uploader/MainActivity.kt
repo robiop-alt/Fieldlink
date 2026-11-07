@@ -1274,6 +1274,153 @@ class MainActivity : Activity() {
     private data class LibraryClip(val file:DocumentFile,val thumb:Bitmap?)
     private data class CloudClip(val id:String,val filename:String,val bytes:Long)
 
+    /** Only an explicit tap opens the local decoder. Never preload video during flight. */
+    private fun showLocalClipPreview(file:DocumentFile) {
+        if(!file.isFile || !file.name.orEmpty().endsWith(".mp4",true)) {
+            showOffsetError("Preview unavailable","Select a locally accessible MP4 file.")
+            return
+        }
+        val name=file.name ?: "Clip"
+        val player=android.widget.VideoView(this).apply {
+            setBackgroundColor(Color.BLACK)
+            setVideoURI(file.uri)
+            setOnErrorListener { _,_,_ -> false }
+        }
+        val info=text("Reading clip details…",12f,muted)
+        val content=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(12),dp(8),dp(12),dp(8))
+            addView(player,LinearLayout.LayoutParams(-1,dp(225)))
+            addView(info)
+            addView(button("Play / Pause") {
+                try {
+                    if(player.isPlaying)player.pause() else player.start()
+                }catch(_:Exception){
+                    info.text="This format is not supported by the Android preview."
+                }
+            })
+        }
+        val dialog=AlertDialog.Builder(this).setTitle(name)
+            .setView(content).setPositiveButton("Close",null).create()
+        dialog.setOnDismissListener { try { player.stopPlayback() }catch(_:Exception){} }
+        dialog.show()
+        Thread {
+            val details=ControllerMediaTools.clipInfo(this,file.uri,file.lastModified())
+            val duration=details.durationMs?.let {
+                val seconds=it/1000
+                "%02d:%02d".format(java.util.Locale.US,seconds/60,seconds%60)
+            } ?: "Unavailable"
+            val resolution=if(details.width!=null && details.height!=null)
+                "${details.width} × ${details.height}" else "Unavailable"
+            val summary="Duration: $duration · Resolution: $resolution\n"+
+                "File size: ${ControllerMediaTools.pretty(file.length())}\n"+
+                "Modified: ${details.recordedAt ?: "Unknown"}\n"+
+                "Preview is manual. Full playback depends on Android codec support."
+            runOnUiThread { if(dialog.isShowing)info.text=summary }
+        }.start()
+    }
+
+    private fun showMediaStorage(visibleBytes:Long,visibleCount:Int) {
+        val data=ControllerMediaTools.inspect(this,visibleBytes,visibleCount)
+        val free=data.appFreeBytes?.let(ControllerMediaTools::pretty) ?: "Unavailable"
+        val warning=if(data.appFreeBytes!=null && data.appFreeBytes<1024L*1024*1024)
+            "\n\nLOW SPACE: Less than 1 GB free in OFFSET internal storage." else ""
+        val body="DJI cache · visible MP4 files: ${data.djiVisibleCount}\n"+
+            "DJI cache · visible MP4 size: ${ControllerMediaTools.pretty(data.djiVisibleBytes)}\n"+
+            "OFFSET temporary chunks: ${ControllerMediaTools.pretty(data.appTempBytes)}\n"+
+            "OFFSET low-data copies: ${ControllerMediaTools.pretty(data.lowDataBytes)}\n"+
+            "Free internal storage: $free\n"+
+            "Old temporary chunks (24h+): ${data.oldTempCount} · ${ControllerMediaTools.pretty(data.oldTempBytes)}"+
+            warning+"\n\nDJI cache size includes visible MP4 files only. Android may store "+
+            "the selected DJI folder on a different volume. No originals or "+
+            "resumable low-data copies are ever deleted."
+        val builder=AlertDialog.Builder(this).setTitle("Media storage").setMessage(body)
+            .setNegativeButton("Close",null)
+        if(data.oldTempCount>0)builder.setPositiveButton("Clean old temp files") { _,_ ->
+            showOffsetConfirm("Clean old OFFSET temp files?",
+                "Delete only abandoned OFFSET multipart chunk files older than 24 hours? "+
+                "Original DJI clips, active transfers and resumable low-data copies are protected.",
+                "Clean",destructive=true) {
+                Thread {
+                    val (removed,bytes)=ControllerMediaTools.cleanOldTemporaryChunks(this)
+                    runOnUiThread {
+                        AlertDialog.Builder(this).setTitle("Cleanup complete")
+                            .setMessage("$removed old chunk files removed · "+
+                                ControllerMediaTools.pretty(bytes)+" freed. DJI originals untouched.")
+                            .setPositiveButton("Close",null).show()
+                    }
+                }.start()
+            }
+        }
+        builder.show()
+    }
+
+    private fun performMediaBatchAction(pid:String,selected:List<DocumentFile>,action:String) {
+        if(selected.isEmpty())return
+        val title=when(action) {
+            "queue" -> "Add selected clips to queue?"
+            "priority" -> "Prioritize selected clips?"
+            "exclude" -> "Exclude selected clips?"
+            else -> return
+        }
+        val description=when(action) {
+            "queue" -> "Add ${selected.size} selected clips to the current project's upload queue. Recently modified files will be skipped."
+            "priority" -> "Mark ${selected.size} selected clips as urgent. Only pending, project-owned clips can be prioritized."
+            else -> "Exclude ${selected.size} selected clips from automatic uploads? "+
+                "This does not delete the DJI originals. Active or resumable uploads will be skipped."
+        }
+        showOffsetConfirm(title,description,
+            if(action=="exclude")"Exclude" else "Continue",
+            destructive=action=="exclude") {
+            Thread {
+                val ledger=ProjectLedger(this)
+                var changed=0
+                var skipped=0
+                val current=prefs.getString("project","").orEmpty()
+                if(current!=pid){
+                    runOnUiThread { showOffsetError("Project changed","Select the project again before changing its media.") }
+                    return@Thread
+                }
+                for(file in selected){
+                    if(prefs.getString("project","")!=pid)break
+                    if(!file.isFile || file.length()<=0 || !file.name.orEmpty().endsWith(".mp4",true)){
+                        skipped++;continue
+                    }
+                    val uri=file.uri.toString()
+                    val state=ledger.stateFor(uri,pid)
+                    if(state=="other" || state=="done"){
+                        skipped++;continue
+                    }
+                    try {
+                        val ok=when(action) {
+                            "queue" -> {
+                                // Do not queue an MP4 still being written by DJI.
+                                val last=file.lastModified()
+                                if(last<=0 || System.currentTimeMillis()-last<45000L)false
+                                else ledger.enqueueManual(file,pid)=="Queued"
+                            }
+                            "priority" -> state=="pending" &&
+                                ledger.getUploadId(file,pid)==null &&
+                                ledger.prioritizeNext(uri,pid)
+                            "exclude" -> state=="pending" &&
+                                ledger.getUploadId(file,pid)==null &&
+                                run { ledger.excludeFromAuto(file,pid);true }
+                            else -> false
+                        }
+                        if(ok)changed++ else skipped++
+                    }catch(_:Exception){skipped++}
+                }
+                runOnUiThread {
+                    if(prefs.getString("project","")==pid)showMediaLibraryPage()
+                    AlertDialog.Builder(this).setTitle("Media selection updated")
+                        .setMessage("$changed clips updated · $skipped skipped.\n"+
+                            "No original DJI media was deleted.")
+                        .setPositiveButton("Close",null).show()
+                }
+            }.start()
+        }
+    }
+
     /** Main controller screen. Cloud status is authoritative; local media is never deleted. */
     private fun showMediaLibraryPage() {
         val pid=project.text.toString().trim()
@@ -1325,6 +1472,8 @@ class MainActivity : Activity() {
             val remote=mutableListOf<CloudClip>()
             var cloudAvailable=false
             var serverError=""
+            var visibleMediaBytes=0L
+            var visibleMediaCount=0
             try {
                 val tree=cacheUri?.let { DocumentFile.fromTreeUri(this,it) }
                 val thumbs=tree?.findFile(".thumbnail")?.listFiles()
@@ -1333,6 +1482,8 @@ class MainActivity : Activity() {
                     ?: emptyMap()
                 val media=tree?.listFiles()?.filter { it.isFile && (it.name ?: "").endsWith(".mp4",true) }
                     ?.sortedBy { it.name?.uppercase() ?: "" } ?: emptyList()
+                visibleMediaBytes=media.sumOf { it.length().coerceAtLeast(0L) }
+                visibleMediaCount=media.size
                 for(file in media.take(250)) {
                     val stem=(file.name ?: "").substringBeforeLast(".").uppercase()
                     val thumb=thumbs[stem]
@@ -1380,6 +1531,47 @@ class MainActivity : Activity() {
                     }
                 }
                 grid.addView(mode)
+                val storageRow=LinearLayout(this).apply {
+                    orientation=LinearLayout.HORIZONTAL
+                    gravity=android.view.Gravity.CENTER_VERTICAL
+                }
+                storageRow.addView(text(
+                    "DJI visible MP4s: ${ControllerMediaTools.pretty(visibleMediaBytes)}",
+                    11f,muted),LinearLayout.LayoutParams(0,-2,1f))
+                storageRow.addView(button("Storage") {
+                    showMediaStorage(visibleMediaBytes,visibleMediaCount)
+                })
+                grid.addView(storageRow)
+
+                val selection=LinkedHashSet<String>()
+                val selectedCount=text("0 selected",11f,muted)
+                val bulk=LinearLayout(this).apply {
+                    orientation=LinearLayout.HORIZONTAL
+                    gravity=android.view.Gravity.CENTER_VERTICAL
+                }
+                bulk.addView(selectedCount,LinearLayout.LayoutParams(0,-2,1f))
+                val bulkQueue=button("Queue") {
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                        .map { it.file },"queue")
+                }
+                val bulkPriority=button("Priority") {
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                        .map { it.file },"priority")
+                }
+                val bulkExclude=button("Exclude") {
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                        .map { it.file },"exclude")
+                }
+                fun refreshBulk() {
+                    selectedCount.text="${selection.size} selected"
+                    for(control in listOf(bulkQueue,bulkPriority,bulkExclude))
+                        control.isEnabled=selection.isNotEmpty()
+                }
+                bulk.addView(bulkQueue)
+                bulk.addView(bulkPriority)
+                bulk.addView(bulkExclude)
+                grid.addView(bulk)
+                refreshBulk()
                 if(clips.isEmpty()) grid.addView(text("No local MP4 clips found. Cloud-only clips are listed below.",13f,muted))
                 val columns=if(resources.displayMetrics.widthPixels>=dp(760)) 3 else 2
                 val gap=dp(6)
@@ -1411,12 +1603,43 @@ class MainActivity : Activity() {
                         setBackgroundColor(Color.rgb(19,24,26))
                         item.thumb?.let { setImageBitmap(it) }
                     }
+                    preview.contentDescription="Preview $name"
+                    preview.isClickable=true
+                    preview.setOnClickListener { showLocalClipPreview(file) }
                     card.addView(preview,LinearLayout.LayoutParams(-1,dp(95)))
-                    card.addView(text(name,12f,Color.WHITE).apply {
+                    card.addView(button("▶ Preview") { showLocalClipPreview(file) },
+                        LinearLayout.LayoutParams(-1,dp(29)))
+                    val selectRow=LinearLayout(this).apply {
+                        orientation=LinearLayout.HORIZONTAL
+                        gravity=android.view.Gravity.CENTER_VERTICAL
+                    }
+                    val selectBox=android.widget.CheckBox(this).apply {
+                        text=""
+                        contentDescription="Select $name"
+                        buttonTintList=android.content.res.ColorStateList.valueOf(accent)
+                        isEnabled=cloud==null && localState!="other" && localState!="done"
+                        setOnCheckedChangeListener { _,checked ->
+                            if(checked)selection.add(file.uri.toString())
+                            else selection.remove(file.uri.toString())
+                            refreshBulk()
+                        }
+                    }
+                    selectRow.addView(selectBox,LinearLayout.LayoutParams(dp(33),dp(34)))
+                    selectRow.addView(text(name,12f,Color.WHITE).apply {
                         maxLines=1
                         ellipsize=android.text.TextUtils.TruncateAt.MIDDLE
                         setTypeface(typeface,android.graphics.Typeface.BOLD)
-                    })
+                    },LinearLayout.LayoutParams(0,-2,1f))
+                    card.addView(selectRow)
+                    // File timestamp is already provided by SAF. Video metadata is only
+                    // decoded when the operator explicitly taps Preview.
+                    val modified=file.lastModified()
+                    val modifiedLabel=if(modified>0)
+                        java.text.DateFormat.getDateTimeInstance(
+                            java.text.DateFormat.SHORT,java.text.DateFormat.SHORT
+                        ).format(java.util.Date(modified))
+                        else "Unknown"
+                    card.addView(text("Modified: $modifiedLabel",10f,muted))
                     val detail=LinearLayout(this).apply {
                         orientation=LinearLayout.HORIZONTAL
                         gravity=android.view.Gravity.CENTER_VERTICAL
