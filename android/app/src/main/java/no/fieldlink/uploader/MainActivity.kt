@@ -1603,12 +1603,43 @@ class MainActivity : Activity() {
                         setBackgroundColor(Color.rgb(19,24,26))
                         item.thumb?.let { setImageBitmap(it) }
                     }
+                    preview.contentDescription="Preview $name"
+                    preview.isClickable=true
+                    preview.setOnClickListener { showLocalClipPreview(file) }
                     card.addView(preview,LinearLayout.LayoutParams(-1,dp(95)))
-                    card.addView(text(name,12f,Color.WHITE).apply {
+                    card.addView(button("▶ Preview") { showLocalClipPreview(file) },
+                        LinearLayout.LayoutParams(-1,dp(29)))
+                    val selectRow=LinearLayout(this).apply {
+                        orientation=LinearLayout.HORIZONTAL
+                        gravity=android.view.Gravity.CENTER_VERTICAL
+                    }
+                    val selectBox=android.widget.CheckBox(this).apply {
+                        text=""
+                        contentDescription="Select $name"
+                        buttonTintList=android.content.res.ColorStateList.valueOf(accent)
+                        isEnabled=cloud==null && localState!="other" && localState!="done"
+                        setOnCheckedChangeListener { _,checked ->
+                            if(checked)selection.add(file.uri.toString())
+                            else selection.remove(file.uri.toString())
+                            refreshBulk()
+                        }
+                    }
+                    selectRow.addView(selectBox,LinearLayout.LayoutParams(dp(33),dp(34)))
+                    selectRow.addView(text(name,12f,Color.WHITE).apply {
                         maxLines=1
                         ellipsize=android.text.TextUtils.TruncateAt.MIDDLE
                         setTypeface(typeface,android.graphics.Typeface.BOLD)
-                    })
+                    },LinearLayout.LayoutParams(0,-2,1f))
+                    card.addView(selectRow)
+                    // File timestamp is already provided by SAF. Video metadata is only
+                    // decoded when the operator explicitly taps Preview.
+                    val modified=file.lastModified()
+                    val modifiedLabel=if(modified>0)
+                        java.text.DateFormat.getDateTimeInstance(
+                            java.text.DateFormat.SHORT,java.text.DateFormat.SHORT
+                        ).format(java.util.Date(modified))
+                        else "Unknown"
+                    card.addView(text("Modified: $modifiedLabel",10f,muted))
                     val detail=LinearLayout(this).apply {
                         orientation=LinearLayout.HORIZONTAL
                         gravity=android.view.Gravity.CENTER_VERTICAL
