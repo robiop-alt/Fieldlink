@@ -71,3 +71,10 @@
 @media (max-width:767px){
   .review-panel .clipgrid:not(.list-view){grid-template-columns:minmax(0,1fr)}
 }
+
+/* Only camera-acquired settings belong under Camera details. */
+.review-panel .offset-camera-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;padding:8px 0}
+.review-panel .offset-camera-field{min-width:0;display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11px}
+.review-panel .offset-camera-field>b{color:#b6c3bd;font-weight:600}
+.review-panel .offset-camera-field>span{color:#e7efeb;text-align:right;overflow-wrap:anywhere;min-height:1em}
+@media(max-width:767px){.review-panel .offset-camera-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
