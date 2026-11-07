@@ -1472,6 +1472,8 @@ class MainActivity : Activity() {
             val remote=mutableListOf<CloudClip>()
             var cloudAvailable=false
             var serverError=""
+            var visibleMediaBytes=0L
+            var visibleMediaCount=0
             try {
                 val tree=cacheUri?.let { DocumentFile.fromTreeUri(this,it) }
                 val thumbs=tree?.findFile(".thumbnail")?.listFiles()
@@ -1480,6 +1482,8 @@ class MainActivity : Activity() {
                     ?: emptyMap()
                 val media=tree?.listFiles()?.filter { it.isFile && (it.name ?: "").endsWith(".mp4",true) }
                     ?.sortedBy { it.name?.uppercase() ?: "" } ?: emptyList()
+                visibleMediaBytes=media.sumOf { it.length().coerceAtLeast(0L) }
+                visibleMediaCount=media.size
                 for(file in media.take(250)) {
                     val stem=(file.name ?: "").substringBeforeLast(".").uppercase()
                     val thumb=thumbs[stem]
@@ -1527,6 +1531,47 @@ class MainActivity : Activity() {
                     }
                 }
                 grid.addView(mode)
+                val storageRow=LinearLayout(this).apply {
+                    orientation=LinearLayout.HORIZONTAL
+                    gravity=android.view.Gravity.CENTER_VERTICAL
+                }
+                storageRow.addView(text(
+                    "DJI visible MP4s: ${ControllerMediaTools.pretty(visibleMediaBytes)}",
+                    11f,muted),LinearLayout.LayoutParams(0,-2,1f))
+                storageRow.addView(button("Storage") {
+                    showMediaStorage(visibleMediaBytes,visibleMediaCount)
+                })
+                grid.addView(storageRow)
+
+                val selection=LinkedHashSet<String>()
+                val selectedCount=text("0 selected",11f,muted)
+                val bulk=LinearLayout(this).apply {
+                    orientation=LinearLayout.HORIZONTAL
+                    gravity=android.view.Gravity.CENTER_VERTICAL
+                }
+                bulk.addView(selectedCount,LinearLayout.LayoutParams(0,-2,1f))
+                val bulkQueue=button("Queue") {
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                        .map { it.file },"queue")
+                }
+                val bulkPriority=button("Priority") {
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                        .map { it.file },"priority")
+                }
+                val bulkExclude=button("Exclude") {
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                        .map { it.file },"exclude")
+                }
+                fun refreshBulk() {
+                    selectedCount.text="${selection.size} selected"
+                    for(control in listOf(bulkQueue,bulkPriority,bulkExclude))
+                        control.isEnabled=selection.isNotEmpty()
+                }
+                bulk.addView(bulkQueue)
+                bulk.addView(bulkPriority)
+                bulk.addView(bulkExclude)
+                grid.addView(bulk)
+                refreshBulk()
                 if(clips.isEmpty()) grid.addView(text("No local MP4 clips found. Cloud-only clips are listed below.",13f,muted))
                 val columns=if(resources.displayMetrics.widthPixels>=dp(760)) 3 else 2
                 val gap=dp(6)
