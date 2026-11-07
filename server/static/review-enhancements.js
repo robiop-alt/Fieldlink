@@ -32,7 +32,8 @@ function enhance(){
   const meta=card.querySelector('.clipmeta'),small=meta?.querySelector('small');
   if(small){
    const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Camera details';
-   const content=document.createElement('p');content.textContent=small.textContent;
+   const content=document.createElement('div');content.className='offset-camera-fields';
+   content.innerHTML=small.innerHTML;
    details.append(summary,content);small.replaceWith(details);
   }
   const video=card.querySelector('video');if(video){video.setAttribute('preload','none');}
