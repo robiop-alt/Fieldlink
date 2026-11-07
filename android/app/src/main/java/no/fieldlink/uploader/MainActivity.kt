@@ -355,6 +355,16 @@ class MainActivity : Activity() {
             }
         }
         settings.addView(lowData)
+        if(prefs.getBoolean("low_data_suggestion_pending",false) && !prefs.getBoolean("low_data_mode",false)) {
+            settings.addView(text("Slow uploads detected. Consider enabling Low Data Mode for upcoming clips. Existing uploads are not changed.",11f,muted))
+            settings.addView(button("Enable Low Data Mode") {
+                prefs.edit().putBoolean("low_data_mode",true).putBoolean("low_data_suggestion_pending",false).apply()
+                lowData.isChecked=true
+            })
+            settings.addView(button("Not now") {
+                prefs.edit().putBoolean("low_data_suggestion_pending",false).apply()
+            })
+        }
         settings.addView(text(
             "Off (default): send original DJI cache. On: create a smaller 480p copy for new clips, keeping the original untouched. Existing uploads keep their original quality.",
             11f,muted
