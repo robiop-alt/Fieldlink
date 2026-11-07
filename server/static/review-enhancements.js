@@ -13,8 +13,18 @@ function enhance(){
   const switcher=document.createElement('span');switcher.className='view-switch';switcher.id='view-switch';
   const grid=document.createElement('button');grid.type='button';grid.textContent='▦';grid.title='Grid view';grid.className='active';
   const list=document.createElement('button');list.type='button';list.textContent='☷';list.title='List view';
-  grid.onclick=()=>{clips.classList.remove('list-view');grid.classList.add('active');list.classList.remove('active')};
-  list.onclick=()=>{clips.classList.add('list-view');list.classList.add('active');grid.classList.remove('active')};
+  let savedView='grid';try{savedView=localStorage.getItem('offset-review-layout')||'grid'}catch(_){}
+  const setView=view=>{
+   const isList=view==='list' && !window.matchMedia('(max-width:767px)').matches;
+   clips.classList.toggle('list-view',isList);
+   grid.classList.toggle('active',!isList);list.classList.toggle('active',isList);
+   grid.setAttribute('aria-pressed',String(!isList));list.setAttribute('aria-pressed',String(isList));
+   try{localStorage.setItem('offset-review-layout',view)}catch(_){}
+  };
+  grid.setAttribute('aria-label','Grid view');list.setAttribute('aria-label','List view');
+  grid.onclick=()=>setView('grid');
+  setView(savedView);
+  list.onclick=()=>setView('list');
   switcher.append(grid,list);toolbar.append(switcher);
  }
  clips.querySelectorAll('.clip').forEach(card=>{
