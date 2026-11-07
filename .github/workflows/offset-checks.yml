@@ -54,6 +54,26 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: gradle :app:assembleDebug --no-daemon
+      - name: Verify optimized release with temporary CI signing key
+        working-directory: android
+        env:
+          OFFSET_KEYSTORE_PATH: ${{ runner.temp }}/offset-ci-only.jks
+          OFFSET_KEYSTORE_PASSWORD: ci-only-password
+          OFFSET_KEY_ALIAS: offset-ci
+          OFFSET_KEY_PASSWORD: ci-only-password
+        run: |
+          keytool -genkeypair -keystore "$OFFSET_KEYSTORE_PATH" -storepass "$OFFSET_KEYSTORE_PASSWORD" -keypass "$OFFSET_KEY_PASSWORD" -alias "$OFFSET_KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 1 -dname "CN=OFFSET CI Only"
+          gradle :app:assembleRelease --no-daemon
+          test -s app/build/outputs/apk/release/app-release.apk
+          python3 - <<'PY'
+          from pathlib import Path
+          debug=Path('app/build/outputs/apk/debug/app-debug.apk').stat().st_size
+          release=Path('app/build/outputs/apk/release/app-release.apk').stat().st_size
+          print(f"APK sizes: debug={debug/1048576:.2f} MiB, optimized release={release/1048576:.2f} MiB")
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write(f"APK size: debug {debug/1048576:.2f} MiB; optimized release {release/1048576:.2f} MiB\\n")
+          PY
+          rm -f "$OFFSET_KEYSTORE_PATH"
       - uses: actions/upload-artifact@v4
         if: success()
         with:
