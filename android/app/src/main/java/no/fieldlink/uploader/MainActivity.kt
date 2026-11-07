@@ -1658,14 +1658,16 @@ class MainActivity : Activity() {
                 status.text="${clips.size} local  ·  ${uploaded} uploaded  ·  ${ledger.pendingQueue(pid).size} waiting  ·  ${priorityUris.size} priority" +
                     if(cloudAvailable) "" else "\n$serverError"
                 val mode=Switch(this).apply {
-                    text="Auto upload (off = selected clips only)"
+                    text="Automatic uploads · OFF = selected clips only"
                     setTextColor(Color.WHITE);textSize=13f
                     isChecked=prefs.getString("upload_mode","auto")=="auto"
                     setOnCheckedChangeListener { _,auto ->
                         prefs.edit().putString("upload_mode",if(auto) "auto" else "manual").apply()
+                        status.text=if(auto) "Auto mode · new clips upload when OFFSET is ON" else "Selected only · queue exactly the clips you want"
                     }
                 }
                 grid.addView(mode)
+                grid.addView(text("Selected only: tick clips below and tap Queue. Priority does not add unselected clips. Library stays available when OFFSET is OFF.",11f,muted))
                 val storageRow=LinearLayout(this).apply {
                     orientation=LinearLayout.HORIZONTAL
                     gravity=android.view.Gravity.CENTER_VERTICAL
