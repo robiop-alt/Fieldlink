@@ -78,3 +78,42 @@
 .review-panel .offset-camera-field>b{color:#b6c3bd;font-weight:600}
 .review-panel .offset-camera-field>span{color:#e7efeb;text-align:right;overflow-wrap:anywhere;min-height:1em}
 @media(max-width:767px){.review-panel .offset-camera-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Quiet, always-visible DJI camera parameters beneath each rushes thumbnail. */
+.review-panel .clipmeta>.offset-camera-fields{
+  flex:1 0 100%;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:7px 10px;
+  padding:9px 0 3px;
+  margin-top:1px;
+  border-top:1px solid rgba(165,181,174,.16);
+}
+.review-panel .clipmeta .offset-camera-field{
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-start;
+  align-items:flex-start;
+  gap:3px;
+  min-width:0;
+  font-size:10px;
+  line-height:1.25;
+}
+.review-panel .clipmeta .offset-camera-field>b{
+  color:#8c9a95;
+  font-weight:500;
+  font-size:9px;
+  letter-spacing:.025em;
+}
+.review-panel .clipmeta .offset-camera-field>span{
+  display:block;
+  color:#d7e3dd;
+  text-align:left;
+  min-height:12px;
+  font-size:11px;
+  font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere;
+}
+@media (max-width:767px){
+ .review-panel .clipmeta>.offset-camera-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
