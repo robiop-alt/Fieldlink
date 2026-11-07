@@ -22,3 +22,37 @@
  .review-panel .clipgrid{grid-template-columns:1fr}
  .review-panel #offset-tools button{padding:6px 9px}
 }
+
+/* iPhone/iPad-first review ergonomics; desktop layout remains unchanged. */
+.review-panel,.review-panel #review-toolbar,.review-panel .clipgrid{min-width:0}
+.review-panel .clip{min-width:0}
+.review-panel .clipmeta{min-width:0;flex-wrap:wrap}
+.review-panel .clipmeta>*{min-width:0;max-width:100%}
+.review-panel #offset-tools button,.review-panel .view-switch button{touch-action:manipulation}
+.review-panel a,.review-panel summary{touch-action:manipulation}
+@media (pointer:coarse){
+ .review-panel button,.review-panel #offset-tools button,.review-panel .view-switch button,
+ .review-panel select,.review-panel input[type="search"],.review-panel .clip a,
+ .review-panel .clip details summary,.review-storage summary{min-height:44px}
+ .review-panel .clip a{display:inline-flex;align-items:center;padding:8px 0}
+ .review-panel input[type="checkbox"]{width:20px;height:20px;accent-color:#b7f34d}
+ .review-panel .clip label:has(input[type="checkbox"]){display:flex;align-items:center;gap:10px;min-height:44px}
+ .review-panel #metadata-filters #clip-filter{min-height:44px;font-size:16px}
+}
+@media(max-width:767px){
+ .review-panel{padding:14px 12px}
+ .review-panel .clipgrid,.review-panel .clipgrid.list-view{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+ .review-panel .clipgrid.list-view .clip{display:block;margin:0}
+ .review-panel #review-toolbar{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+ .review-panel #metadata-filters,.review-panel #offset-tools{width:100%;min-width:0}
+ .review-panel #metadata-filters .filter-compact{max-width:none}
+ .review-panel #offset-tools{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+ .review-panel .clipmeta b{white-space:normal;overflow-wrap:anywhere}
+ .review-panel .clipmeta small{overflow-wrap:anywhere}
+}
+@media(min-width:768px) and (max-width:1180px){
+ .review-panel .clipgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (prefers-reduced-motion:reduce){
+ .review-panel .clip,.review-panel .clip *{scroll-behavior:auto;transition:none}
+}
