@@ -37,9 +37,19 @@ class ControllerOverlayService : Service() {
     private var overlay:OverlayStatus?=null
     private val handler=Handler(Looper.getMainLooper())
     private var latestStatus="Ready"
+    private fun showStatus():String {
+        val until=prefs.getLong("overlay_notice_until",0L)
+        val critical=prefs.getString("overlay_notice",null)
+        if(!critical.isNullOrBlank() && until>System.currentTimeMillis()) return "Attention · $critical"
+        if(prefs.getBoolean("low_data_suggestion_pending",false)) {
+            return prefs.getString("overlay_suggestion","Slow network · consider Low Data Mode").orEmpty()
+        }
+        return latestStatus
+    }
     private val visibilityCheck=object:Runnable {
         override fun run() {
             syncVisibility()
+            overlay?.update(showStatus())
             handler.postDelayed(this,1500)
         }
     }
@@ -50,7 +60,7 @@ class ControllerOverlayService : Service() {
         val shouldShow=allowed && (!onlyPilot || PilotForeground.isPilotVisible(this))
         if(shouldShow && overlay==null) {
             try {
-                overlay=OverlayStatus(this).also { it.show(); it.update(latestStatus) }
+                overlay=OverlayStatus(this).also { it.show(); it.update(showStatus()) }
             }catch(_:Exception) { overlay=null }
         } else if(!shouldShow && overlay!=null) {
             overlay?.hide()
@@ -59,9 +69,10 @@ class ControllerOverlayService : Service() {
     }
     private val updates=object:BroadcastReceiver() {
         override fun onReceive(context:Context?,intent:Intent?) {
-            if(intent?.action==ACTION_UPDATE)
+            if(intent?.action==ACTION_UPDATE) {
                 latestStatus=intent.getStringExtra(EXTRA_STATUS) ?: "Ready"
-                overlay?.update(latestStatus)
+                overlay?.update(showStatus())
+            }
         }
     }
     private val prefs by lazy {getSharedPreferences("fieldlink",MODE_PRIVATE)}
