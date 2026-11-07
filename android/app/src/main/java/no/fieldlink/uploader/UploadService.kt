@@ -53,6 +53,7 @@ class UploadService : Service() {
         }
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if(!prefs.getBoolean("offset_enabled",true)) { stopSelf(); return START_NOT_STICKY }
         if (!loopStarted) {
             sessionProject = prefs.getString("project", "") ?: ""
             sessionBase = prefs.getString("server", "")?.trimEnd('/') ?: ""
