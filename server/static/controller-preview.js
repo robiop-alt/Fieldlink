@@ -23,7 +23,7 @@
     show_upload_status:true,start_on_boot:true
   };
   let settings={...defaults};
-  let state={screen:'library',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null,selectedMedia:[],demoExcluded:[],demoPriority:[]};
+  let state={powered:true,screen:'library',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null,selectedMedia:[],demoExcluded:[],demoPriority:[]};
   const projects=['DEMO · Northern Light','DEMO · Mountain Unit','DEMO · Second Camera'];
   const escapeHTML=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','&#39;':'&#39;'}[c]||'&#39;'));
   function button(label,action,kind='') {
@@ -92,10 +92,10 @@
     const all=sampleFiles.length;
     const waiting=sampleFiles.filter((f,i)=>!state.demoExcluded.includes(i)).length;
     const cols=state.mediaLayout==='list'?'offset-media-list':'offset-media-grid';
-    const mediaHeader='<div class="offset-media-top"><button data-action="projects" type="button" class="offset-project-picker">'+escapeHTML(projects[state.project])+'⌄</button>'+
+    const mediaHeader='<div class="offset-media-top">'+button(state.powered?'● OFFSET ON':'○ OFFSET OFF','power',state.powered?'offset-power':'offset-power off')+<button data-action="projects" type="button" class="offset-project-picker">'+escapeHTML(projects[state.project])+'⌄</button>'+
       '<span class="offset-root-label">▱ Project root ⌄</span><span class="offset-top-spacer"></span>'+
       button('▦ QR','qr')+'<span class="offset-live-dot"></span>'+button('⚙ Settings','settings')+'</div>';
-    const filters='<div class="offset-media-toolbar">'+
+    const filters=(state.powered?'':'<div class="offset-power-note">OFFSET paused · file monitoring and library remain available</div>')+'<div class="offset-meta-strip"><span>ProRes RAW</span><span>35 mm</span><span>25 fps</span><span>ISO 800</span><span>WB 5600 K</span><span>Shutter 180°</span><span>Screen-captured metadata · demo</span></div>'+'<div class="offset-media-toolbar">'+
       button('All clips','filterAll')+
       '<span class="offset-status-pill">☁ '+all+' clips · '+(state.upload==='uploading'?'1 uploading · ':'')+waiting+' waiting · '+state.demoExcluded.length+' excluded</span>'+
       button('Upload '+waiting,'queue')+
@@ -226,11 +226,13 @@
       return;
     }
     if(code==='closeModal'){modal.hidden=true;modal.replaceChildren();return}
+    if(code==='power'){state.powered=!state.powered;if(!state.powered){state.upload='idle';scenario.value='idle'}render();return}
     if(code==='home'){setScreen('library');return}
     if(code==='gridView'){state.mediaLayout='grid';render();return}
     if(code==='listView'){state.mediaLayout='list';render();return}
     if(code==='filterAll'){state.selectedMedia=[];render();return}
     if(['settings','projects','qr','library','queue','tools','sd'].includes(code)){setScreen(code);return}
+    if(code==='start'&&!state.powered){showModal('OFFSET is off','Turn OFFSET on to start uploading. File monitoring remains active.');return}
     if(code==='start'){simulateScenario('uploading');scenario.value='uploading';return}
     if(code==='stop'){simulateScenario('idle');scenario.value='idle';return}
     if(code==='startSd'){state.sdRunning=true;state.sdProgress=0;render();return}
@@ -315,6 +317,7 @@
     const target=event.target.closest('[data-action]');
     if(target)action(target.dataset.action);
   });
+  document.getElementById('deviceView').addEventListener('change',e=>{document.getElementById('controllerShell').classList.toggle('screen-only',e.target.value==='screen')});
   screenSize.addEventListener('change',()=>{
     frame.classList.toggle('mobile',screenSize.value==='mobile');
   });
@@ -322,7 +325,7 @@
   document.getElementById('openSettings').addEventListener('click',()=>setScreen('settings'));
   document.getElementById('resetDemo').addEventListener('click',()=>{
     closePlayer();settings={...defaults};
-    state={screen:'library',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null,selectedMedia:[],demoExcluded:[],demoPriority:[],playerIndex:null,playerSeconds:0,playerPlaying:false};
+    state={powered:true,screen:'library',project:0,upload:'idle',progress:0,sdProgress:0,sdRunning:false,demoNotification:'',selectedFile:null,priorityClip:null,selectedMedia:[],demoExcluded:[],demoPriority:[],playerIndex:null,playerSeconds:0,playerPlaying:false};
     scenario.value='idle';screenSize.value='tablet';frame.classList.remove('mobile');render();
   });
   setInterval(()=>{
