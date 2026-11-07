@@ -310,7 +310,7 @@ class MainActivity : Activity() {
             button("Stop upload") {
                 prefs.edit().putBoolean("upload_paused",true).apply()
                 // Keep the single watcher alive so Media Library sees new DJI files.
-                resumeSavedUploader()
+                resumeSavedUploader(force=true)
                 folderLabel.text="OFFSET off · file monitoring continues"
             }
         ))
@@ -352,7 +352,8 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             isChecked=prefs.getBoolean("low_data_mode",false)
             setOnCheckedChangeListener { _,enabled ->
-                prefs.edit().putBoolean("low_data_mode",enabled).apply()
+                prefs.edit().putBoolean("low_data_mode",enabled)
+                    .putBoolean("low_data_suggestion_pending",false).apply()
             }
         }
         settings.addView(lowData)
@@ -2198,12 +2199,14 @@ class MainActivity : Activity() {
         val name=uri?.let { DocumentFile.fromTreeUri(this,it)?.name }
         folderLabel.text=if(name==null) "CACHE_VIDEO access needed (choose once)" else "CACHE_VIDEO ready: $name"
     }
-    private fun resumeSavedUploader() {
-        if(!prefs.getBoolean("start_on_boot",true)) return
+    private fun resumeSavedUploader(force:Boolean=false) {
+        if(!force && !prefs.getBoolean("start_on_boot",true)) return
         val base=prefs.getString("server","").orEmpty()
         val tokenValue=prefs.getString("token","").orEmpty()
         val pid=prefs.getString("project","").orEmpty()
-        if(!base.startsWith("https://") || tokenValue.isBlank() || pid.isBlank() || !cacheAccessOk()) {
+        val paused=prefs.getBoolean("upload_paused",false)
+        if(pid.isBlank() || !cacheAccessOk() ||
+            (!paused && (!base.startsWith("https://") || tokenValue.isBlank()))) {
             // Do not clear the saved folder or request permission every boot.
             folderLabel.text="Setup needed: check project, connection or CACHE_VIDEO access"
             return
