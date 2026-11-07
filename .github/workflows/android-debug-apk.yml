@@ -24,8 +24,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
+      # GitHub ubuntu-latest already includes a configured Android SDK.
+      # android-actions/setup-android@v3 attempts to install the removed
+      # legacy "tools" SDK package and fails before Gradle even starts.
       - name: Install Android platform and build tools
         run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
       - name: Gradle
