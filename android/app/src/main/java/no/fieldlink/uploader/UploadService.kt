@@ -86,7 +86,6 @@ class UploadService : Service() {
     }
 
     private fun alertProblem(key:String, message:String) {
-        if(!prefs.getBoolean("error_alerts",true))return
         val now=System.currentTimeMillis()
         if(key==lastAlertKey && now-lastAlertAt<10*60*1000)return
         lastAlertKey=key;lastAlertAt=now
@@ -96,6 +95,9 @@ class UploadService : Service() {
         if(prefs.getBoolean("overlay",true))
             sendBroadcast(Intent(ControllerOverlayService.ACTION_UPDATE).setPackage(packageName)
                 .putExtra(ControllerOverlayService.EXTRA_STATUS,message))
+        // Even when Android error notifications are disabled, the pill can show
+        // an important event without taking focus away from DJI Pilot.
+        if(!prefs.getBoolean("error_alerts",true))return
         val manager=getSystemService(NotificationManager::class.java)
         val channel="offset_critical_errors_v1"
         if(Build.VERSION.SDK_INT>=26) {
