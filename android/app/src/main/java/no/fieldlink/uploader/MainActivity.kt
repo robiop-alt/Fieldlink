@@ -309,8 +309,9 @@ class MainActivity : Activity() {
             primaryButton("Start upload") { saveAndStart() },
             button("Stop upload") {
                 prefs.edit().putBoolean("upload_paused",true).apply()
-                stopService(Intent(this,UploadService::class.java))
-                folderLabel.text="Uploader stopped"
+                // Keep the single watcher alive so Media Library sees new DJI files.
+                resumeSavedUploader()
+                folderLabel.text="OFFSET off · file monitoring continues"
             }
         ))
         upload.addView(row(
@@ -2198,7 +2199,7 @@ class MainActivity : Activity() {
         folderLabel.text=if(name==null) "CACHE_VIDEO access needed (choose once)" else "CACHE_VIDEO ready: $name"
     }
     private fun resumeSavedUploader() {
-        if(!prefs.getBoolean("start_on_boot",true) || prefs.getBoolean("upload_paused",false)) return
+        if(!prefs.getBoolean("start_on_boot",true)) return
         val base=prefs.getString("server","").orEmpty()
         val tokenValue=prefs.getString("token","").orEmpty()
         val pid=prefs.getString("project","").orEmpty()
@@ -2212,7 +2213,8 @@ class MainActivity : Activity() {
             if(Build.VERSION.SDK_INT>=26) startForegroundService(service)
             else startService(service)
             prefs.edit().putBoolean("boot_resume_pending",false).apply()
-            folderLabel.text="Monitoring resumed automatically"
+            folderLabel.text=if(prefs.getBoolean("upload_paused",false))
+                "OFFSET off · file monitoring running" else "Monitoring and uploads resumed"
         }catch(e:Exception) {
             folderLabel.text="Auto resume unavailable: ${e.localizedMessage ?: "Android restriction"}"
         }
@@ -2226,7 +2228,7 @@ class MainActivity : Activity() {
         if(!base.startsWith("https://")&&!base.contains("localhost")&&!base.contains("10.0.2.2")) {
             folderLabel.text="HTTPS required";return
         }
-        // Explicit Start clears the temporary pause until the next shutdown.
+        // Explicit Start turns OFFSET on; this choice persists across reboot.
         prefs.edit().putBoolean("upload_paused",false).apply()
         // Never silently change the project of a running service.
         stopService(Intent(this,UploadService::class.java))
