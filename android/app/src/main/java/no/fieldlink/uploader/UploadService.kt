@@ -42,6 +42,8 @@ class UploadService : Service() {
     private var batteryPaused=false
     private var recoveryFailures=0
     private var recoveryUntil=0L
+    private var slowChunkCount=0
+    private var lastLowDataSuggestion=0L
     private var lastAlertKey=""
     private var lastAlertAt=0L
 
@@ -110,6 +112,32 @@ class UploadService : Service() {
         recoveryUntil=System.currentTimeMillis()+
             minOf(180000L,12000L*(1L shl (recoveryFailures-1)))
         if(recoveryFailures>=3)alertProblem("network","Repeated upload errors · retrying safely")
+    }
+
+    /** Estimate actual confirmed upload throughput, not Wi-Fi link speed.
+     * Three consecutive slow chunks avoid suggesting compression on a short stall.
+     * Never change quality automatically or modify an already-started upload.
+     */
+    private fun observeUploadSpeed(bytes:Int, elapsedMs:Long) {
+        if(bytes<=0 || elapsedMs<=0 || prefs.getBoolean("low_data_mode",false))return
+        val mbps=bytes.toDouble()*8_000.0/elapsedMs/1_000_000.0
+        slowChunkCount=if(mbps<2.0) (slowChunkCount+1).coerceAtMost(3) else 0
+        if(slowChunkCount<3)return
+        val now=System.currentTimeMillis()
+        val last=prefs.getLong("low_data_suggested_at",0L)
+        if(now-last<6*60*60*1000L)return
+        prefs.edit().putLong("low_data_suggested_at",now)
+            .putBoolean("low_data_suggestion_pending",true).apply()
+        lastLowDataSuggestion=now
+        val manager=getSystemService(NotificationManager::class.java)
+        val channel="offset_low_data_suggestion_v1"
+        if(Build.VERSION.SDK_INT>=26)manager.createNotificationChannel(
+            NotificationChannel(channel,"OFFSET network suggestions",NotificationManager.IMPORTANCE_LOW))
+        val note=if(Build.VERSION.SDK_INT>=26)Notification.Builder(this,channel) else Notification.Builder(this)
+        manager.notify(44,note.setContentTitle("OFFSET · Slow upload detected")
+            .setContentText("Consider Low Data Mode for upcoming clips. Originals stay untouched.")
+            .setSmallIcon(android.R.drawable.stat_sys_upload_done)
+            .setAutoCancel(true).build())
     }
 
     private fun recoverySucceeded() {
@@ -456,6 +484,7 @@ class UploadService : Service() {
                     val req=Request.Builder().url("$base/api/upload/$uploadId/chunk")
                         .header("X-Device-Token",token).header("X-Offset",offset.toString())
                         .put(multipart).build()
+                    val startedAt=System.currentTimeMillis()
                     val response=execute(req) ?: return false
                     val received=JSONObject(response).getLong("received")
                     if(received!=offset+len) {
@@ -463,6 +492,7 @@ class UploadService : Service() {
                         return false
                     }
                     offset=received
+                    observeUploadSpeed(len,System.currentTimeMillis()-startedAt)
                     val delay=ControllerPolicy.throttleMillis(this,prefs)
                     if(delay>0 && running)Thread.sleep(delay)
                     status("Sending $uploadName · ${(offset*100/uploadSize)} %")
