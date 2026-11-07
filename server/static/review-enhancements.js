@@ -31,10 +31,11 @@ function enhance(){
   if(card.dataset.enhanced)return;card.dataset.enhanced='true';
   const meta=card.querySelector('.clipmeta'),small=meta?.querySelector('small');
   if(small){
-   const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Camera details';
+   // Six tiny camera-only fields stay visible; empty data stays truly blank.
    const content=document.createElement('div');content.className='offset-camera-fields';
+   content.setAttribute('aria-label','Camera details');
    content.innerHTML=small.innerHTML;
-   details.append(summary,content);small.replaceWith(details);
+   small.replaceWith(content);
   }
   const video=card.querySelector('video');if(video){video.setAttribute('preload','none');}
  });
