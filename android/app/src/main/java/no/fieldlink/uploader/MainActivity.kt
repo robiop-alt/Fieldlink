@@ -1275,49 +1275,150 @@ class MainActivity : Activity() {
     private data class CloudClip(val id:String,val filename:String,val bytes:Long)
 
     /** Only an explicit tap opens the local decoder. Never preload video during flight. */
-    private fun showLocalClipPreview(file:DocumentFile) {
-        if(!file.isFile || !file.name.orEmpty().endsWith(".mp4",true)) {
-            showOffsetError("Preview unavailable","Select a locally accessible MP4 file.")
+    /** Operator-only local player. No decoding or playback runs in the background. */
+    private fun showLocalClipPreview(file:DocumentFile, playlist:List<DocumentFile> = listOf(file)) {
+        val files=playlist.filter { it.isFile && it.name.orEmpty().endsWith(".mp4",true) }
+        if(files.isEmpty()) {
+            showOffsetError("Preview unavailable","No locally accessible MP4 files.")
             return
         }
-        val name=file.name ?: "Clip"
+        var index=files.indexOfFirst { it.uri==file.uri }.coerceAtLeast(0)
         val player=android.widget.VideoView(this).apply {
             setBackgroundColor(Color.BLACK)
-            setVideoURI(file.uri)
-            setOnErrorListener { _,_,_ -> false }
         }
-        val info=text("Reading clip details…",12f,muted)
+        val info=text("Loading clip details…",11f,muted)
+        val position=text("00:00 / 00:00",11f,muted)
+        val seek=android.widget.SeekBar(this).apply { max=1000 }
+        var scrubbing=false
+        var durationMs=0
+        val handler=android.os.Handler(android.os.Looper.getMainLooper())
+        val ticker=object:Runnable {
+            override fun run() {
+                if(!scrubbing) {
+                    try {
+                        val total=player.duration.coerceAtLeast(0)
+                        val current=player.currentPosition.coerceAtLeast(0)
+                        if(total>0) {
+                            durationMs=total
+                            seek.progress=((current.toLong()*1000)/total).toInt().coerceIn(0,1000)
+                        }
+                        fun clock(ms:Int):String {
+                            val seconds=ms.coerceAtLeast(0)/1000
+                            return "%02d:%02d".format(java.util.Locale.US,seconds/60,seconds%60)
+                        }
+                        position.text="${clock(current)} / ${clock(durationMs)}"
+                    }catch(_:Exception){}
+                }
+                handler.postDelayed(this,250)
+            }
+        }
+        seek.setOnSeekBarChangeListener(object:android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onStartTrackingTouch(bar:android.widget.SeekBar?) { scrubbing=true }
+            override fun onProgressChanged(bar:android.widget.SeekBar?,value:Int,fromUser:Boolean) {
+                if(fromUser && durationMs>0) {
+                    val seconds=(durationMs.toLong()*value/1000).toInt()/1000
+                    position.text="Seek to ${seconds/60}:%02d".format(seconds%60)
+                }
+            }
+            override fun onStopTrackingTouch(bar:android.widget.SeekBar?) {
+                if(durationMs>0)try {
+                    player.seekTo((durationMs.toLong()*seek.progress/1000).toInt())
+                }catch(_:Exception){}
+                scrubbing=false
+            }
+        })
+        val previous=button("◀ Previous") {}
+        val next=button("Next ▶") {}
+        val title=text("",13f,Color.WHITE).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        }
+        val playback=button("▶ Play / Pause") {
+            try { if(player.isPlaying)player.pause() else player.start() }
+            catch(_:Exception){ info.text="Android cannot play this video format." }
+        }
         val content=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
             setPadding(dp(12),dp(8),dp(12),dp(8))
-            addView(player,LinearLayout.LayoutParams(-1,dp(225)))
+            addView(title)
+            addView(player,LinearLayout.LayoutParams(-1,dp(245)))
+            addView(seek)
+            addView(position)
             addView(info)
-            addView(button("Play / Pause") {
-                try {
-                    if(player.isPlaying)player.pause() else player.start()
-                }catch(_:Exception){
-                    info.text="This format is not supported by the Android preview."
-                }
-            })
+            val controls=LinearLayout(this@MainActivity).apply {
+                orientation=LinearLayout.HORIZONTAL
+                gravity=android.view.Gravity.CENTER_VERTICAL
+            }
+            controls.addView(previous,LinearLayout.LayoutParams(0,dp(38),1f))
+            controls.addView(playback,LinearLayout.LayoutParams(0,dp(38),1.3f))
+            controls.addView(next,LinearLayout.LayoutParams(0,dp(38),1f))
+            addView(controls)
         }
-        val dialog=AlertDialog.Builder(this).setTitle(name)
+        val dialog=AlertDialog.Builder(this).setTitle("OFFSET · Player")
             .setView(content).setPositiveButton("Close",null).create()
-        dialog.setOnDismissListener { try { player.stopPlayback() }catch(_:Exception){} }
+        var closed=false
+        var requestId=0
+        fun loadClip() {
+            val current=files[index]
+            requestId++
+            val thisRequest=requestId
+            durationMs=0
+            seek.progress=0
+            position.text="00:00 / 00:00"
+            title.text="${index+1} / ${files.size} · ${current.name ?: "Clip"}"
+            previous.isEnabled=index>0
+            next.isEnabled=index<files.lastIndex
+            info.text="Reading clip details…"
+            try {
+                player.stopPlayback()
+                player.setVideoURI(current.uri)
+                // Do not autoplay on navigation or when opening the player.
+                player.setOnPreparedListener { media ->
+                    durationMs=media.duration.coerceAtLeast(0)
+                    media.setOnSeekCompleteListener { }
+                }
+                player.setOnErrorListener { _,_,_ ->
+                    info.text="This codec is not supported by the controller's Android player."
+                    true
+                }
+            }catch(_:Exception){
+                info.text="Unable to open this local clip."
+            }
+            Thread {
+                val details=ControllerMediaTools.clipInfo(this,current.uri,current.lastModified())
+                val duration=details.durationMs?.let {
+                    val seconds=it/1000
+                    "%02d:%02d".format(java.util.Locale.US,seconds/60,seconds%60)
+                } ?: "Unavailable"
+                val resolution=if(details.width!=null && details.height!=null)
+                    "${details.width} × ${details.height}" else "Unavailable"
+                val summary="Duration: $duration · Resolution: $resolution\n"+
+                    "Size: ${ControllerMediaTools.pretty(current.length())} · "+
+                    "Modified: ${details.recordedAt ?: "Unknown"}"
+                runOnUiThread {
+                    if(!closed && dialog.isShowing && requestId==thisRequest)
+                        info.text=summary
+                }
+            }.start()
+        }
+        previous.setOnClickListener {
+            if(index>0) { index--;loadClip() }
+        }
+        next.setOnClickListener {
+            if(index<files.lastIndex) { index++;loadClip() }
+        }
+        dialog.setOnDismissListener {
+            closed=true
+            handler.removeCallbacks(ticker)
+            try { player.stopPlayback() }catch(_:Exception){}
+        }
         dialog.show()
-        Thread {
-            val details=ControllerMediaTools.clipInfo(this,file.uri,file.lastModified())
-            val duration=details.durationMs?.let {
-                val seconds=it/1000
-                "%02d:%02d".format(java.util.Locale.US,seconds/60,seconds%60)
-            } ?: "Unavailable"
-            val resolution=if(details.width!=null && details.height!=null)
-                "${details.width} × ${details.height}" else "Unavailable"
-            val summary="Duration: $duration · Resolution: $resolution\n"+
-                "File size: ${ControllerMediaTools.pretty(file.length())}\n"+
-                "Modified: ${details.recordedAt ?: "Unknown"}\n"+
-                "Preview is manual. Full playback depends on Android codec support."
-            runOnUiThread { if(dialog.isShowing)info.text=summary }
-        }.start()
+        // Fill the available controller display without forcing global orientation.
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels*0.95).toInt(),
+            android.view.WindowManager.LayoutParams.WRAP_CONTENT
+        )
+        loadClip()
+        handler.post(ticker)
     }
 
     private fun showMediaStorage(visibleBytes:Long,visibleCount:Int) {
@@ -1605,7 +1706,7 @@ class MainActivity : Activity() {
                     }
                     preview.contentDescription="Preview $name"
                     preview.isClickable=true
-                    preview.setOnClickListener { showLocalClipPreview(file) }
+                    preview.setOnClickListener { showLocalClipPreview(file,clips.map { it.file }) }
                     card.addView(preview,LinearLayout.LayoutParams(-1,dp(95)))
                     card.addView(button("▶ Preview") { showLocalClipPreview(file) },
                         LinearLayout.LayoutParams(-1,dp(29)))
