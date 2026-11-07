@@ -226,7 +226,7 @@ class MainActivity : Activity() {
         super.onResume()
         // Restore the pill after an in-place upgrade or the first overlay grant.
         // No permission dialog is shown if Android already granted access.
-        if(prefs.getBoolean("start_on_boot",true) &&
+        if(prefs.getBoolean("offset_enabled",true) && prefs.getBoolean("start_on_boot",true) &&
             prefs.getBoolean("overlay",true) &&
             (Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this))) {
             try { ControllerOverlayService.launch(this) }catch(_:Exception) {}
@@ -276,6 +276,31 @@ class MainActivity : Activity() {
         })
         brand.addView(text("INSPIRE 3  /  RUSHES DELIVERY",10f,muted))
         header.addView(brand,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
+        val masterPower=Switch(this).apply {
+            text="OFFSET ON"
+            textSize=12f
+            setTextColor(accent)
+            isChecked=prefs.getBoolean("offset_enabled",true)
+            setOnCheckedChangeListener { _,enabled ->
+                prefs.edit().putBoolean("offset_enabled",enabled)
+                    .putBoolean("upload_paused",!enabled).apply()
+                text=if(enabled)"OFFSET ON" else "OFFSET OFF"
+                setTextColor(if(enabled)accent else muted)
+                if(enabled) {
+                    resumeSavedUploader()
+                    if(prefs.getBoolean("overlay",true) &&
+                        (Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this@MainActivity))) {
+                        try { ControllerOverlayService.launch(this@MainActivity) }catch(_:Exception){}
+                    }
+                }else {
+                    stopService(Intent(this@MainActivity,UploadService::class.java))
+                    stopService(Intent(this@MainActivity,ScreenCaptureService::class.java))
+                    stopService(Intent(this@MainActivity,ControllerOverlayService::class.java))
+                    folderLabel.text="OFFSET OFF · background activity stopped"
+                }
+            }
+        }
+        header.addView(masterPower)
         header.addView(button("Settings") { showConnectionSettings() })
         root.addView(header)
         server=field("HTTPS server",prefs.getString("server","")?:"")
@@ -308,7 +333,7 @@ class MainActivity : Activity() {
         upload.addView(row(
             primaryButton("Start upload") { saveAndStart() },
             button("Stop upload") {
-                prefs.edit().putBoolean("upload_paused",true).apply()
+                masterPower.isChecked=false
                 stopService(Intent(this,UploadService::class.java))
                 folderLabel.text="Uploader stopped"
             }
@@ -819,8 +844,10 @@ class MainActivity : Activity() {
         showMediaLibraryPage()
         if(change) {
             // The project selection was deliberate; resume it without extra taps.
-            prefs.edit().putBoolean("upload_paused",false).apply()
-            resumeSavedUploader()
+            if(prefs.getBoolean("offset_enabled",true)) {
+                prefs.edit().putBoolean("upload_paused",false).apply()
+                resumeSavedUploader()
+            }
         }
     }
 
@@ -1265,6 +1292,7 @@ class MainActivity : Activity() {
     }
 
     private fun startMetadataCapture() {
+        if(!prefs.getBoolean("offset_enabled",true))return
     val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
     startActivityForResult(manager.createScreenCaptureIntent(), 4321)
 }
@@ -2188,7 +2216,7 @@ class MainActivity : Activity() {
         folderLabel.text=if(name==null) "CACHE_VIDEO access needed (choose once)" else "CACHE_VIDEO ready: $name"
     }
     private fun resumeSavedUploader() {
-        if(!prefs.getBoolean("start_on_boot",true) || prefs.getBoolean("upload_paused",false)) return
+        if(!prefs.getBoolean("offset_enabled",true) || !prefs.getBoolean("start_on_boot",true) || prefs.getBoolean("upload_paused",false)) return
         val base=prefs.getString("server","").orEmpty()
         val tokenValue=prefs.getString("token","").orEmpty()
         val pid=prefs.getString("project","").orEmpty()
@@ -2208,6 +2236,9 @@ class MainActivity : Activity() {
         }
     }
     private fun saveAndStart() {
+        if(!prefs.getBoolean("offset_enabled",true)) {
+            folderLabel.text="OFFSET is OFF · use the main switch";return
+        }
         val base=server.text.toString().trim().trimEnd('/')
         val pid=project.text.toString().trim();val device=token.text.toString().trim()
         if(base.isBlank()||pid.isBlank()||device.isBlank()||!cacheAccessOk()) {
