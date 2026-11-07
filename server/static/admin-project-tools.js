@@ -140,6 +140,8 @@ async function manage(projectId){
         method:'PATCH',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({archived:!project.archived})
      });
+     // Keep the edited project visible after changing its archive state.
+     if(statusFilter)statusFilter.value=project.archived?'active':'archived';
      await load();
      const updated=allProjects.find(p=>p.id===projectId);
      if(updated)await manage(projectId);
@@ -158,7 +160,7 @@ async function manage(projectId){
 root.addEventListener('click',(event)=>{
   const shareButton=event.target.closest('button[data-share-id]');
   const manageButton=event.target.closest('button[data-manage-id]');
-  if(shareButton){const p=allProjects.find(p=>p.id===shareButton.dataset.shareId);if(p)share(p)}
+  if(shareButton){const p=allProjects.find(p=>p.id===shareButton.dataset.shareId);if(p)share(p).catch(console.error)}
   if(manageButton)manage(manageButton.dataset.manageId);
 });
 })();
