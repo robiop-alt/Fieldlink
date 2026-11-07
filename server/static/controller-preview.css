@@ -95,3 +95,23 @@ button.primary{background:var(--accent);border-color:var(--accent);font-weight:7
 .controller-shell:has(.frame.mobile).screen-only .frame{max-width:410px}
 .controller-shell:has(.frame.mobile).screen-only #app{padding:15px 12px}
 @media(max-width:700px){.controller-shell:not(.screen-only) #app{padding:12px 8px;min-height:560px}.controller-shell.screen-only #app{padding:15px 12px;min-height:560px}.controller-shell:not(.screen-only){padding:25px 10px 0}.controller-shell:not(.screen-only) .frame{border-width:5px}.controller-shell:not(.screen-only) .offset-media-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v5: actual landscape RC Plus viewport, never a narrow portrait app inside hardware. */
+.wide-preview-layout{max-width:1700px;grid-template-columns:minmax(210px,270px) minmax(0,1fr);gap:20px}
+.landscape-hint{justify-self:start;color:#aebcb7;font-size:11px;margin:0 0 9px}
+.landscape-viewport{width:100%;min-width:0;overflow-x:auto;overflow-y:visible;padding:55px 8px 24px;scrollbar-color:#7e918a #1c2427}
+.landscape-viewport .controller-shell{width:100%;max-width:1100px;margin:auto}
+.landscape-viewport .frame{width:100%;aspect-ratio:16/10;display:flex;flex-direction:column}
+.landscape-viewport .device-top{flex:0 0 auto}
+.landscape-viewport #app{flex:1;min-height:0!important;overflow:auto;overscroll-behavior:contain}
+.landscape-viewport .offset-media-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.landscape-viewport .offset-media-image{height:clamp(85px,11vw,142px)}
+.landscape-viewport .offset-media-top,.landscape-viewport .offset-media-toolbar{flex-wrap:nowrap}
+.landscape-viewport .offset-media-batch{flex-wrap:wrap}
+.landscape-viewport .controller-shell.screen-only{max-width:1100px;width:100%}
+.landscape-viewport .controller-shell.screen-only .frame{aspect-ratio:16/10}
+.landscape-viewport .controller-shell:has(.frame.mobile){max-width:1100px}
+.landscape-viewport .frame.mobile{max-width:none;border-radius:18px}
+.landscape-viewport .frame.mobile #app{padding:15px 18px}
+@media(max-width:1050px){.wide-preview-layout{grid-template-columns:1fr}.landscape-viewport{padding-top:55px}.landscape-viewport .controller-shell{min-width:760px}.landscape-viewport .offset-media-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.landscape-viewport .offset-media-toolbar{flex-wrap:nowrap}.landscape-viewport .offset-status-pill{order:0;flex-basis:auto}}
+@media(max-width:600px){.landscape-viewport{width:100%;padding:55px 5px 25px}.landscape-viewport .controller-shell{min-width:760px}.landscape-viewport .offset-media-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.landscape-viewport .offset-media-image{height:100px}.landscape-viewport .controller-shell #app{padding:12px 14px}.landscape-viewport .offset-media-top,.landscape-viewport .offset-media-toolbar,.landscape-viewport .offset-media-batch{padding-left:13px;padding-right:13px}.landscape-hint:after{content:' · Swipe horizontally on phone';color:#b7f34d}}
