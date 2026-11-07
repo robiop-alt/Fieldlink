@@ -21,7 +21,8 @@ SECRET = os.getenv('FIELDLINK_SECRET', 'development-only-change-me')
 app = FastAPI(title='OFFSET API', version='1.0.0')
 app.mount('/static', StaticFiles(directory='static'), name='static')
 
-# Metadata is extracted from the received original, never from client-supplied values.
+# Proxy/container metadata is separate from consented DJI Pilot camera observations.
+# Never treat proxy ffprobe settings as RAW, lens, ISO, WB or shutter readings.
 
 
 restore(DB)
@@ -44,6 +45,14 @@ def ensure_metadata_schema():
     with db() as c:
         c.execute("CREATE TABLE IF NOT EXISTS clip_metadata (clip_id TEXT PRIMARY KEY, data_json TEXT NOT NULL)")
 ensure_metadata_schema()
+
+CAMERA_KEYS=('recording_format','lens','fps','iso','white_balance','shutter')
+def ensure_camera_metadata_schema():
+    with db() as c:
+        c.execute("""CREATE TABLE IF NOT EXISTS camera_metadata (
+            clip_id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+            data_json TEXT NOT NULL, source TEXT NOT NULL, observed_at INTEGER NOT NULL)""")
+ensure_camera_metadata_schema()
 
 def ensure_project_access_schema():
     with db() as c:
@@ -443,6 +452,7 @@ def _delete_project(project_id:str,confirm_clips:bool=False):
             (FILES/cid).unlink(missing_ok=True)
             (THUMBS/(cid+'.jpg')).unlink(missing_ok=True)
             conn.execute('DELETE FROM clip_metadata WHERE clip_id=?',(cid,))
+            conn.execute('DELETE FROM camera_metadata WHERE clip_id=?',(cid,))
         conn.execute('DELETE FROM clips WHERE project_id=?',(project_id,))
         conn.execute('DELETE FROM projects WHERE id=?',(project_id,))
     return {'deleted':True,'clips_deleted':len(clips)}
@@ -560,6 +570,7 @@ def device_delete_uploaded_clip(project_id:str, clip_id:str, x_device_token:str=
         (FILES/clip_id).unlink(missing_ok=True)
         (THUMBS/(clip_id+'.jpg')).unlink(missing_ok=True)
         conn.execute('DELETE FROM clip_metadata WHERE clip_id=?',(clip_id,))
+        conn.execute('DELETE FROM camera_metadata WHERE clip_id=?',(clip_id,))
         conn.execute('DELETE FROM clips WHERE id=? AND project_id=?',(clip_id,project_id))
     return {'deleted':True,'id':clip_id,'project_id':project_id}
 
@@ -743,6 +754,41 @@ def review_incoming(slug:str,authorization:str=Header(default='')):
                        'percent':round(100*received_bytes/total_bytes) if total_bytes else 0,
                        'counts':counts}}
 
+class CameraMetadataIn(BaseModel):
+    project_id: str
+    values: dict[str,str] = Field(default_factory=dict)
+    observed_at: int = Field(gt=0)
+
+@app.put('/api/device/clips/{clip_id}/camera-metadata')
+def record_camera_metadata(clip_id:str, body:CameraMetadataIn, x_device_token:str=Header(default='')):
+    """Authenticated DJI Pilot camera readings only, bound to an actual ready clip."""
+    require_device(x_device_token)
+    now=int(time.time())
+    if abs(now-body.observed_at)>86400:
+        raise HTTPException(422,'Camera observation is too old')
+    with db() as c:
+        clip=c.execute('SELECT id,project_id,created FROM clips WHERE id=? AND status=?',
+                       (clip_id,'ready')).fetchone()
+    if not clip or clip['project_id']!=body.project_id:
+        raise HTTPException(404,'Clip not found in selected project')
+    # A reading must originate near recording/transfer, never at an arbitrary later point.
+    if body.observed_at>clip['created']+120 or body.observed_at<clip['created']-86400:
+        raise HTTPException(422,'Observation outside clip recording window')
+    clean={}
+    for key,value in body.values.items():
+        if key not in CAMERA_KEYS or not isinstance(value,str):
+            continue
+        value=value.strip()
+        if value and len(value)<=32 and all(ch.isprintable() for ch in value):
+            clean[key]=value
+    if not clean: raise HTTPException(422,'No confirmed camera settings')
+    import json
+    with db() as c:
+        c.execute("""INSERT OR REPLACE INTO camera_metadata
+            (clip_id,project_id,data_json,source,observed_at) VALUES(?,?,?,?,?)""",
+            (clip_id,body.project_id,json.dumps(clean),'DJI Pilot screen',body.observed_at))
+    return {'ok':True,'fields':list(clean)}
+
 @app.get('/api/review/{slug}/clips')
 def clips(slug:str, authorization:str=Header(default='')):
     token=authorization.removeprefix('Bearer ').strip(); p=review_project(slug,token)
@@ -754,6 +800,9 @@ def clips(slug:str, authorization:str=Header(default='')):
             item=dict(row)
             meta=c.execute('SELECT data_json FROM clip_metadata WHERE clip_id=?',(item['id'],)).fetchone()
             item['metadata']=json.loads(meta['data_json']) if meta else {}
+            camera=c.execute('SELECT data_json FROM camera_metadata WHERE clip_id=? AND project_id=?',
+                             (item['id'],p['id'])).fetchone()
+            item['camera_metadata']=json.loads(camera['data_json']) if camera else {}
             out.append(item)
     return out
 
