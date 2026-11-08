@@ -659,3 +659,50 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
   .review-panel #offset-sort-clips{max-width:139px}
   .review-panel .offset-frame-inline select{min-width:70px;max-width:105px}
 }
+
+/* Storage is the quiet, always-visible end-cap of the Rushes workspace. */
+.review-panel .review-storage.offset-storage-footer{
+  display:block;
+  width:100%;
+  margin:24px 0 0;
+  padding:18px 2px 0;
+  border:0;
+  border-top:1px solid rgba(155,179,161,.25);
+  background:transparent;
+}
+.review-panel .offset-storage-footer .offset-storage-dashboard{
+  max-width:100%;
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:0;
+}
+.review-panel .offset-storage-footer .offset-storage-meter-head{
+  margin-bottom:8px;
+}
+.review-panel .offset-storage-footer .offset-storage-meter-head>span{
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.075em;
+  color:#95aa98;
+}
+.review-panel .offset-storage-footer .offset-storage-meter-head>strong{
+  font-size:11px;
+  color:#cadacb;
+  font-variant-numeric:tabular-nums;
+}
+.review-panel .offset-storage-footer .offset-storage-meter{
+  height:6px;
+  background:#192720;
+  border-color:rgba(141,173,143,.19);
+}
+.review-panel .offset-storage-footer .offset-storage-meter-foot{
+  margin-top:6px;
+  font-size:10px;
+  color:#869c8c;
+}
+@media(max-width:650px){
+  .review-panel .review-storage.offset-storage-footer{
+    margin-top:20px;
+    padding-top:15px;
+  }
+}
