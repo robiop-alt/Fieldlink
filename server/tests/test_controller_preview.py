@@ -1,5 +1,6 @@
 """Browser controller preview must stay isolated from all production endpoints."""
-from pathlib import Path
+from html.parser import HTMLParser
+from urllib.parse import urlsplit
 from fastapi.testclient import TestClient
 import app as backend
 
@@ -14,7 +15,19 @@ def test_preview_is_public_demo_with_no_live_data():
     assert "connect-src 'none'" in response.headers['content-security-policy']
     assert 'Controller Design Preview' in response.text
     assert 'No live DJI or production data' in response.text
-    assert 'controller-preview.js?v=1' in response.text
+    class Scripts(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.sources = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == 'script':
+                self.sources.append(dict(attrs).get('src', ''))
+
+    scripts = Scripts()
+    scripts.feed(response.text)
+    assert any(urlsplit(src).path == '/static/controller-preview.js'
+               for src in scripts.sources)
 
 def test_preview_assets_are_static_and_do_not_call_production_api():
     script=client.get('/static/controller-preview.js')

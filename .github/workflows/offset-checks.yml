@@ -18,6 +18,11 @@ jobs:
           python-version: '3.12'
       - name: Install backend dependencies
         run: pip install -r requirements.txt pytest httpx
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check admin request and session handling
+        run: node --test tests/admin_ui.test.cjs
       - name: Check Python syntax
         run: python -m compileall -q .
       - name: Run backend authentication regression tests
