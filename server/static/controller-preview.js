@@ -36,7 +36,7 @@
     state.upload==='waiting'?['No network · waiting to reconnect','waiting',state.progress]:
     state.upload==='error'?['Attention · folder access missing','error',state.progress]:
     ['Connected · monitoring for new clips','',0];
-  const nav=(title)=>'<div class="app-head"><div class="app-brand"><span class="offset">OFFSET<span style="color:#b7f34d">.</span></span><span class="subtitle">'+title+'</span></div>'+button(state.screen==='home'?'Settings':'Back',state.screen==='home'?'settings':'home')+'</div>';
+  const nav=(title)=>'<div class="app-head"><div class="app-brand"><span class="offset">OFFSET<span style="color:#57b62f">.</span></span><span class="subtitle">'+title+'</span></div>'+button(state.screen==='home'?'Settings':'Back',state.screen==='home'?'settings':'home')+'</div>';
   function renderHome() {
     const [status,kind,pct]=activeStatus();
     const noProgress=state.upload==='waiting';

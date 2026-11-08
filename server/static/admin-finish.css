@@ -8,7 +8,7 @@ body.offset-admin{
 .offset-admin .top{min-height:62px;padding-bottom:16px;border-bottom:1px solid rgba(162,184,176,.16)}
 .offset-admin .top .tag{font-size:10px;letter-spacing:.12em;color:#9aaaa6}
 .offset-admin .hero{padding:32px 0 22px}
-.offset-admin .hero .eyebrow{font-size:10px;letter-spacing:.14em;margin:0 0 8px;color:#b7f34d}
+.offset-admin .hero .eyebrow{font-size:10px;letter-spacing:.14em;margin:0 0 8px;color:#57b62f}
 .offset-admin .hero h1{
   font-size:clamp(30px,4vw,48px);
   line-height:1.09;
@@ -16,7 +16,7 @@ body.offset-admin{
   margin:0 0 11px;
   max-width:900px;
 }
-.offset-admin .hero h1 em{color:#b7f34d}
+.offset-admin .hero h1 em{color:#57b62f}
 .offset-admin .hero .muted{margin:0;font-size:12px;max-width:640px;line-height:1.55;color:#9eaea8}
 .offset-admin.offset-signed-in .hero{padding:24px 0 13px}
 .offset-admin.offset-signed-in .hero h1{font-size:clamp(26px,3vw,37px);margin-bottom:6px}
@@ -52,7 +52,7 @@ body.offset-admin{
 }
 .offset-admin input::placeholder,.offset-admin textarea::placeholder{color:#72847d}
 .offset-admin input:focus,.offset-admin textarea:focus,.offset-admin select:focus{
-  outline:none;border-color:#91b967;box-shadow:0 0 0 2px rgba(183,243,77,.11)
+  outline:none;border-color:#91b967;box-shadow:0 0 0 2px rgba(87,182,47,.11)
 }
 .offset-admin button{
   min-height:34px;
@@ -61,11 +61,11 @@ body.offset-admin{
   font-weight:650;
   line-height:1.25;
   border-radius:7px;
-  background:#b7f34d;
+  background:#57b62f;
   color:#15200f;
   transition:background .15s,border-color .15s,color .15s;
 }
-.offset-admin button:hover:not(:disabled){background:#cbff79}
+.offset-admin button:hover:not(:disabled){background:#57b62f}
 .offset-admin button.secondary{
   background:#202b2e;color:#d0dad5;
   border:1px solid #3b4d4f;
@@ -73,7 +73,7 @@ body.offset-admin{
 .offset-admin button.secondary:hover:not(:disabled){background:#2a3739;border-color:#627770}
 .offset-admin button:disabled{opacity:.5;cursor:not-allowed}
 .offset-admin :is(button,a,summary,input,select,textarea):focus-visible{
-  outline:2px solid #b7f34d;outline-offset:3px
+  outline:2px solid #57b62f;outline-offset:3px
 }
 .offset-admin #login-panel{max-width:550px;margin:18px auto 28px}
 .offset-admin #login-form button{margin-top:17px;min-width:110px}
@@ -98,7 +98,7 @@ body.offset-admin{
 }
 .offset-admin #created p{margin:8px 0}
 .offset-admin #created a{overflow-wrap:anywhere}
-.offset-admin #created .pin{font-size:21px;color:#b7f34d}
+.offset-admin #created .pin{font-size:21px;color:#57b62f}
 .offset-admin #project-search{max-width:480px}
 .offset-admin #projects-summary{font-size:11px;color:#9fb0a8;margin:9px 0 12px}
 .offset-admin .project-table-wrap{border:1px solid #2d3c3d;border-radius:9px;overflow-x:auto}
@@ -197,7 +197,7 @@ body.offset-admin{
 .offset-admin .project-review-settings-popover>strong{font-size:14px;color:#f2f8f0}
 .offset-admin .project-review-settings-popover .hint{font-size:10px;letter-spacing:0;color:#afc2b8;line-height:1.45}
 .offset-admin .project-review-settings-popover label{font-size:12px}
-.offset-admin .project-review-settings-popover input[type=checkbox]{width:18px;min-height:18px;accent-color:#b7f34d}
+.offset-admin .project-review-settings-popover input[type=checkbox]{width:18px;min-height:18px;accent-color:#57b62f}
 .offset-admin .settings-disclosure{margin:21px 0 0}
 .offset-admin .settings-disclosure>summary{
   padding:16px 8px;
@@ -287,7 +287,7 @@ body.offset-admin{
 .offset-admin .admin-share-pin button{justify-self:start;min-height:32px}
 .offset-admin .admin-share-pin p{margin:0}
 .offset-admin .admin-drawer-controls{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:18px 0 6px}
-.offset-admin .admin-drawer-feedback{font-size:11px;color:#b7f34d;min-height:13px;margin:6px 0 0}
+.offset-admin .admin-drawer-feedback{font-size:11px;color:#57b62f;min-height:13px;margin:6px 0 0}
 .offset-admin .admin-manage-delete{margin-left:auto;background:transparent!important;border-color:#63484b!important;color:#e8aaa7!important}
 .offset-admin .admin-manage-delete:hover{background:#382529!important}
 .offset-admin .admin-activity-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid #354648;margin:16px 0 7px;padding-top:14px}
@@ -299,7 +299,7 @@ body.offset-admin{
 .offset-admin .admin-activity-desc strong{font-size:11px;overflow-wrap:anywhere;color:#ebf0e9}
 .offset-admin .admin-activity-desc small{color:#91a49b;font-size:10px}
 .offset-admin .admin-activity-stage{flex-shrink:0;font-size:10px;color:#b7c7ba}
-.offset-admin .admin-activity-stage.stage-received{color:#b7f34d}
+.offset-admin .admin-activity-stage.stage-received{color:#57b62f}
 .offset-admin .admin-activity-stage.stage-stalled{color:#eabb8d}
 .offset-admin .admin-activity-warning{padding:10px 11px;background:#34291e;border:1px solid #6b5540;border-radius:7px;margin:8px 0}
 .offset-admin .admin-activity-warning strong{font-size:11px;color:#f5cea0}
