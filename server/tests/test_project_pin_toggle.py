@@ -41,7 +41,7 @@ def test_toggle_pin_protection_revokes_old_sessions(project):
     fresh=client.post(f"/api/review/{slug}/unlock",json={"pin":new_pin})
     assert fresh.status_code==200
     pin_session=fresh.json()["token"]
-    assert client.get(f"/api/review/{slug}/settings?session={pin_session}").json()=={"allow_downloads":False}
+    assert client.get(f"/api/review/{slug}/settings?session={pin_session}").json()=={"allow_downloads":False,"project_name":"PIN test"}
     same=client.patch(settings,headers=headers,json={"allow_downloads":True,"public_review":False})
     assert same.json()["pin"] is None
     assert client.get(f"/api/review/{slug}/settings?session={pin_session}").status_code==200

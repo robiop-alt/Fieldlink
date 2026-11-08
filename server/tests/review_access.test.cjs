@@ -5,11 +5,11 @@ const {join}=require('node:path');
 const vm=require('node:vm');
 
 async function viewer(allowDownloads,validPin=true,clips=[]){
-  const nodes=new Map();
+  const nodes=new Map();let elementId=0;
   function node(id){
     if(!nodes.has(id)){
       const classes=new Set(id==='content'?['hidden']:[]);
-      nodes.set(id,{value:'123456',textContent:'',innerHTML:'',classList:{add:n=>classes.add(n),remove:n=>classes.delete(n),contains:n=>classes.has(n)},addEventListener(){},before(){},setAttribute(){}});
+      nodes.set(id,{children:[],style:{},append(...items){this.children.push(...items)},replaceChildren(...items){this.children=items},value:'123456',textContent:'',innerHTML:'',classList:{add:n=>classes.add(n),remove:n=>classes.delete(n),contains:n=>classes.has(n)},addEventListener(){},before(){},setAttribute(){}});
     }
     return nodes.get(id);
   }
@@ -20,7 +20,7 @@ async function viewer(allowDownloads,validPin=true,clips=[]){
   }):[];
   let initialized=false;
   const window={OffsetUploadTime:{update(){}},initOffsetPlayer(clips,base,auth,downloads){initialized=true;assert.equal(downloads,allowDownloads)}};
-  const document={getElementById(id){if(id==='selected-count'&&!allowDownloads)return null;return node(id)},querySelectorAll(selector){return selector==='[data-select]'?inputs:[]}};
+  const document={createElement(){return node('element-'+(++elementId))},getElementById(id){if(id==='selected-count'&&!allowDownloads)return null;return node(id)},querySelectorAll(selector){return selector==='[data-select]'?inputs:[]}};
   const response=(body,ok=true)=>({ok,json:async()=>body});
   const fetch=async(url)=>{
     if(url==='/api/site/settings')return response({});
@@ -45,7 +45,8 @@ for(const allowDownloads of [false,true])test(`valid PIN opens review with downl
   assert.equal(node('gate').classList.contains('hidden'),true);
   assert.equal(node('content').classList.contains('hidden'),false);
   assert.equal(initialized,true);
-  assert.equal(node('storage-status').textContent,'Project media: 50 MB · 1 uploaded clip');
+  assert.equal(node('storage-status').children[0].children[1].textContent,'50 MB / 5 GB');
+  assert.equal(node('storage-status').children[2].children[0].textContent,'1 clip uploaded');
 });
 
 test('invalid PIN still shows the access gate',async()=>{
