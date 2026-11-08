@@ -303,3 +303,11 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
 @media(pointer:coarse){.review-panel .clip-actions .clip-select,.review-panel .clip-actions .clip-download,.review-panel .offset-player-download,.review-panel #download-selected,.review-panel #select-all{min-height:44px}}
 
 @media(min-width:768px){.review-panel .list-view .clip-actions{flex:0 0 auto;flex-direction:column;align-items:stretch;border-top:0;border-left:1px solid #314039;padding:0 0 0 12px;margin:0 0 0 auto}}
+
+/* Quiet admin shortcut without taking space from the project workspace. */
+.review-account-nav{display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-left:auto}
+.review-account-nav .review-admin-login{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:6px 10px;border:1px solid #34413e;border-radius:7px;background:transparent;color:#b6c4bd;font-size:11px;font-weight:500;line-height:1.2;text-decoration:none;white-space:nowrap}
+.review-account-nav .review-admin-login:hover{color:#edf3ed;border-color:#57734d;background:#17221a}
+.review-account-nav .review-admin-login:focus-visible{outline:2px solid #57b62f;outline-offset:3px}
+@media(max-width:480px){.review-account-nav .tag{display:none}.review-account-nav{gap:0}}
+@media(pointer:coarse){.review-account-nav .review-admin-login{min-height:44px}}
