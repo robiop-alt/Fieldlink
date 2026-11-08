@@ -280,3 +280,22 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
   .review-panel .clip,.review-panel #offset-tools button,
   .review-panel #metadata-filters #clip-filter{transition:none}
 }
+
+/* Compact selection and download actions. */
+.review-panel .clip-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0 0;margin-top:5px;border-top:1px solid rgba(156,175,170,.12)}
+.review-panel .clip-actions .clip-select{display:inline-flex;align-items:center;gap:7px;margin:0;padding:7px 9px;border:1px solid #35463d;border-radius:7px;color:#aabdb0;font-size:11px;line-height:1.2;cursor:pointer;min-height:34px;background:#121b17}
+.review-panel .clip-actions input[data-select]{display:inline-block;flex:0 0 15px;width:15px;height:15px;min-height:0;margin:0;padding:0;accent-color:#57b62f;cursor:pointer}
+.review-panel .clip-actions .clip-download,.review-panel .offset-player-download{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 10px;min-height:34px;border:1px solid #3b5c34;border-radius:7px;background:#1b2d1b;color:#b5d8aa;font-size:11px;font-weight:600;text-decoration:none;line-height:1.2}
+.review-panel .clip-download svg{width:15px;height:15px;flex:none}
+.review-panel .clip-actions .clip-download:hover,.review-panel .offset-player-download:hover{background:#274322;border-color:#57b62f}
+.review-panel .clip.offset-clip-selected{border-color:#57b62f;background:#142019}
+.review-panel .clip.offset-clip-selected .clip-select{border-color:#47723b;color:#c6e7b9;background:#20331d}
+.review-panel .clip-actions a:focus-visible,.review-panel .clip-select:focus-within{outline:2px solid #57b62f;outline-offset:3px}
+.review-panel #offset-tools .selection-tools{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.review-panel #selected-count{font-size:11px;color:#9fb5a5;font-variant-numeric:tabular-nums;white-space:nowrap}
+.review-panel #download-selected{display:inline-flex;align-items:center;gap:8px;background:#57b62f;color:#101810;border:1px solid #57b62f;border-radius:7px;font-size:11px;padding:7px 11px;min-height:34px}
+.review-panel #download-selected:disabled,.review-panel #select-all:disabled{opacity:.42;cursor:default}
+.review-panel #select-all{font-size:11px;min-height:34px;padding:7px 10px;border:1px solid #3c4b41;border-radius:7px}
+@media(pointer:coarse){.review-panel .clip-actions .clip-select,.review-panel .clip-actions .clip-download,.review-panel .offset-player-download,.review-panel #download-selected,.review-panel #select-all{min-height:44px}}
+
+@media(min-width:768px){.review-panel .list-view .clip-actions{flex:0 0 auto;flex-direction:column;align-items:stretch;border-top:0;border-left:1px solid #314039;padding:0 0 0 12px;margin:0 0 0 auto}}
