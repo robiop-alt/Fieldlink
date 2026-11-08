@@ -90,7 +90,7 @@ async function load(){
  });
  let toolbar=document.getElementById('offset-tools');if(!toolbar){toolbar=document.createElement('div');toolbar.id='offset-tools';$('clips').before(toolbar)}
  toolbar.innerHTML=(allowDownloads?'<button id="select-all" type="button">Select all</button> <button id="download-selected" type="button">Download selected (ZIP)</button> <span id="selected-count"></span>':'<span class="muted">Downloads disabled for this project</span>')+' <p id="storage-status" class="muted"></p><p class="muted">Originals are stored in durable cloud storage; local cache is managed automatically.</p>';
- const update=()=>{$('selected-count').textContent=`${selected.size} selected`};
+ const update=()=>{const count=$('selected-count');if(count)count.textContent=`${selected.size} selected`};
  document.querySelectorAll('[data-select]').forEach(el=>{el.checked=selected.has(el.dataset.select);el.onchange=()=>{el.checked?selected.add(el.dataset.select):selected.delete(el.dataset.select);update()}});
  if(allowDownloads) $('select-all').onclick=()=>{let all=clips.every(c=>selected.has(c.id));selected=all?new Set():new Set(clips.map(c=>c.id));document.querySelectorAll('[data-select]').forEach(el=>el.checked=selected.has(el.dataset.select));update()};
  if(allowDownloads) $('download-selected').onclick=()=>{if(!selected.size)return alert('Select at least one clip');location.href=`${base}/download-selected?${auth}&ids=${[...selected].join(',')}`};update();
