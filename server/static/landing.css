@@ -1,0 +1,26 @@
+/* Public introduction and quiet account controls. */
+.offset-admin .top{position:relative;justify-content:space-between;gap:18px;overflow:visible;z-index:5}
+.offset-admin .account-nav{margin-left:auto;display:flex;justify-content:flex-end;align-items:center;min-width:0}
+.offset-admin #login-toggle,.offset-admin #logout{font-size:11px;padding:7px 11px;min-height:34px;background:transparent;border:1px solid #34413e;color:#b6c4bd;white-space:nowrap}
+.offset-admin #account-panel{display:flex;align-items:center;gap:12px;margin:0;padding:0;background:transparent;border:0;box-shadow:none}
+.offset-admin #account-panel.hidden{display:none}
+.offset-admin #account-name{font-size:10px;color:#8d9d96;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.offset-admin #login-panel{position:absolute;right:0;top:calc(100% + 12px);width:min(350px,calc(100vw - 40px));max-width:none;margin:0;padding:22px;background:#141d1e;border:1px solid #40524a;box-shadow:0 20px 65px #0009;border-radius:12px;z-index:10}
+.offset-admin #login-panel h2{font-size:20px}
+.offset-admin #login-panel .panel-head{margin-bottom:15px}
+.offset-admin #login-panel input{width:100%;box-sizing:border-box}
+.offset-admin #login-form{display:grid;gap:12px}
+.offset-admin #login-form label{margin:0}
+.offset-admin #login-form button{justify-self:start;font-size:12px;padding:9px 16px}
+.offset-admin #landing-info{padding:18px 0 10px}
+.offset-admin .landing-lead{display:grid;grid-template-columns:1fr 1fr;gap:14px 60px;padding:32px 0 40px;border-top:1px solid #34423a}
+.offset-admin .landing-lead .eyebrow{grid-column:1/-1;font-size:10px;color:#a7bc92;letter-spacing:.12em;margin:0 0 5px}
+.offset-admin .landing-lead h2{font-size:clamp(24px,3vw,37px);letter-spacing:-.04em;line-height:1.15;max-width:440px;margin:0}
+.offset-admin .landing-lead>p:last-child{font-size:14px;line-height:1.8;color:#a9b9b1;margin:0;max-width:480px}
+.offset-admin .landing-features{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:26px}
+.offset-admin .landing-features article{padding:25px 0;border-top:1px solid #34423a}
+.offset-admin .landing-number{font-size:10px;letter-spacing:.09em;color:#91a77f}
+.offset-admin .landing-features h3{font-size:18px;letter-spacing:-.025em;margin:18px 0 10px}
+.offset-admin .landing-features p{font-size:12px;line-height:1.8;color:#9faea7;margin:0;max-width:300px}
+.offset-admin .landing-note{font-size:11px;color:#86968e;border-top:1px solid #28362e;padding-top:22px;margin:20px 0}
+@media(max-width:640px){.offset-admin .landing-lead{grid-template-columns:1fr;gap:18px;padding:26px 0}.offset-admin .landing-features{grid-template-columns:1fr;gap:0}.offset-admin .landing-features p{max-width:none}.offset-admin #account-name{display:none}.offset-admin .landing-lead>p:last-child{font-size:13px}}
