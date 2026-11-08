@@ -112,13 +112,15 @@ async function load(){
  $('offset-sort-clips').onchange=event=>{
    clipSort=event.target.value==='filename'?'filename':'uploaded';
    try{localStorage.setItem(clipSortStorageKey,clipSort)}catch(_){}
-   clips.sort(compareClips);
+   // Do not mutate the player-owned clip array before it can preserve
+   // the currently playing clip and update its navigation order.
+   const sortedClips=[...clips].sort(compareClips);
    const cards=[...$('clips').querySelectorAll('.clip')];
    const lookup=new Map(cards.map(card=>[card.dataset.clipId,card]));
-   const ordered=clips.map(clip=>lookup.get(String(clip.id))).filter(Boolean);
-   if(ordered.length===clips.length){
+   const ordered=sortedClips.map(clip=>lookup.get(String(clip.id))).filter(Boolean);
+   if(ordered.length===sortedClips.length){
      $('clips').append(...ordered);
-     window.offsetReorderPlayer?.(clips.map(clip=>String(clip.id)));
+     window.offsetReorderPlayer?.(sortedClips.map(clip=>String(clip.id)));
    }
    renderFilter();
  };
