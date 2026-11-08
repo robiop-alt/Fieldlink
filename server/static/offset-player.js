@@ -71,7 +71,12 @@
     const seek=make('input','offset-player-seek');
     seek.type='range';seek.min='0';seek.max='1000';seek.value='0';seek.step='1';
     seek.setAttribute('aria-label','Playback position');
-    const fullscreen=button('⛶','Fullscreen');
+    const fullscreen=button('','Fullscreen');
+    fullscreen.classList.add('offset-fullscreen-toggle');
+    // Geometric enter/exit fullscreen glyphs: equal optical size to Play.
+    const fullscreenEnterSvg='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 4H4v5M15 4h5v5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const fullscreenExitSvg='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    fullscreen.innerHTML=fullscreenEnterSvg;
     controls.append(previous,toggle,clock,seek,next,fullscreen);
 
     const options=make('div','offset-player-options');
@@ -191,7 +196,7 @@
       player.classList.contains('offset-player-theater');
     const updateFullscreenButton=()=>{
       const active=isFullscreen();
-      fullscreen.textContent=active?'⤢':'⛶';
+      fullscreen.innerHTML=active?fullscreenExitSvg:fullscreenEnterSvg;
       fullscreen.title=active?'Exit fullscreen':'Fullscreen with frame lines';
       fullscreen.setAttribute('aria-label',fullscreen.title);
       requestAnimationFrame(updateFrames);
