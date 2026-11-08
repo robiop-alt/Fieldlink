@@ -311,3 +311,15 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
 .review-account-nav .review-admin-login:focus-visible{outline:2px solid #57b62f;outline-offset:3px}
 @media(max-width:480px){.review-account-nav .tag{display:none}.review-account-nav{gap:0}}
 @media(pointer:coarse){.review-account-nav .review-admin-login{min-height:44px}}
+
+/* Small, persistent-per-visit new-clips filter. */
+.review-panel #metadata-filters{display:flex;align-items:center;gap:7px;flex-basis:390px}
+.review-panel #metadata-filters .filter-compact{flex:1;min-width:0}
+.review-panel .new-clips-filter{flex:none;white-space:nowrap;min-height:30px;padding:5px 9px;border-radius:7px;border:1px solid #3a4d3f;background:#17211a;color:#a6bca9;font-size:11px;font-weight:600}
+.review-panel .new-clips-filter[aria-pressed="true"]{border-color:#57b62f;background:#253c20;color:#d6eccb}
+.review-panel .new-clips-filter:focus-visible{outline:2px solid #57b62f;outline-offset:3px}
+.review-panel .clip-title-line{display:flex;align-items:baseline;gap:6px;min-width:0}
+.review-panel .clip-title-line b{min-width:0}
+.review-panel .clip-new-badge{flex:none;border:1px solid #426e34;background:#1d321a;color:#9bd47d;border-radius:4px;padding:2px 4px;font-size:8px;font-weight:700;letter-spacing:.06em;line-height:1.2}
+.review-panel #clip-filter-empty{margin:12px 0;color:#9caf9f;font-size:12px}
+@media(max-width:767px){.review-panel #metadata-filters{flex-basis:220px}.review-panel .new-clips-filter{min-height:36px}}
