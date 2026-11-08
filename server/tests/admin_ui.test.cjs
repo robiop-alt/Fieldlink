@@ -16,17 +16,17 @@ function setup() {
     created.push(item);return item;
   }
   function node(id) {
-    if (!nodes.has(id)) nodes.set(id, {
+    if (!nodes.has(id)) {const classes=new Set();const attrs={};nodes.set(id, {
       value: '', textContent: '', innerHTML: '', disabled: false,
-      classList: {toggle() {}, add() {}, remove() {}},
-      setAttribute() {}, removeAttribute() {}, addEventListener() {}, focus() {},
+      classList: {toggle(name,force) {if(force===undefined)force=!classes.has(name);force?classes.add(name):classes.delete(name)}, add(name) {classes.add(name)}, remove(name) {classes.delete(name)}, contains(name) {return classes.has(name)}},
+      setAttribute(name,value) {attrs[name]=value}, getAttribute(name) {return attrs[name]}, removeAttribute() {}, addEventListener() {}, focus() {},
       prepend(...items) { this.children = [...items, ...(this.children || [])]; },
       replaceChildren() { this.innerHTML = ''; this.textContent = ''; },
-    });
+    });}
     return nodes.get(id);
   }
   const context = vm.createContext({
-    document: {createElement: element, createTextNode: text => ({textContent: text}), querySelector: () => node('projects'), getElementById: node, querySelectorAll: () => [], body: {classList: {toggle() {}}}},
+    document: {addEventListener() {}, createElement: element, createTextNode: text => ({textContent: text}), querySelector: () => node('projects'), getElementById: node, querySelectorAll: () => [], body: {classList: {toggle() {}}}},
     AbortController, setTimeout, clearTimeout,
     window: {}, location: {origin: 'https://offset.test'},
     // Leave automatic page initialization pending; tests control API responses.
@@ -126,4 +126,20 @@ test('Access and PIN shows a retry action after a timed-out request', async () =
   await run("projectReviewSettings('p1')");
   assert.ok(created.some(el => el.textContent === 'Loading timed out. Please try again.'));
   assert.ok(created.some(el => el.textContent === 'Try again' && typeof el.onclick === 'function'));
+});
+
+
+test('header sign in opens a compact form and signing in hides the public introduction', async () => {
+  const {context,node,run}=setup();
+  context.api=async()=>[];
+  run('setSignedIn(null)');
+  assert.equal(node('login-panel').classList.contains('hidden'),true);
+  assert.equal(node('landing-info').classList.contains('hidden'),false);
+  node('login-toggle').onclick();
+  assert.equal(node('login-panel').classList.contains('hidden'),false);
+  assert.equal(node('login-toggle').getAttribute('aria-expanded'),'true');
+  run("setSignedIn('Robin')");
+  assert.equal(node('login-panel').classList.contains('hidden'),true);
+  assert.equal(node('landing-info').classList.contains('hidden'),true);
+  assert.equal(node('account-panel').classList.contains('hidden'),false);
 });
