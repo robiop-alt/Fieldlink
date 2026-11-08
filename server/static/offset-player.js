@@ -75,9 +75,9 @@
     controls.append(previous,toggle,clock,seek,next,fullscreen);
 
     const options=make('div','offset-player-options');
-    const frameLabel=make('label',null,'Frame lines');
+    const frameLabel=make('label','offset-frame-inline','Frame lines');
     const frameSelect=make('select','offset-player-frames-select');
-    [['off','Off'],['0.5625','9:16'],['0.8','4:5'],['1','1:1'],['1.333333','4:3'],['1.777778','16:9'],['1.85','1.85:1'],['2.00','2.00:1'],['2.20','2.20:1'],['2.39','2.39:1']].forEach(([value,text])=>{
+    [['off','Off'],['1.333333','4:3'],['1.777778','16:9'],['1.85','1.85:1'],['2.00','2.00:1'],['2.20','2.20:1'],['2.39','2.39:1']].forEach(([value,text])=>{
       const opt=make('option',null,text);opt.value=value;frameSelect.append(opt);
     });
     // Per-project setting in this browser, never attached to the media file.
@@ -88,12 +88,11 @@
     } catch (_) { /* Private browsing can disable storage. */ }
     frameLabel.append(frameSelect);
     const download=make('a','offset-player-download','Download clip ↓');
-    options.append(frameLabel);
     if(allowDownloads) options.append(download);
     const metadata=make('div','offset-player-metadata');
     const cameraFields=make('div','offset-camera-fields');
     cameraFields.setAttribute('aria-label','Camera details for selected clip');
-    metadata.append(cameraFields);
+    metadata.append(cameraFields,frameLabel);
     const updateCameraDetails=clip=>{
       // Only DJI Pilot camera readings; proxy metadata must never fill these fields.
       const data=clip.camera_metadata&&typeof clip.camera_metadata==='object'?clip.camera_metadata:{};
