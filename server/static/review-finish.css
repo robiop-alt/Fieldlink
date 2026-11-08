@@ -161,20 +161,20 @@ body:has(.review-intro) .panel.review-panel{
   font-variant-numeric:tabular-nums;
   white-space:nowrap;
 }
-.review-panel .clipmeta>.offset-camera-fields{
+.review-panel :is(.clipmeta,.offset-player-metadata)>.offset-camera-fields{
   gap:5px 5px;
   margin-top:3px;
   padding:8px 0 0;
   border-top:1px solid rgba(156,175,170,.12);
 }
-.review-panel .clipmeta .offset-camera-field{
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field{
   min-height:19px;
   padding:3px 6px;
   border-radius:5px;
   max-width:100%;
 }
-.review-panel .clipmeta .offset-camera-field>b{font-size:9px}
-.review-panel .clipmeta .offset-camera-field>span{
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field>b{font-size:9px}
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field>span{
   font-size:10px;
   max-width:100%;
   overflow-wrap:anywhere;

@@ -84,7 +84,23 @@
     const download=make('a','offset-player-download','Download clip ↓');
     options.append(frameLabel);
     if(allowDownloads) options.append(download);
-    player.append(head,stage,controls,options,error);
+    const metadata=make('div','offset-player-metadata');
+    const cameraFields=make('div','offset-camera-fields');
+    cameraFields.setAttribute('aria-label','Camera details for selected clip');
+    metadata.append(cameraFields);
+    const updateCameraDetails=clip=>{
+      // Only DJI Pilot camera readings; proxy metadata must never fill these fields.
+      const data=clip.camera_metadata&&typeof clip.camera_metadata==='object'?clip.camera_metadata:{};
+      cameraFields.replaceChildren();
+      for(const [label,key] of [['RAW / ProRes','recording_format'],['Lens','lens'],['FPS','fps'],['ISO','iso'],['WB','white_balance'],['Shutter','shutter']]){
+        const value=data[key]===null||data[key]===undefined?'':String(data[key]).trim();
+        const field=make('span','offset-camera-field offset-camera-'+key);
+        field.dataset.filled=String(!!value);
+        field.append(make('b',null,label),make('span',null,value));
+        cameraFields.append(field);
+      }
+    };
+    player.append(head,stage,controls,options,metadata,error);
     host.append(player);
 
     let index=0, loading=false;
@@ -127,6 +143,7 @@
       loading=false;
       video.poster=posterUrl(clip);
       title.textContent=clip.filename;
+      updateCameraDetails(clip);
       counter.textContent=`${index+1} of ${clips.length}`;
       direct.href=videoUrl(clip);
       download.href=`${videoUrl(clip)}&download=1`;
