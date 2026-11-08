@@ -323,3 +323,180 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
 .review-panel .clip-new-badge{flex:none;border:1px solid #426e34;background:#1d321a;color:#9bd47d;border-radius:4px;padding:2px 4px;font-size:8px;font-weight:700;letter-spacing:.06em;line-height:1.2}
 .review-panel #clip-filter-empty{margin:12px 0;color:#9caf9f;font-size:12px}
 @media(max-width:767px){.review-panel #metadata-filters{flex-basis:220px}.review-panel .new-clips-filter{min-height:36px}}
+
+/* Small, persistent clip sort — shares a line with the search and New filter. */
+.review-panel #metadata-filters{
+  flex:1 1 490px;
+  min-width:0;
+  gap:7px;
+}
+.review-panel .offset-sort-label{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin:0;
+  color:#9aafa3;
+  font-size:10px;
+  font-weight:600;
+  white-space:nowrap;
+}
+.review-panel .offset-sort-label>span{white-space:nowrap}
+.review-panel #offset-sort-clips{
+  display:inline-block;
+  width:auto;
+  max-width:150px;
+  min-height:34px;
+  height:34px;
+  padding:5px 26px 5px 9px;
+  margin:0;
+  font-size:11px;
+  line-height:1.2;
+  color:#dceadf;
+  background:#1a2425;
+  border:1px solid #3a4d46;
+  border-radius:7px;
+  cursor:pointer;
+}
+.review-panel #offset-sort-clips:focus-visible{
+  outline:2px solid #b7f34d;
+  outline-offset:2px;
+}
+
+/* Actual project usage; bars compare the sizes of recent clips, never a
+   fabricated percent of the project's storage allowance. */
+.review-panel .review-storage{
+  margin:24px 0 0;
+  padding:13px 0 2px;
+  border-top:1px solid rgba(168,185,180,.16);
+}
+.review-panel .review-storage>summary{
+  display:list-item;
+  cursor:pointer;
+  color:#bccac2;
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.02em;
+}
+.review-panel .review-storage[open]>summary{margin-bottom:13px}
+.review-panel .offset-storage-dashboard{max-width:680px;min-width:0}
+.review-panel .offset-storage-stats{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+}
+.review-panel .offset-storage-stat{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+  padding:11px 12px 12px;
+  border-radius:8px;
+  border:1px solid #2c3d3a;
+  background:linear-gradient(155deg,#172021,#131b1c);
+}
+.review-panel .offset-storage-stat>span{
+  font-size:9px;
+  font-weight:600;
+  letter-spacing:.075em;
+  color:#899f94;
+}
+.review-panel .offset-storage-stat>strong{
+  color:#e4efde;
+  font:600 17px/1.1 'Space Grotesk',sans-serif;
+  letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere;
+}
+.review-panel .offset-storage-chart-title{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  margin:16px 1px 8px;
+  font-size:10px;
+  font-weight:600;
+  color:#b4c6b8;
+}
+.review-panel .offset-storage-chart-title span:last-child{
+  font-weight:400;
+  color:#869a8c;
+}
+.review-panel .offset-storage-chart{
+  display:flex;
+  align-items:flex-end;
+  gap:6px;
+  height:55px;
+  padding:4px 7px 0;
+  background:linear-gradient(180deg,transparent,rgba(114,143,126,.055));
+  border-bottom:1px solid #415746;
+  border-radius:5px 5px 0 0;
+}
+.review-panel .offset-storage-bar-item{
+  display:flex;
+  flex:1;
+  align-items:flex-end;
+  height:100%;
+  min-width:5px;
+  max-width:44px;
+}
+.review-panel .offset-storage-bar{
+  width:100%;
+  height:100%;
+  display:flex;
+  align-items:flex-end;
+  border-radius:4px 4px 0 0;
+}
+.review-panel .offset-storage-bar-fill{
+  width:100%;
+  background:linear-gradient(180deg,#9fd869,#527e43);
+  border-radius:3px 3px 0 0;
+  min-height:2px;
+}
+.review-panel .offset-storage-bar-item:nth-child(even) .offset-storage-bar-fill{
+  background:linear-gradient(180deg,#7fc29c,#426b5e);
+}
+.review-panel .offset-storage-note{
+  margin:8px 1px 0;
+  font-size:10px;
+  line-height:1.5;
+  color:#86998f;
+}
+@media(max-width:767px){
+  .review-panel #metadata-filters{
+    flex-wrap:wrap;
+    gap:6px;
+    width:100%;
+    flex-basis:auto;
+  }
+  .review-panel #metadata-filters .filter-compact{
+    flex:1 1 145px;
+    min-width:0;
+  }
+  .review-panel .offset-sort-label{
+    flex:0 0 auto;
+    margin-left:0;
+    gap:5px;
+  }
+  .review-panel #offset-sort-clips{
+    min-height:36px;
+    height:36px;
+    max-width:150px;
+  }
+  .review-panel .offset-storage-stat{padding:10px 9px}
+  .review-panel .offset-storage-stat>strong{font-size:15px}
+  .review-panel .offset-storage-stat>span{font-size:8px}
+}
+@media(max-width:420px){
+  .review-panel .offset-sort-label{
+    flex-basis:100%;
+    justify-content:flex-end;
+  }
+}
+@media(pointer:coarse){
+  .review-panel #offset-sort-clips{
+    min-height:44px;
+    height:44px;
+    font-size:16px;
+    max-width:180px;
+  }
+}
