@@ -194,12 +194,28 @@
     // takeover so the guides stay composited above the playing video.
     const isFullscreen=()=>document.fullscreenElement===player ||
       player.classList.contains('offset-player-theater');
+    let chromeTimer=null,chromeInteracting=false;
+    const compactFullscreen=()=>isFullscreen()&&!!window.matchMedia?.('(orientation: landscape) and (max-height: 650px)')?.matches;
+    const stopChromeTimer=()=>{if(chromeTimer!==null){clearTimeout(chromeTimer);chromeTimer=null}};
+    const showChrome=(autoHide=true)=>{
+      stopChromeTimer();player.classList.remove('offset-player-chrome-hidden');
+      if(autoHide&&compactFullscreen()&&!video.paused&&!video.ended&&!chromeInteracting){
+        chromeTimer=setTimeout(()=>{
+          chromeTimer=null;
+          const focused=document.activeElement;
+          if(compactFullscreen()&&!video.paused&&!chromeInteracting&&
+             !(focused&&player.contains(focused)&&focused.matches?.(':focus-visible')))
+            player.classList.add('offset-player-chrome-hidden');
+        },2500);
+      }
+    };
     const updateFullscreenButton=()=>{
       const active=isFullscreen();
       fullscreen.innerHTML=active?fullscreenExitSvg:fullscreenEnterSvg;
       fullscreen.title=active?'Exit fullscreen':'Fullscreen with frame lines';
       fullscreen.setAttribute('aria-label',fullscreen.title);
       requestAnimationFrame(updateFrames);
+      showChrome();
     };
     const exitTheater=()=>{
       player.classList.remove('offset-player-theater');
@@ -227,6 +243,7 @@
     listen(document,'fullscreenchange',updateFullscreenButton);
     listen(document,'webkitfullscreenchange',updateFullscreenButton);
     listen(document,'keydown',event=>{
+      if(isFullscreen())showChrome(false);
       if(event.key==='Escape' && player.classList.contains('offset-player-theater'))exitTheater();
     });
     listen(frameSelect,'change',()=>{
@@ -236,12 +253,26 @@
     listen(video,'timeupdate',updateTime);
     listen(video,'loadedmetadata',()=>{updateTime();updateFrames()});
     listen(video,'play',()=>{error.hidden=true;updateButtons()});
-    listen(video,'pause',updateButtons);
-    listen(video,'ended',updateButtons);
-    listen(video,'error',()=>{loading=false;error.hidden=false;updateButtons()});
-    listen(video,'playing',()=>{loading=false;error.hidden=true});
-    listen(window,'resize',updateFrames);
-    listen(window,'orientationchange',()=>requestAnimationFrame(updateFrames));
+    listen(video,'pause',()=>{updateButtons();showChrome(false)});
+    listen(video,'ended',()=>{updateButtons();showChrome(false)});
+    listen(video,'error',()=>{loading=false;error.hidden=false;updateButtons();showChrome(false)});
+    listen(video,'playing',()=>{loading=false;error.hidden=true;showChrome()});
+    listen(stage,'click',()=>{
+      if(!compactFullscreen())return;
+      if(player.classList.contains('offset-player-chrome-hidden'))showChrome();
+      else {stopChromeTimer();player.classList.add('offset-player-chrome-hidden')}
+    });
+    [controls,options,metadata].forEach(surface=>listen(surface,'pointerdown',()=>{
+      chromeInteracting=true;showChrome(false);
+    }));
+    const finishChromeInteraction=()=>{if(chromeInteracting){chromeInteracting=false;showChrome()}};
+    listen(document,'pointerup',finishChromeInteraction);
+    listen(document,'pointercancel',finishChromeInteraction);
+    listen(controls,'focusin',()=>showChrome(false));
+    listen(controls,'focusout',()=>showChrome());
+    listen(frameSelect,'change',()=>showChrome());
+    listen(window,'resize',()=>{updateFrames();showChrome()});
+    listen(window,'orientationchange',()=>{requestAnimationFrame(updateFrames);showChrome()});
     // Fullscreen changes available space without a window resize on some
     // browsers; observe the real video stage, not only the outer viewport.
     const frameObserver=typeof ResizeObserver!=='undefined'
@@ -293,6 +324,7 @@
       updateButtons();
     };
     destroy=()=>{
+      stopChromeTimer();
       delete window.offsetReorderPlayer;
       frameObserver?.disconnect();
       if(player.classList.contains('offset-player-theater'))exitTheater();
