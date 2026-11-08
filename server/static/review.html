@@ -31,6 +31,12 @@ let selected=new Set();
  }catch(e){$('error').textContent=e.message+' · Enter the project PIN to continue.'}
 })();
 
+function formatStorageBytes(bytes){
+ const value=Number(bytes);if(!Number.isFinite(value)||value<0)throw Error('Invalid storage total');
+ const units=['B','KB','MB','GB','TB'];let amount=value,index=0;
+ while(amount>=1024&&index<units.length-1){amount/=1024;index++}
+ return new Intl.NumberFormat('en-GB',{maximumFractionDigits:index?2:0}).format(amount)+' '+units[index];
+}
 async function load(){
  const r=await fetch(`/api/review/${slug}/clips`,{headers:{Authorization:`Bearer ${token}`}});
  const clips=await r.json();if(!r.ok)throw Error(clips.detail||'Could not load clips');
@@ -89,14 +95,14 @@ async function load(){
    video.addEventListener('playing',()=>{help.hidden=true});
  });
  let toolbar=document.getElementById('offset-tools');if(!toolbar){toolbar=document.createElement('div');toolbar.id='offset-tools';$('clips').before(toolbar)}
- toolbar.innerHTML=(allowDownloads?'<button id="select-all" type="button">Select all</button> <button id="download-selected" type="button">Download selected (ZIP)</button> <span id="selected-count"></span>':'<span class="muted">Downloads disabled for this project</span>')+' <p id="storage-status" class="muted"></p><p class="muted">Originals are stored in durable cloud storage; local cache is managed automatically.</p>';
+ toolbar.innerHTML=(allowDownloads?'<button id="select-all" type="button">Select all</button> <button id="download-selected" type="button">Download selected (ZIP)</button> <span id="selected-count"></span>':'<span class="muted">Downloads disabled for this project</span>');
  const update=()=>{const count=$('selected-count');if(count)count.textContent=`${selected.size} selected`};
  document.querySelectorAll('[data-select]').forEach(el=>{el.checked=selected.has(el.dataset.select);el.onchange=()=>{el.checked?selected.add(el.dataset.select):selected.delete(el.dataset.select);update()}});
  if(allowDownloads) $('select-all').onclick=()=>{let all=clips.every(c=>selected.has(c.id));selected=all?new Set():new Set(clips.map(c=>c.id));document.querySelectorAll('[data-select]').forEach(el=>el.checked=selected.has(el.dataset.select));update()};
  if(allowDownloads) $('download-selected').onclick=()=>{if(!selected.size)return alert('Select at least one clip');location.href=`${base}/download-selected?${auth}&ids=${[...selected].join(',')}`};update();
  if(typeof window.initOffsetPlayer==='function') window.initOffsetPlayer(clips,base,auth,allowDownloads);
  clips.forEach(async c=>{try{let r=await fetch(`${base}/clips/${c.id}/duration?${auth}`);let d=await r.json();if(d.seconds!=null){let n=Math.floor(d.seconds);let el=document.getElementById(`dur-${c.id}`);if(el)el.textContent=`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`}}catch(e){}});
- try{let r=await fetch(`${base}/storage?${auth}`);let d=await r.json();$('storage-status').textContent=`Local cache: ${(d.used_bytes/1073741824).toFixed(2)} / ${(d.limit_bytes/1073741824).toFixed(0)} GB`;}catch(e){}
+ try{const r=await fetch(`${base}/storage?${auth}`,{cache:'no-store'});if(!r.ok)throw Error('Storage information unavailable');const d=await r.json();$('storage-status').textContent=`Project media: ${formatStorageBytes(d.used_bytes)} · ${d.clip_count} uploaded clip${d.clip_count===1?'':'s'}`;}catch(e){$('storage-status').textContent='Storage information unavailable. Please refresh.'}
 }
 
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}

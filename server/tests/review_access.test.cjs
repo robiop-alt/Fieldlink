@@ -23,7 +23,7 @@ async function viewer(allowDownloads,validPin=true){
     if(url.endsWith('/unlock'))return validPin?response({token:'test-token',expires:9999999999}):response({detail:'Invalid PIN'},false);
     if(url.endsWith('/clips'))return response([]);
     if(url.endsWith('/settings'))return response({allow_downloads:allowDownloads});
-    if(url.includes('/storage'))return response({used_bytes:0,limit_bytes:1024});
+    if(url.includes('/storage'))return response({used_bytes:52428800,clip_count:1});
     throw Error('Unexpected request: '+url);
   };
   const context=vm.createContext({window,document,fetch,location:{pathname:'/r/test',hash:'',search:''},URLSearchParams,sessionStorage:{getItem(){return null},setItem(){},removeItem(){}}});
@@ -40,6 +40,7 @@ for(const allowDownloads of [false,true])test(`valid PIN opens review with downl
   assert.equal(node('gate').classList.contains('hidden'),true);
   assert.equal(node('content').classList.contains('hidden'),false);
   assert.equal(initialized,true);
+  assert.equal(node('storage-status').textContent,'Project media: 50 MB · 1 uploaded clip');
 });
 
 test('invalid PIN still shows the access gate',async()=>{

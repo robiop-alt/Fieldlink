@@ -1148,6 +1148,11 @@ def download_selected(slug:str,ids:str='',session:str=''):
 
 @app.get('/api/review/{slug}/storage')
 def storage(slug:str,session:str=''):
-    review_project(slug,session)
-    used=sum(p.stat().st_size for p in FILES.iterdir() if p.is_file())
-    return {'used_bytes':used,'limit_bytes':LIMIT_BYTES}
+    project=review_project(slug,session)
+    # The clip ledger includes cloud-backed media even when its local cache is empty.
+    with db() as c:
+        totals=c.execute(
+            "SELECT COUNT(*) AS clip_count,COALESCE(SUM(size),0) AS used_bytes "
+            "FROM clips WHERE project_id=? AND status='ready'",(project['id'],)
+        ).fetchone()
+    return JSONResponse(dict(totals),headers={'Cache-Control':'no-store'})
