@@ -7,7 +7,7 @@
 .offset-view-controls{display:flex;justify-content:flex-end;gap:10px;margin:8px 0 12px}
 .offset-view-controls label{font-size:12px;color:#b6c1c3;display:flex;align-items:center;gap:6px}
 .offset-view-controls select{background:#20272a;color:#fff;border:1px solid #556064;border-radius:6px;padding:5px 8px}
-</style></head><body><main class="shell"><header class="top"><a class="brand" href="/"><img src="/static/offset-logo.svg?v=approved-artwork-1" alt="OFFSET." width="140" height="34" style="display:block;width:140px;max-width:38vw;height:auto;min-height:32px" /></a><nav class="review-account-nav" aria-label="Account"><span class="tag">PRIVATE REVIEW</span><a class="review-admin-login" href="/#login">Admin login</a></nav></header><section class="panel" id="gate"><p class="eyebrow">ACCESS REQUIRED</p><h2>Project PIN</h2><label>PIN code<input id="pin" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit PIN"></label><button id="unlock">Open rushes</button><p id="error" class="error"></p></section><section id="content" class="hidden"><div class="panel review-panel"><div class="review-heading"><h2>Rushes</h2><p class="muted" id="count" aria-live="polite"></p></div><div id="review-toolbar"><div id="metadata-filters"></div><div id="offset-tools"></div></div><div id="review-player-host"></div><section id="offset-incoming" aria-label="Incoming rushes" hidden></section><div id="clips" class="clipgrid"></div><p id="clip-filter-empty" class="hint" role="status" hidden></p><details class="review-storage"><summary>Storage information</summary><p id="storage-status" class="muted"></p></details></div></section><footer>OFFSET <span>·</span> PRIVATE RUSHES DELIVERY</footer></main><script>
+</style></head><body><main class="shell"><header class="top"><a class="brand" href="/"><img src="/static/offset-logo.svg?v=approved-artwork-1" alt="OFFSET." width="140" height="34" style="display:block;width:140px;max-width:38vw;height:auto;min-height:32px" /></a><nav class="review-account-nav" aria-label="Account"><span class="tag">PRIVATE REVIEW</span><a class="review-admin-login" href="/#login">Admin login</a></nav></header><section class="panel" id="gate"><p class="eyebrow">ACCESS REQUIRED</p><h2>Project PIN</h2><label>PIN code<input id="pin" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit PIN"></label><button id="unlock">Open rushes</button><p id="error" class="error"></p></section><section id="content" class="hidden"><div class="panel review-panel"><div class="review-heading"><h2>Rushes</h2><p class="muted" id="count" aria-live="polite"></p></div><div id="review-toolbar"><div id="metadata-filters"></div><div id="offset-tools"></div></div><div id="review-player-host"></div><section id="offset-incoming" aria-label="Incoming rushes" hidden></section><div id="clips" class="clipgrid"></div><p id="clip-filter-empty" class="hint" role="status" hidden></p><details class="review-storage" open><summary>Storage information</summary><div id="storage-status" class="offset-storage-dashboard" aria-live="polite"><p class="muted">Loading storage information…</p></div></details></div></section><footer>OFFSET <span>·</span> PRIVATE RUSHES DELIVERY</footer></main><script>
 fetch('/api/site/settings').then(r=>{if(!r.ok)throw Error('Settings unavailable');return r.json()}).then(data=>{for(const key of ['review_title','review_highlight','review_description']){const el=document.getElementById(key);if(el&&typeof data[key]==='string')el.textContent=data[key]}}).catch(()=>{});
 const slug=encodeURIComponent(location.pathname.split('/').filter(Boolean).pop()||'');let token='';const storageKey=`offset-review-session:${slug}`;const $=id=>document.getElementById(id);function saveAccess(data){token=data.token;try{sessionStorage.setItem(storageKey,JSON.stringify({token:data.token,expires:data.expires}))}catch(e){}}function clearAccess(){token='';try{sessionStorage.removeItem(storageKey)}catch(e){}}function showGate(message=''){clearAccess();$('gate').classList.remove('hidden');$('content').classList.add('hidden');$('error').textContent=message}async function openAccess(data){saveAccess(data);$('gate').classList.add('hidden');$('content').classList.remove('hidden');try{await load()}catch(e){showGate(e.message||'Please enter your PIN again.')}}$('unlock').onclick=unlock;$('pin').addEventListener('keydown',e=>{if(e.key==='Enter')unlock()});async function unlock(){try{let r=await fetch(`/api/review/${slug}/unlock`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:$('pin').value})});let d=await r.json();if(!r.ok)throw Error(d.detail||'Invalid PIN');await openAccess(d)}catch(e){$('error').textContent=e.message}}
 // Reuse a valid review session on refresh, without storing the project PIN.
@@ -37,9 +37,54 @@ function formatStorageBytes(bytes){
  while(amount>=1024&&index<units.length-1){amount/=1024;index++}
  return new Intl.NumberFormat('en-GB',{maximumFractionDigits:index?2:0}).format(amount)+' '+units[index];
 }
+// Sort is a presentation preference: it never modifies filenames or server records.
+const clipSortStorageKey='offset:review-sort:'+slug;
+let clipSort='uploaded';
+try{if(localStorage.getItem(clipSortStorageKey)==='filename')clipSort='filename'}catch(_){}
+function compareClips(a,b){
+ const names=String(a.filename||'').localeCompare(String(b.filename||''),undefined,{numeric:true,sensitivity:'base'});
+ if(clipSort==='filename')return names||String(a.id).localeCompare(String(b.id));
+ return (Number(b.created)||0)-(Number(a.created)||0)||names||String(a.id).localeCompare(String(b.id));
+}
+function renderStorage(d,clips){
+ const target=$('storage-status');target.replaceChildren();
+ const total=Number(d.used_bytes),count=Number(d.clip_count);
+ if(!Number.isFinite(total)||total<0||!Number.isFinite(count)||count<0)throw Error('Invalid storage response');
+ const stats=document.createElement('div');stats.className='offset-storage-stats';
+ const stat=(label,value)=>{const box=document.createElement('div');box.className='offset-storage-stat';
+ const small=document.createElement('span');small.textContent=label;
+ const strong=document.createElement('strong');strong.textContent=value;
+ box.append(small,strong);return box};
+ stats.append(stat('PROJECT MEDIA',formatStorageBytes(total)),
+              stat('UPLOADED CLIPS',new Intl.NumberFormat('en-GB').format(count)),
+              stat('AVG. CLIP',count?formatStorageBytes(total/count):'—'));
+ target.append(stats);
+ const heading=document.createElement('div');heading.className='offset-storage-chart-title';
+ const label=document.createElement('span');label.textContent='Recent uploads · file sizes';
+ const caption=document.createElement('span');caption.textContent='Relative scale';
+ heading.append(label,caption);target.append(heading);
+ const recent=[...clips].sort((a,b)=>(Number(b.created)||0)-(Number(a.created)||0)).slice(0,10);
+ const chart=document.createElement('div');chart.className='offset-storage-chart';
+ chart.setAttribute('role','img');
+ chart.setAttribute('aria-label','Relative size of '+recent.length+' most recently uploaded clips');
+ const peak=Math.max(1,...recent.map(c=>Math.max(0,Number(c.size)||0)));
+ for(const clip of recent){
+   const item=document.createElement('div');item.className='offset-storage-bar-item';
+   item.title=String(clip.filename||'')+' · '+formatStorageBytes(Math.max(0,Number(clip.size)||0));
+   const bar=document.createElement('div');bar.className='offset-storage-bar';
+   const fill=document.createElement('div');fill.className='offset-storage-bar-fill';
+   fill.style.height=Math.max(3,Math.min(100,100*(Math.max(0,Number(clip.size)||0)/peak)))+'%';
+   bar.append(fill);item.append(bar);chart.append(item);
+ }
+ target.append(chart);
+ const hint=document.createElement('p');hint.className='offset-storage-note';
+ hint.textContent=recent.length?'Last '+recent.length+' clips shown · bar height compares file sizes, not remaining storage capacity.':'No uploaded clips yet.';
+ target.append(hint);
+}
 async function load(){
  const r=await fetch(`/api/review/${slug}/clips`,{headers:{Authorization:`Bearer ${token}`}});
  const clips=await r.json();if(!r.ok)throw Error(clips.detail||'Could not load clips');
+ clips.sort(compareClips);
  const settingsResponse=await fetch(`/api/review/${slug}/settings`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
  if(!settingsResponse.ok)throw Error('Project review settings unavailable');
  const allowDownloads=(await settingsResponse.json()).allow_downloads===true;
@@ -49,7 +94,8 @@ async function load(){
  let filters=document.getElementById('metadata-filters');
  if(!filters){filters=document.createElement('div');filters.id='metadata-filters';$('clips').before(filters)}
  const savedSearch=$('clip-filter')?.value||'';
- filters.innerHTML='<label class="filter-compact"><span>Filter clips</span><input id="clip-filter" type="search" placeholder="Filter clips…" title="Search filename, RAW/ProRes, lens, FPS or ISO" aria-label="Filter clips"></label><button type="button" class="new-clips-filter" id="new-clips-filter" aria-pressed="false" title="Clips added since your last visit in this browser">New · 0</button>';
+ filters.innerHTML='<label class="filter-compact"><span>Filter clips</span><input id="clip-filter" type="search" placeholder="Filter clips…" title="Search filename, RAW/ProRes, lens, FPS or ISO" aria-label="Filter clips"></label><button type="button" class="new-clips-filter" id="new-clips-filter" aria-pressed="false" title="Clips added since your last visit in this browser">New · 0</button><label class="offset-sort-label" for="offset-sort-clips"><span>Sort</span><select id="offset-sort-clips" aria-label="Sort clips"><option value="filename">Filename</option><option value="uploaded">Last uploaded</option></select></label>';
+ $('offset-sort-clips').value=clipSort;
  $('clip-filter').value=savedSearch;
  const renderFilter=()=>{
   const q=$('clip-filter').value.toLowerCase();let visible=0;
@@ -63,6 +109,19 @@ async function load(){
   empty.textContent=onlyNewClips&&!newClipIds.size?'No new clips since your last visit.':'No matching clips.';
  };
  $('new-clips-filter').onclick=()=>{onlyNewClips=!onlyNewClips;renderFilter()};
+ $('offset-sort-clips').onchange=event=>{
+   clipSort=event.target.value==='filename'?'filename':'uploaded';
+   try{localStorage.setItem(clipSortStorageKey,clipSort)}catch(_){}
+   clips.sort(compareClips);
+   const cards=[...$('clips').querySelectorAll('.clip')];
+   const lookup=new Map(cards.map(card=>[card.dataset.clipId,card]));
+   const ordered=clips.map(clip=>lookup.get(String(clip.id))).filter(Boolean);
+   if(ordered.length===clips.length){
+     $('clips').append(...ordered);
+     window.offsetReorderPlayer?.(clips.map(clip=>String(clip.id)));
+   }
+   renderFilter();
+ };
  const base=`/api/review/${slug}`;const auth=`session=${encodeURIComponent(token)}`;
  // Explicit DJI Pilot capture only: never derive camera settings from proxy ffprobe fields.
  const cameraFields=[['RAW / ProRes','recording_format'],['Lens','lens'],['FPS','fps'],['ISO','iso'],['WB','white_balance'],['Shutter','shutter']];
@@ -74,7 +133,7 @@ async function load(){
    }).join('');
  };
  const formatDuration=s=>{let n=Math.max(0,Math.floor(Number(s)));return Number.isFinite(n)?`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`:'--:--'};
- $('clips').innerHTML=clips.map(c=>`<article class="clip" data-new="${newClipIds.has(String(c.id))}" data-search="${esc([c.filename,...Object.values(c.camera_metadata||{})].join(' ').toLowerCase())}"><div class="offset-video-stage"><video controls preload="none" playsinline webkit-playsinline poster="${base}/clips/${c.id}/thumbnail?${auth}" src="${base}/clips/${c.id}/file?${auth}"></video><div class="offset-frame-guides" aria-hidden="true" hidden></div></div><div class="offset-view-controls"><label>Frame lines <select class="offset-frame-select" aria-label="Frame lines for ${esc(c.filename)}"><option value="off">Off</option><option value="2.39">2.39:1</option><option value="2.00">2.00:1</option><option value="2.20">2.20:1</option><option value="1.85">1.85:1</option><option value="1.78">16:9</option><option value="1.33">4:3</option><option value="1.00">1:1</option><option value="0.80">4:5</option><option value="0.5625">9:16</option></select></label></div><p class="playback-help" id="playback-${c.id}" hidden>Browser playback unavailable. <a href="${base}/clips/${c.id}/file?${auth}" target="_blank" rel="noopener">Open video directly</a> or use Download clip below.</p><div class="clipmeta"><div class="offset-uploaded-name"><div class="clip-title-line"><b>${esc(c.filename)}</b>${newClipIds.has(String(c.id))?'<span class="clip-new-badge">NEW</span>':''}</div><span class="offset-uploaded-age" data-uploaded-at="${Number(c.created)||0}">Uploaded just now</span></div><span><span id="dur-${c.id}">${c.metadata?.duration_seconds!=null?formatDuration(c.metadata.duration_seconds):"--:--"}</span> · <span class="muted">${(c.size/1048576).toFixed(1)} MB</span></span><small>${cameraDetails(c)}</small></div>${allowDownloads?`<div class="clip-actions"><label class="clip-select"><input type="checkbox" data-select="${c.id}" aria-label="Select ${esc(c.filename)}"><span class="clip-selection-text">Select</span></label><a class="clip-download" href="${base}/clips/${c.id}/file?${auth}&download=1" aria-label="Download ${esc(c.filename)}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-4-4 4 4 4-4M4 13v4h12v-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Download</span></a></div>`:""}</article>`).join('')||'No clips uploaded yet.';document.getElementById('clip-filter').oninput=renderFilter;renderFilter();window.OffsetUploadTime?.update();
+ $('clips').innerHTML=clips.map(c=>`<article class="clip" data-clip-id="${esc(String(c.id))}" data-new="${newClipIds.has(String(c.id))}" data-search="${esc([c.filename,...Object.values(c.camera_metadata||{})].join(' ').toLowerCase())}"><div class="offset-video-stage"><video controls preload="none" playsinline webkit-playsinline poster="${base}/clips/${c.id}/thumbnail?${auth}" src="${base}/clips/${c.id}/file?${auth}"></video><div class="offset-frame-guides" aria-hidden="true" hidden></div></div><div class="offset-view-controls"><label>Frame lines <select class="offset-frame-select" aria-label="Frame lines for ${esc(c.filename)}"><option value="off">Off</option><option value="2.39">2.39:1</option><option value="2.00">2.00:1</option><option value="2.20">2.20:1</option><option value="1.85">1.85:1</option><option value="1.78">16:9</option><option value="1.33">4:3</option><option value="1.00">1:1</option><option value="0.80">4:5</option><option value="0.5625">9:16</option></select></label></div><p class="playback-help" id="playback-${c.id}" hidden>Browser playback unavailable. <a href="${base}/clips/${c.id}/file?${auth}" target="_blank" rel="noopener">Open video directly</a> or use Download clip below.</p><div class="clipmeta"><div class="offset-uploaded-name"><div class="clip-title-line"><b>${esc(c.filename)}</b>${newClipIds.has(String(c.id))?'<span class="clip-new-badge">NEW</span>':''}</div><span class="offset-uploaded-age" data-uploaded-at="${Number(c.created)||0}">Uploaded just now</span></div><span><span id="dur-${c.id}">${c.metadata?.duration_seconds!=null?formatDuration(c.metadata.duration_seconds):"--:--"}</span> · <span class="muted">${(c.size/1048576).toFixed(1)} MB</span></span><small>${cameraDetails(c)}</small></div>${allowDownloads?`<div class="clip-actions"><label class="clip-select"><input type="checkbox" data-select="${c.id}" aria-label="Select ${esc(c.filename)}"><span class="clip-selection-text">Select</span></label><a class="clip-download" href="${base}/clips/${c.id}/file?${auth}&download=1" aria-label="Download ${esc(c.filename)}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-4-4 4 4 4-4M4 13v4h12v-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Download</span></a></div>`:""}</article>`).join('')||'No clips uploaded yet.';document.getElementById('clip-filter').oninput=renderFilter;renderFilter();window.OffsetUploadTime?.update();
  document.querySelectorAll('.offset-frame-select').forEach(select=>{
    const stage=select.closest('.clip').querySelector('.offset-video-stage');
    const guides=stage.querySelector('.offset-frame-guides');
@@ -127,8 +186,8 @@ async function load(){
  if(allowDownloads) $('download-selected').onclick=()=>{if(!selected.size)return alert('Select at least one clip');location.href=`${base}/download-selected?${auth}&ids=${[...selected].join(',')}`};update();
  if(typeof window.initOffsetPlayer==='function') window.initOffsetPlayer(clips,base,auth,allowDownloads);
  clips.forEach(async c=>{try{let r=await fetch(`${base}/clips/${c.id}/duration?${auth}`);let d=await r.json();if(d.seconds!=null){let n=Math.floor(d.seconds);let el=document.getElementById(`dur-${c.id}`);if(el)el.textContent=`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`}}catch(e){}});
- try{const r=await fetch(`${base}/storage?${auth}`,{cache:'no-store'});if(!r.ok)throw Error('Storage information unavailable');const d=await r.json();$('storage-status').textContent=`Project media: ${formatStorageBytes(d.used_bytes)} · ${d.clip_count} uploaded clip${d.clip_count===1?'':'s'}`;}catch(e){$('storage-status').textContent='Storage information unavailable. Please refresh.'}
+ try{const r=await fetch(`${base}/storage?${auth}`,{cache:'no-store'});if(!r.ok)throw Error('Storage information unavailable');renderStorage(await r.json(),clips)}catch(e){$('storage-status').textContent='Storage information unavailable. Please refresh.'}
 }
 
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-</script><script src="/static/review-enhancements.js?v=4"></script><script src="/static/offset-player.js?v=clear-skip-1"></script><script src="/static/incoming-status.js?v=5"></script><script defer src="/static/offset-pwa.js?v=1"></script></body></html>
+</script><script src="/static/review-enhancements.js?v=4"></script><script src="/static/offset-player.js?v=sort-1"></script><script src="/static/incoming-status.js?v=5"></script><script defer src="/static/offset-pwa.js?v=1"></script></body></html>
