@@ -186,4 +186,5 @@ body.offset-theater-open{overflow:hidden!important}
 
 /* Clear skip-to-clip icons, matching the play/pause icon size. */
 .offset-player-controls .offset-clip-nav{display:grid;place-items:center}
-.offset-clip-nav svg{display:block;width:20px;height:20px}
+/* Match playback icon optical size, not just its SVG viewBox. */
+.offset-player-controls .offset-clip-nav svg{display:block;width:19px;height:19px;transform:scale(.88);transform-origin:center}
