@@ -66,8 +66,14 @@ async function projectReviewSettings(projectId){
  const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');status.textContent='Loading settings…';
  wrap.append(status);document.querySelector('#projects').prepend(wrap);
  let current;
- try{current=await api('/api/admin/projects/'+encodeURIComponent(projectId)+'/review-settings',{cache:'no-store'})}
- catch(err){status.textContent=err.message||'Could not load settings';return}
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),15000);
+ try{current=await api('/api/admin/projects/'+encodeURIComponent(projectId)+'/review-settings',{cache:'no-store',signal:controller.signal})}
+ catch(err){
+  status.textContent=err.name==='AbortError'?'Loading timed out. Please try again.':err.message||'Could not load settings';
+  const retry=document.createElement('button');retry.type='button';retry.className='secondary';retry.textContent='Try again';
+  retry.onclick=()=>projectReviewSettings(projectId);wrap.append(retry);return;
+ }finally{clearTimeout(timeout)}
  function option(labelText, checked, info){
   const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px;margin:14px 0 4px';
   const check=document.createElement('input');check.type='checkbox';check.checked=checked;
@@ -125,7 +131,7 @@ async function projectReviewSettings(projectId){
    if(updated)updated.prepend(notice);
   }catch(err){status.textContent=err.message||'Save failed';save.disabled=false}
  };
- wrap.append(save,cancel,status);requirePin.focus();
+ status.textContent='';wrap.append(save,cancel,status);requirePin.focus();
 }
 async function deleteProject(projectId){
  const project=allProjects.find(p=>p.id===projectId);if(!project)return;
