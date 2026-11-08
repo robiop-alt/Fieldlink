@@ -1,0 +1,83 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const {readFileSync} = require('node:fs');
+const {join} = require('node:path');
+const vm = require('node:vm');
+
+function setup() {
+  const nodes = new Map();
+  function node(id) {
+    if (!nodes.has(id)) nodes.set(id, {
+      value: '', textContent: '', innerHTML: '', disabled: false,
+      classList: {toggle() {}, add() {}, remove() {}},
+      setAttribute() {}, removeAttribute() {}, addEventListener() {}, focus() {},
+      replaceChildren() { this.innerHTML = ''; this.textContent = ''; },
+    });
+    return nodes.get(id);
+  }
+  const context = vm.createContext({
+    document: {getElementById: node, querySelectorAll: () => [], body: {classList: {toggle() {}}}},
+    window: {}, location: {origin: 'https://offset.test'},
+    // Leave automatic page initialization pending; tests control API responses.
+    fetch: () => new Promise(() => {}),
+  });
+  const html = readFileSync(join(__dirname, '../static/admin.html'), 'utf8');
+  vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
+  return {context, node, run: code => vm.runInContext(code, context)};
+}
+
+test('project creation blocks repeated clicks while a request is pending', async () => {
+  const {context, node, run} = setup();
+  node('name').value = 'Drone unit';
+  let finish, calls = 0;
+  context.api = () => {calls++; return new Promise(resolve => { finish = resolve; });};
+  const first = run('createProject(true)');
+  await run('createProject(false)');
+  assert.equal(calls, 1);
+  assert.equal(node('create-with-pin').disabled, true);
+  assert.equal(node('create-without-pin').disabled, true);
+  // Signing out while creating must not reveal the returned project/PIN.
+  run('setSignedIn(null)');
+  finish({id: 'private-id', url_path: '/r/test', public_review: false, pin: '123456'});
+  await first;
+  assert.equal(node('created').innerHTML, '');
+  assert.equal(node('create-with-pin').disabled, false);
+  assert.equal(node('create-without-pin').disabled, false);
+});
+
+test('a delayed project response cannot repopulate data after sign out', async () => {
+  const {context, node, run} = setup();
+  let finish;
+  context.api = () => new Promise(resolve => { finish = resolve; });
+  node('created').innerHTML = 'Old PIN';
+  const loading = run('load()');
+  run('setSignedIn(null)');
+  finish([{id: 'old-project'}]);
+  await loading;
+  assert.equal(run('allProjects.length'), 0);
+  assert.equal(node('created').innerHTML, '');
+  assert.equal(node('projects').innerHTML, '');
+});
+
+test('latest refresh wins when responses arrive out of order', async () => {
+  const {context, run} = setup();
+  const pending = [];
+  context.api = () => new Promise(resolve => pending.push(resolve));
+  context.renderProjects = () => {};
+  const oldLoad = run('load()');
+  const newLoad = run('load()');
+  pending[1]([{id: 'latest'}]);
+  await newLoad;
+  pending[0]([{id: 'old'}]);
+  await oldLoad;
+  assert.equal(run('allProjects[0].id'), 'latest');
+});
+
+test('expired admin session clears private data and shows sign in feedback', async () => {
+  const {context, node, run} = setup();
+  node('created').innerHTML = 'Old PIN';
+  context.fetch = async () => ({ok: false, status: 401, json: async () => ({detail: 'Unauthorized'})});
+  await assert.rejects(run("api('/api/admin/projects')"));
+  assert.equal(node('created').innerHTML, '');
+  assert.match(node('login-error').textContent, /session has expired/);
+});
