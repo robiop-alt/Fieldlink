@@ -51,21 +51,24 @@ body:has(.review-intro) .panel.review-panel{
 .review-heading h2{margin:0;font-size:19px;font-weight:600;letter-spacing:-.025em}
 .review-heading #count{margin:0;font-size:11px;line-height:1.35;font-variant-numeric:tabular-nums;color:#a5b6b0}
 .review-panel #review-toolbar{
-  margin:16px 0 18px;
-  padding-bottom:14px;
+  margin:8px 0 10px;
+  padding-bottom:6px;
   border-bottom:1px solid rgba(168,185,180,.11);
   gap:12px;
 }
-.review-panel #metadata-filters .filter-compact{margin:0;gap:10px}
+.review-panel #metadata-filters{flex:0 1 310px;min-width:0}
+.review-panel #metadata-filters .filter-compact{margin:0;gap:0}
+.review-panel #metadata-filters .filter-compact>span{display:none}
 .review-panel #metadata-filters .filter-compact span{
   color:#9eaca8;
   font-size:11px;
   font-weight:500;
 }
 .review-panel #metadata-filters #clip-filter{
-  height:36px;
-  min-height:36px;
-  padding:7px 11px;
+  height:30px;
+  min-height:30px;
+  margin:0;
+  padding:4px 9px;
   background:#0d1215;
   color:#eef3ef;
   border:1px solid #374347;
@@ -263,9 +266,10 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
     margin-top:8px;
     border-radius:11px;
   }
-  .review-panel #review-toolbar{margin:12px 0 14px;padding-bottom:11px;gap:9px}
+  .review-panel #review-toolbar{margin:7px 0 9px;padding-bottom:6px;gap:7px}
+  .review-panel #metadata-filters{flex:1 1 180px}
   .review-panel #metadata-filters .filter-compact span{display:none}
-  .review-panel #metadata-filters #clip-filter{font-size:16px;min-height:44px;height:44px}
+  .review-panel #metadata-filters #clip-filter{font-size:16px;min-height:36px;height:36px}
   .review-panel #offset-tools button{min-height:36px}
   .review-panel .clipgrid:not(.list-view){grid-template-columns:minmax(0,1fr)}
   .review-panel .clipmeta{padding:10px 5px 8px}
