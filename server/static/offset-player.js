@@ -56,11 +56,17 @@
     error.append(errorText,direct);
 
     const controls=make('div','offset-player-controls');
-    const previous=button('‹','Previous clip');
+    const previous=button('','Previous clip');
+    previous.classList.add('offset-clip-nav');
+    previous.setAttribute('aria-label','Previous clip');
+    previous.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="2.5" height="14" rx="1" fill="currentColor"/><path d="M19 5 8 12l11 7V5Z" fill="currentColor"/></svg>';
     const toggle=button('','Play / pause');
     toggle.classList.add('offset-play-toggle');
     toggle.innerHTML=playSvg;
-    const next=button('›','Next clip');
+    const next=button('','Next clip');
+    next.classList.add('offset-clip-nav');
+    next.setAttribute('aria-label','Next clip');
+    next.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 5 11 7-11 7V5Z" fill="currentColor"/><rect x="17.5" y="5" width="2.5" height="14" rx="1" fill="currentColor"/></svg>';
     const clock=make('span','offset-player-clock','00:00 / --:--');
     const seek=make('input','offset-player-seek');
     seek.type='range';seek.min='0';seek.max='1000';seek.value='0';seek.step='1';
