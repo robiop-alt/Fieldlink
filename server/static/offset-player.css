@@ -188,3 +188,7 @@ body.offset-theater-open{overflow:hidden!important}
 .offset-player-controls .offset-clip-nav{display:grid;place-items:center}
 /* Match playback icon optical size, not just its SVG viewBox. */
 .offset-player-controls .offset-clip-nav svg{display:block;width:19px;height:19px;transform:scale(.88);transform-origin:center}
+
+/* Fullscreen and exit-fullscreen use the same 19px optical scale as Play. */
+.offset-player-controls .offset-fullscreen-toggle{display:grid;place-items:center}
+.offset-player-controls .offset-fullscreen-toggle svg{display:block;width:19px;height:19px;flex:none}
