@@ -24,3 +24,23 @@
 .offset-admin .landing-features p{font-size:12px;line-height:1.8;color:#9faea7;margin:0;max-width:300px}
 .offset-admin .landing-note{font-size:11px;color:#86968e;border-top:1px solid #28362e;padding-top:22px;margin:20px 0}
 @media(max-width:640px){.offset-admin .landing-lead{grid-template-columns:1fr;gap:18px;padding:26px 0}.offset-admin .landing-features{grid-template-columns:1fr;gap:0}.offset-admin .landing-features p{max-width:none}.offset-admin #account-name{display:none}.offset-admin .landing-lead>p:last-child{font-size:13px}}
+
+/* Actual screenshots from the isolated controller demonstration. */
+.offset-admin .landing-gallery{margin:28px 0 38px;padding-top:32px;border-top:1px solid #34423a}
+.offset-admin .landing-gallery-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.offset-admin .landing-gallery-heading .eyebrow{font-size:10px;color:#57b62f;margin:0 0 10px}
+.offset-admin .landing-gallery-heading h2{font-size:clamp(24px,3vw,34px);letter-spacing:-.04em;margin:0}
+.offset-admin .landing-demo-link{font-size:11px;color:#b4c5bb;text-decoration:none;border-bottom:1px solid #435448;padding:5px 0}
+.offset-admin .landing-gallery-note{font-size:11px;line-height:1.7;color:#85978c;margin:14px 0 24px;max-width:640px}
+.offset-admin .landing-screenshots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+.offset-admin .landing-shot{margin:0;min-width:0}
+.offset-admin .landing-shot>a{display:block;position:relative;overflow:hidden;border:1px solid #34463d;border-radius:9px;background:#101718;text-decoration:none}
+.offset-admin .landing-shot img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:contain;transition:transform .2s ease}
+.offset-admin .landing-shot>a:hover img{transform:scale(1.025)}
+.offset-admin .landing-shot>a:focus-visible{outline:2px solid #57b62f;outline-offset:4px}
+.offset-admin .landing-shot>a>span{display:block;padding:8px 11px;font-size:10px;color:#a8b9af;background:#131c18;border-top:1px solid #2a3a30}
+.offset-admin .landing-shot figcaption{padding:17px 0 0}
+.offset-admin .landing-shot h3{font-size:16px;letter-spacing:-.02em;margin:9px 0}
+.offset-admin .landing-shot p{font-size:12px;line-height:1.7;color:#9faea7;margin:0}
+@media(max-width:760px){.offset-admin .landing-screenshots{grid-template-columns:1fr;gap:28px}.offset-admin .landing-shot img{aspect-ratio:auto}.offset-admin .landing-gallery{margin-top:20px}}
+@media(prefers-reduced-motion:reduce){.offset-admin .landing-shot img{transition:none}.offset-admin .landing-shot>a:hover img{transform:none}}
