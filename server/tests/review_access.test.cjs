@@ -9,7 +9,7 @@ async function viewer(allowDownloads,validPin=true,clips=[]){
   function node(id){
     if(!nodes.has(id)){
       const classes=new Set(id==='content'?['hidden']:[]);
-      nodes.set(id,{value:'123456',textContent:'',innerHTML:'',classList:{add:n=>classes.add(n),remove:n=>classes.delete(n),contains:n=>classes.has(n)},addEventListener(){},before(){}});
+      nodes.set(id,{value:'123456',textContent:'',innerHTML:'',classList:{add:n=>classes.add(n),remove:n=>classes.delete(n),contains:n=>classes.has(n)},addEventListener(){},before(){},setAttribute(){}});
     }
     return nodes.get(id);
   }
