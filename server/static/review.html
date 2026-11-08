@@ -46,40 +46,33 @@ function compareClips(a,b){
  if(clipSort==='filename')return names||String(a.id).localeCompare(String(b.id));
  return (Number(b.created)||0)-(Number(a.created)||0)||names||String(a.id).localeCompare(String(b.id));
 }
-function renderStorage(d,clips){
+function renderStorage(d){
  const target=$('storage-status');target.replaceChildren();
  const total=Number(d.used_bytes),count=Number(d.clip_count);
  if(!Number.isFinite(total)||total<0||!Number.isFinite(count)||count<0)throw Error('Invalid storage response');
- const stats=document.createElement('div');stats.className='offset-storage-stats';
- const stat=(label,value)=>{const box=document.createElement('div');box.className='offset-storage-stat';
- const small=document.createElement('span');small.textContent=label;
- const strong=document.createElement('strong');strong.textContent=value;
- box.append(small,strong);return box};
- stats.append(stat('PROJECT MEDIA',formatStorageBytes(total)),
-              stat('UPLOADED CLIPS',new Intl.NumberFormat('en-GB').format(count)),
-              stat('AVG. CLIP',count?formatStorageBytes(total/count):'—'));
- target.append(stats);
- const heading=document.createElement('div');heading.className='offset-storage-chart-title';
- const label=document.createElement('span');label.textContent='Recent uploads · file sizes';
- const caption=document.createElement('span');caption.textContent='Relative scale';
- heading.append(label,caption);target.append(heading);
- const recent=[...clips].sort((a,b)=>(Number(b.created)||0)-(Number(a.created)||0)).slice(0,10);
- const chart=document.createElement('div');chart.className='offset-storage-chart';
- chart.setAttribute('role','img');
- chart.setAttribute('aria-label','Relative size of '+recent.length+' most recently uploaded clips');
- const peak=Math.max(1,...recent.map(c=>Math.max(0,Number(c.size)||0)));
- for(const clip of recent){
-   const item=document.createElement('div');item.className='offset-storage-bar-item';
-   item.title=String(clip.filename||'')+' · '+formatStorageBytes(Math.max(0,Number(clip.size)||0));
-   const bar=document.createElement('div');bar.className='offset-storage-bar';
-   const fill=document.createElement('div');fill.className='offset-storage-bar-fill';
-   fill.style.height=Math.max(3,Math.min(100,100*(Math.max(0,Number(clip.size)||0)/peak)))+'%';
-   bar.append(fill);item.append(bar);chart.append(item);
- }
- target.append(chart);
- const hint=document.createElement('p');hint.className='offset-storage-note';
- hint.textContent=recent.length?'Last '+recent.length+' clips shown · bar height compares file sizes, not remaining storage capacity.':'No uploaded clips yet.';
- target.append(hint);
+ const quota=5*1024*1024*1024; // Soft target only; never blocks uploads.
+ const ratio=total/quota;
+ const over=total>quota;
+ const info=document.createElement('div');info.className='offset-storage-meter-head';
+ const heading=document.createElement('span');heading.textContent='Project media';
+ const amount=document.createElement('strong');amount.textContent=formatStorageBytes(total)+' / 5 GB';
+ info.append(heading,amount);target.append(info);
+ const track=document.createElement('div');track.className='offset-storage-meter';
+ track.setAttribute('role','progressbar');
+ track.setAttribute('aria-label','Project storage against recommended 5 GB target');
+ track.setAttribute('aria-valuemin','0');
+ track.setAttribute('aria-valuemax',String(quota));
+ track.setAttribute('aria-valuenow',String(Math.min(quota,total)));
+ track.setAttribute('aria-valuetext',formatStorageBytes(total)+' used, soft target 5 GB'+(over?', above target':''));
+ const fill=document.createElement('span');fill.className='offset-storage-meter-fill';
+ fill.style.width=(Math.min(1,ratio)*100)+'%';
+ if(over){track.classList.add('over-soft-limit');}
+ track.append(fill);target.append(track);
+ const meta=document.createElement('div');meta.className='offset-storage-meter-foot';
+ const clips=document.createElement('span');clips.textContent=count+' clip'+(count===1?'':'s')+' uploaded';
+ const state=document.createElement('span');
+ state.textContent=over?'Above 5 GB · uploads still allowed':'5 GB soft limit · uploads allowed';
+ meta.append(clips,state);target.append(meta);
 }
 async function load(){
  const r=await fetch(`/api/review/${slug}/clips`,{headers:{Authorization:`Bearer ${token}`}});
@@ -188,7 +181,7 @@ async function load(){
  if(allowDownloads) $('download-selected').onclick=()=>{if(!selected.size)return alert('Select at least one clip');location.href=`${base}/download-selected?${auth}&ids=${[...selected].join(',')}`};update();
  if(typeof window.initOffsetPlayer==='function') window.initOffsetPlayer(clips,base,auth,allowDownloads);
  clips.forEach(async c=>{try{let r=await fetch(`${base}/clips/${c.id}/duration?${auth}`);let d=await r.json();if(d.seconds!=null){let n=Math.floor(d.seconds);let el=document.getElementById(`dur-${c.id}`);if(el)el.textContent=`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`}}catch(e){}});
- try{const r=await fetch(`${base}/storage?${auth}`,{cache:'no-store'});if(!r.ok)throw Error('Storage information unavailable');renderStorage(await r.json(),clips)}catch(e){$('storage-status').textContent='Storage information unavailable. Please refresh.'}
+ try{const r=await fetch(`${base}/storage?${auth}`,{cache:'no-store'});if(!r.ok)throw Error('Storage information unavailable');renderStorage(await r.json())}catch(e){$('storage-status').textContent='Storage information unavailable. Please refresh.'}
 }
 
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
