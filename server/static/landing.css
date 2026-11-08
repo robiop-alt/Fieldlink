@@ -52,3 +52,13 @@
 #workflow-image-close{display:block;margin:0 0 12px auto;min-height:40px;font-size:12px}
 #workflow-image-full{display:block;width:100%;height:auto;border-radius:6px}
 #workflow-image-caption{font-size:11px;color:#a4b4a7;margin:12px 0 0}
+
+/* Six primary capabilities, grouped by where they are used. */
+.offset-admin .landing-capabilities{margin:8px 0 36px}
+.offset-admin .landing-capabilities-heading{padding:26px 0 12px;border-top:1px solid #34423a}
+.offset-admin .landing-capabilities-heading .eyebrow{font-size:10px;letter-spacing:.12em;color:#57b62f;margin:0 0 12px}
+.offset-admin .landing-capabilities-heading h2{font-size:clamp(24px,3vw,34px);letter-spacing:-.04em;margin:0 0 12px}
+.offset-admin .landing-capabilities-heading>p:last-child{font-size:12px;line-height:1.7;color:#9faea7;margin:0 0 12px}
+.offset-admin .landing-capabilities .landing-features{row-gap:2px}
+.offset-admin .landing-capabilities .landing-number{font-size:9px;letter-spacing:.08em;color:#8ba584}
+@media(min-width:641px) and (max-width:1000px){.offset-admin .landing-capabilities .landing-features{grid-template-columns:repeat(2,minmax(0,1fr))}}
