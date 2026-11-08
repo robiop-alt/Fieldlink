@@ -39,7 +39,7 @@ def test_default_allows_clip_and_zip_download(project):
     projects=client.get("/api/admin/projects",headers=h).json()
     row=next(x for x in projects if x["id"]==pid)
     assert row["allow_downloads"]==1
-    assert client.get(f"/api/review/{slug}/settings?session={token}").json()=={"allow_downloads":True}
+    assert client.get(f"/api/review/{slug}/settings?session={token}").json()=={"allow_downloads":True,"project_name":"Test Rushes"}
     assert client.get(f"/api/review/{slug}/clips/{cid}/file?session={token}&download=1").status_code==200
     assert client.get(f"/api/review/{slug}/download-selected?session={token}&ids={cid}").status_code==200
 
@@ -49,7 +49,7 @@ def test_admin_can_disable_and_restore_downloads(project):
     assert client.patch(url,json={"allow_downloads":False}).status_code==401
     h={"X-Admin-Key":"local-admin-test-key"}
     assert client.patch(url,headers=h,json={"allow_downloads":False}).json()["allow_downloads"] is False
-    assert client.get(f"/api/review/{slug}/settings?session={token}").json()=={"allow_downloads":False}
+    assert client.get(f"/api/review/{slug}/settings?session={token}").json()=={"allow_downloads":False,"project_name":"Test Rushes"}
     assert client.get(f"/api/review/{slug}/clips/{cid}/file?session={token}&download=1").status_code==403
     assert client.get(f"/api/review/{slug}/download-selected?session={token}&ids={cid}").status_code==403
     # Streaming remains permitted so the review page still works.
