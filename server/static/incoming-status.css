@@ -7,9 +7,9 @@
 .offset-incoming-amount{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:6px}
 .offset-incoming-amount strong{font-size:14px;color:#fff;font-variant-numeric:tabular-nums}
 .offset-incoming-amount small{font-size:11px;color:#a2b2ae;font-weight:400}
-.offset-incoming-amount span{color:#b7f34d;font-size:12px;font-variant-numeric:tabular-nums}
+.offset-incoming-amount span{color:#57b62f;font-size:12px;font-variant-numeric:tabular-nums}
 .offset-incoming-track{height:4px;background:#455354;border-radius:99px;overflow:hidden}
-.offset-incoming-track>div{height:100%;background:#b7f34d;border-radius:99px;transition:width .4s ease}
+.offset-incoming-track>div{height:100%;background:#57b62f;border-radius:99px;transition:width .4s ease}
 .offset-incoming-total{height:5px}
 .offset-incoming-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;color:#a8b9b4;font-size:11px}
 .offset-incoming-toggle{font-size:11px!important;padding:4px 7px!important;min-height:25px!important;white-space:nowrap}

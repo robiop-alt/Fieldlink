@@ -1,7 +1,7 @@
 /* OFFSET / Review surface — restrained production finishing layer.
    Scoped to review; admin and controller UI deliberately unchanged. */
 :root {
-  --offset-accent:#b7f34d;
+  --offset-accent:#57b62f;
   --offset-review-line:#293438;
   --offset-review-muted:#9baaa7;
   --offset-review-ink:#e7eee9;
@@ -29,7 +29,7 @@ body:has(.review-intro) .top .tag{
 .review-intro .eyebrow{
   font-size:10px;
   letter-spacing:.14em;
-  color:#b7f34d;
+  color:#57b62f;
   margin:0 0 6px;
 }
 .review-intro h1{
@@ -77,7 +77,7 @@ body:has(.review-intro) .panel.review-panel{
 .review-panel #metadata-filters #clip-filter:focus{
   outline:none;
   border-color:#83b353;
-  box-shadow:0 0 0 2px rgba(183,243,77,.12);
+  box-shadow:0 0 0 2px rgba(87,182,47,.12);
 }
 .review-panel #offset-tools{gap:6px}
 .review-panel #offset-tools button,
@@ -121,7 +121,7 @@ body:has(.review-intro) .panel.review-panel{
 .review-panel .clip.offset-active-clip{
   outline:none;
   border-color:#88c34b;
-  box-shadow:inset 0 0 0 1px rgba(183,243,77,.30),0 0 0 1px rgba(183,243,77,.08);
+  box-shadow:inset 0 0 0 1px rgba(87,182,47,.30),0 0 0 1px rgba(87,182,47,.08);
 }
 .review-panel .clipgrid .clip .offset-clip-preview{
   background:#080b0c;
@@ -207,11 +207,11 @@ body:has(.review-intro) .panel.review-panel{
 .review-panel .offset-player-controls button{border-color:#405156}
 .review-panel .offset-player-controls button:focus-visible,
 .review-panel .clipgrid .offset-clip-preview:focus-visible{
-  outline:2px solid #b7f34d;outline-offset:2px;
+  outline:2px solid #57b62f;outline-offset:2px;
 }
 .review-panel .offset-player-options{margin-top:7px}
 .review-panel .offset-player-options label{font-size:11px;color:#aab9b4}
-.review-panel .offset-player-download{font-size:11px;font-weight:600;color:#b7f34d}
+.review-panel .offset-player-download{font-size:11px;font-weight:600;color:#57b62f}
 .review-panel .review-storage{
   margin-top:20px;
   border-top:1px solid rgba(168,185,180,.12);
@@ -249,7 +249,7 @@ body:has(.review-intro) #gate{
 body:has(.review-intro) #gate h2{font-size:22px;letter-spacing:-.03em}
 body:has(.review-intro) #gate button{min-height:40px}
 body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
-  outline:2px solid #b7f34d;
+  outline:2px solid #57b62f;
   outline-offset:3px;
 }
 @media(min-width:768px){
