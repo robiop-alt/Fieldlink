@@ -496,7 +496,7 @@ def update_project_review_settings(project_id:str, body:ProjectReviewSettingsIn,
 def review_settings(slug:str, authorization:str=Header(default=''), session:str=''):
     token=authorization.removeprefix('Bearer ').strip() or session
     p=review_project(slug,token)
-    return {'allow_downloads':bool(p['allow_downloads'])}
+    return {'allow_downloads':bool(p['allow_downloads']),'project_name':p['name']}
 
 @app.delete('/api/admin/projects/{project_id}')
 def delete_project(project_id:str,request:Request,confirm_clips:bool=False,x_admin_key:str=Header(default='')):
