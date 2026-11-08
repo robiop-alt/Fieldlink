@@ -545,8 +545,7 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
 .review-panel .offset-frame-inline select:focus-visible{
   outline:2px solid #b7f34d;outline-offset:2px;
 }
-/* Small single progress bar: 5 GiB is guidance, not a hard upload limit.
-   Full bar with amber accent communicates an overage without hiding usage. */
+/* Compact project allocation meter. */
 .review-panel .review-storage[open]>summary{margin-bottom:11px}
 .review-panel .offset-storage-dashboard{max-width:620px}
 .review-panel .offset-storage-meter-head,
@@ -585,7 +584,7 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
   background:linear-gradient(90deg,#588e57,#add982);
   transition:width .3s ease;
 }
-.review-panel .offset-storage-meter.over-soft-limit .offset-storage-meter-fill{
+.review-panel .offset-storage-meter.over-quota .offset-storage-meter-fill{
   background:linear-gradient(90deg,#9a8850,#e2b879);
 }
 .review-panel .offset-storage-meter-foot{
@@ -594,7 +593,7 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
   font-size:10px;
   line-height:1.4;
 }
-.review-panel .offset-storage-meter.over-soft-limit+.offset-storage-meter-foot span:last-child{
+.review-panel .offset-storage-meter.over-quota+.offset-storage-meter-foot span:last-child{
   color:#dab57f;
 }
 @media(max-width:767px){
@@ -615,3 +614,48 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
 
 /* No invisible options row when clip downloading is disabled. */
 .review-panel .offset-player-options:empty{display:none}
+
+/* Fine-tuned select surfaces: compact visually, easy to activate via the label.
+   The native select remains accessible; 16px on touch avoids iOS input zoom. */
+.review-panel .offset-sort-label,
+.review-panel .offset-frame-inline {
+  min-height:40px;
+  padding:5px 0;
+  gap:5px;
+  cursor:pointer;
+}
+.review-panel #offset-sort-clips,
+.review-panel .offset-frame-inline select {
+  box-sizing:border-box;
+  width:auto;
+  max-width:none;
+  min-height:28px;
+  height:28px;
+  margin:0;
+  padding:3px 22px 3px 7px;
+  border-radius:5px;
+  background-color:#172220;
+  border-color:rgba(124,154,134,.25);
+  color:#b7c9bd;
+  font-size:10px;
+  line-height:1.15;
+  box-shadow:none;
+}
+.review-panel #offset-sort-clips{max-width:116px}
+.review-panel .offset-frame-inline select{max-width:84px;min-width:65px}
+.review-panel .offset-sort-label>span,
+.review-panel .offset-frame-inline {color:#879e8f;font-size:9px;font-weight:500}
+@media(pointer:coarse){
+  .review-panel .offset-sort-label,
+  .review-panel .offset-frame-inline {min-height:44px;padding:7px 0}
+  .review-panel #offset-sort-clips,
+  .review-panel .offset-frame-inline select {
+    min-height:30px;
+    height:30px;
+    padding:3px 20px 3px 6px;
+    font-size:16px;
+    letter-spacing:-.055em;
+  }
+  .review-panel #offset-sort-clips{max-width:139px}
+  .review-panel .offset-frame-inline select{min-width:70px;max-width:105px}
+}
