@@ -612,3 +612,6 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
 @media(prefers-reduced-motion:reduce){
  .review-panel .offset-storage-meter-fill{transition:none}
 }
+
+/* No invisible options row when clip downloading is disabled. */
+.review-panel .offset-player-options:empty{display:none}
