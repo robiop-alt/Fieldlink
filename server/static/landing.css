@@ -32,7 +32,7 @@
 .offset-admin .landing-gallery-heading h2{font-size:clamp(24px,3vw,34px);letter-spacing:-.04em;margin:0}
 .offset-admin .landing-demo-link{font-size:11px;color:#b4c5bb;text-decoration:none;border-bottom:1px solid #435448;padding:5px 0}
 .offset-admin .landing-gallery-note{font-size:11px;line-height:1.7;color:#85978c;margin:14px 0 24px;max-width:640px}
-.offset-admin .landing-screenshots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+.offset-admin .landing-screenshots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
 .offset-admin .landing-shot{margin:0;min-width:0}
 .offset-admin .landing-shot>a{display:block;position:relative;overflow:hidden;border:1px solid #34463d;border-radius:9px;background:#101718;text-decoration:none}
 .offset-admin .landing-shot img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:contain;transition:transform .2s ease}
@@ -44,3 +44,11 @@
 .offset-admin .landing-shot p{font-size:12px;line-height:1.7;color:#9faea7;margin:0}
 @media(max-width:760px){.offset-admin .landing-screenshots{grid-template-columns:1fr;gap:28px}.offset-admin .landing-shot img{aspect-ratio:auto}.offset-admin .landing-gallery{margin-top:20px}}
 @media(prefers-reduced-motion:reduce){.offset-admin .landing-shot img{transition:none}.offset-admin .landing-shot>a:hover img{transform:none}}
+
+.offset-admin .landing-photo-credit{font-size:10px;color:#7e9285;margin:22px 0 0}
+.offset-admin .landing-photo-credit a{color:#a8bbaa;text-decoration:none}
+#workflow-image-dialog{border:1px solid #3c5143;border-radius:12px;background:#101718;color:#dfe8df;padding:14px;max-width:min(1500px,96vw);width:96vw;max-height:94dvh;overflow:auto;box-shadow:0 20px 80px #000b}
+#workflow-image-dialog::backdrop{background:rgba(0,0,0,.85)}
+#workflow-image-close{display:block;margin:0 0 12px auto;min-height:40px;font-size:12px}
+#workflow-image-full{display:block;width:100%;height:auto;border-radius:6px}
+#workflow-image-caption{font-size:11px;color:#a4b4a7;margin:12px 0 0}
