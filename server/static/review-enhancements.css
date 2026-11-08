@@ -80,7 +80,7 @@
 @media(max-width:767px){.review-panel .offset-camera-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* Quiet, always-visible DJI camera parameters beneath each rushes thumbnail. */
-.review-panel .clipmeta>.offset-camera-fields{
+.review-panel :is(.clipmeta,.offset-player-metadata)>.offset-camera-fields{
   flex:1 0 100%;
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -89,7 +89,7 @@
   margin-top:1px;
   border-top:1px solid rgba(165,181,174,.16);
 }
-.review-panel .clipmeta .offset-camera-field{
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field{
   display:flex;
   flex-direction:column;
   justify-content:flex-start;
@@ -99,13 +99,13 @@
   font-size:10px;
   line-height:1.25;
 }
-.review-panel .clipmeta .offset-camera-field>b{
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field>b{
   color:#8c9a95;
   font-weight:500;
   font-size:9px;
   letter-spacing:.025em;
 }
-.review-panel .clipmeta .offset-camera-field>span{
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field>span{
   display:block;
   color:#d7e3dd;
   text-align:left;
@@ -115,11 +115,11 @@
   overflow-wrap:anywhere;
 }
 @media (max-width:767px){
- .review-panel .clipmeta>.offset-camera-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .review-panel :is(.clipmeta,.offset-player-metadata)>.offset-camera-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 
 /* Compact colour-coded camera metadata pills. No placeholder for unknown readings. */
-.review-panel .clipmeta>.offset-camera-fields {
+.review-panel :is(.clipmeta,.offset-player-metadata)>.offset-camera-fields {
   display:flex;
   flex:1 0 100%;
   flex-wrap:wrap;
@@ -128,7 +128,7 @@
   padding:6px 0 1px;
   border-top:1px solid rgba(165,181,174,.12);
 }
-.review-panel .clipmeta .offset-camera-field {
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field {
   --camera-tone:119,162,151;
   display:inline-flex;
   flex:0 0 auto;
@@ -145,13 +145,13 @@
   line-height:1.1;
   white-space:nowrap;
 }
-.review-panel .clipmeta .offset-camera-field>b {
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field>b {
   color:rgba(var(--camera-tone),.98);
   font-size:9px;
   font-weight:600;
   letter-spacing:0;
 }
-.review-panel .clipmeta .offset-camera-field>span {
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field>span {
   color:#e7efeb;
   font-size:10px;
   line-height:1.1;
@@ -160,8 +160,8 @@
   text-align:left;
   font-variant-numeric:tabular-nums;
 }
-.review-panel .clipmeta .offset-camera-field>span:empty {display:none}
-.review-panel .clipmeta .offset-camera-field[data-filled="false"] {
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field>span:empty {display:none}
+.review-panel :is(.clipmeta,.offset-player-metadata) .offset-camera-field[data-filled="false"] {
   opacity:.48;
   background:transparent;
   border-color:rgba(147,163,158,.16);
@@ -173,5 +173,5 @@
 .review-panel .offset-camera-white_balance{--camera-tone:110,198,183}
 .review-panel .offset-camera-shutter{--camera-tone:219,157,184}
 @media(max-width:767px) {
-  .review-panel .clipmeta>.offset-camera-fields {display:flex;gap:5px}
+  .review-panel :is(.clipmeta,.offset-player-metadata)>.offset-camera-fields {display:flex;gap:5px}
 }

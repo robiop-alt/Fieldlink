@@ -180,3 +180,6 @@ body.offset-theater-open{overflow:hidden!important}
  .offset-player-clock{font-variant-numeric:tabular-nums}
  .offset-player-title{overflow-wrap:anywhere}
 }
+
+/* Keep selected camera readings below the player controls in every layout. */
+.offset-player-metadata{flex:0 0 auto;min-width:0;margin-top:8px}
