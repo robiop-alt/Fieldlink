@@ -110,7 +110,7 @@
     host.append(player);
 
     let index=0, loading=false;
-    const cards=[...list.querySelectorAll('.clip')];
+    let cards=[...list.querySelectorAll('.clip')];
     const listeners=[];
     const listen=(el,type,fn) => {el.addEventListener(type,fn);listeners.push([el,type,fn]);};
     const duration = () => Number.isFinite(video.duration) && video.duration>0 ? video.duration : NaN;
@@ -265,10 +265,31 @@
       old.replaceWith(preview);
       card.querySelector('.offset-view-controls')?.remove();
       card.querySelector('.playback-help')?.remove();
-      listen(preview,'click',()=>{choose(i,true);player.scrollIntoView({behavior:'smooth',block:'start'})});
+      listen(preview,'click',()=>{const current=cards.indexOf(card);if(current>=0)choose(current,true);player.scrollIntoView({behavior:'smooth',block:'start'})});
     });
     choose(0,false);
+    // Keep the active clip and playback position intact when the review
+    // grid is re-sorted. Navigation and card highlighting follow the new order.
+    window.offsetReorderPlayer = orderedIds => {
+      if(!Array.isArray(orderedIds)||orderedIds.length!==clips.length)return;
+      const clipById=new Map(clips.map(clip=>[String(clip.id),clip]));
+      const cardById=new Map(cards.map((card,i)=>[String(clips[i].id),card]));
+      const nextClips=orderedIds.map(id=>clipById.get(String(id)));
+      const nextCards=orderedIds.map(id=>cardById.get(String(id)));
+      if(nextClips.some(clip=>!clip)||nextCards.some(card=>!card))return;
+      const activeId=String(clips[index]?.id||'');
+      clips.splice(0,clips.length,...nextClips);
+      cards=nextCards;
+      index=Math.max(0,clips.findIndex(clip=>String(clip.id)===activeId));
+      counter.textContent=`${index+1} of ${clips.length}`;
+      cards.forEach((card,i)=>{
+        card.classList.toggle('offset-active-clip',i===index);
+        card.querySelector('.offset-clip-preview')?.setAttribute('aria-pressed',String(i===index));
+      });
+      updateButtons();
+    };
     destroy=()=>{
+      delete window.offsetReorderPlayer;
       frameObserver?.disconnect();
       if(player.classList.contains('offset-player-theater'))exitTheater();
       if(document.fullscreenElement===player)document.exitFullscreen?.().catch(()=>{});
