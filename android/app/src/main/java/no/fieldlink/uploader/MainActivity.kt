@@ -110,7 +110,8 @@ class MainActivity : Activity() {
     private lateinit var server:EditText
     private lateinit var project:EditText
     private lateinit var token:EditText
-    private var dashboardView:View?=null
+    private var settingsView:View?=null
+    private var settingsOpen=false
     private lateinit var folderLabel:TextView
     private lateinit var projectSummary:TextView
     private val bg=Color.rgb(17,20,22)
@@ -239,6 +240,11 @@ class MainActivity : Activity() {
         super.onStop()
     }
 
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        if(settingsOpen) showMediaLibraryPage() else super.onBackPressed()
+    }
+
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         // Seed defaults before creating the fields or starting the uploader.
@@ -258,92 +264,80 @@ class MainActivity : Activity() {
             setPadding(dp(18),dp(12),dp(18),dp(14))
         }
         fun row(vararg views:Button):LinearLayout = LinearLayout(this).apply {
-            orientation=LinearLayout.HORIZONTAL
-            views.forEach { child ->
-                addView(child,LinearLayout.LayoutParams(0,dp(42),1f).apply {
-                    setMargins(dp(3),dp(3),dp(3),dp(3))
+            views.forEachIndexed { index, child ->
+                addView(child,LinearLayout.LayoutParams(0,dp(36),1f).apply {
+                    if(index>0) leftMargin=dp(6)
                 })
             }
         }
-        val header=LinearLayout(this).apply {
-            orientation=LinearLayout.HORIZONTAL
-            gravity=android.view.Gravity.CENTER_VERTICAL
+        fun addSection(section:View) {
+            root.addView(section,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
         }
-        val brand=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        brand.addView(text("OFFSET.",23f,Color.WHITE).apply {
-            setTypeface(typeface,android.graphics.Typeface.BOLD)
-            letterSpacing=0.05f
-        })
-        brand.addView(text("INSPIRE 3  /  RUSHES DELIVERY",10f,muted))
-        header.addView(brand,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-        header.addView(button("Settings") { showConnectionSettings() })
-        root.addView(header)
+        val header=LinearLayout(this).apply {
+            gravity=android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(18),dp(8),dp(18),dp(4))
+            addView(button("‹ Media Library") { showMediaLibraryPage() },
+                LinearLayout.LayoutParams(-2,dp(38)))
+            addView(text("Settings",19f).apply {
+                setTypeface(typeface,android.graphics.Typeface.BOLD)
+            },LinearLayout.LayoutParams(0,-2,1f).apply { leftMargin=dp(12) })
+        }
         server=field("HTTPS server",prefs.getString("server","")?:"")
         project=field("Project ID",prefs.getString("project","")?:"")
         token=field("Device token",prefs.getString("token",null) ?: BuildConfig.DEFAULT_DEVICE_TOKEN,true)
-        val active=card("ACTIVE PROJECT")
+
+        val upload=card("CONTROLLER STATUS")
         projectSummary=text(
             prefs.getString("project_name","")?.takeIf { it.isNotBlank() }
                 ?: project.text.toString().ifBlank { "No project selected" },
-            17f,Color.WHITE
+            15f
         )
-        projectSummary.setTypeface(projectSummary.typeface,android.graphics.Typeface.BOLD)
-        active.addView(projectSummary)
-        active.addView(text(
-            project.text.toString().takeIf { it.isNotBlank() }?.let { "PROJECT ID  ·  $it" }
-                ?: "Choose or create a project to begin",
-            11f,muted
-        ))
-        active.addView(LinearLayout(this).apply {
-            orientation=LinearLayout.HORIZONTAL
-            addView(primaryButton("Choose project") { showProjects() },
-                LinearLayout.LayoutParams(0,dp(38),1f).apply { rightMargin=dp(5) })
-            addView(button("Share / QR") { showProjectShare() },
-                LinearLayout.LayoutParams(0,dp(38),1f))
-        })
-        root.addView(active,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
-        val upload=card("UPLOAD CONTROL")
+        upload.addView(projectSummary)
         folderLabel=text("",12f,muted)
         upload.addView(folderLabel)
+        upload.addView(row(
+            button("Camera metadata") { startMetadataCapture() },
+            button("Permissions") { showPermissionStatus() }
+        ))
         upload.addView(row(
             primaryButton("Start upload") { saveAndStart() },
             button("Stop upload") {
                 prefs.edit().putBoolean("upload_paused",true).apply()
-                // Keep the single watcher alive so Media Library sees new DJI files.
+                // Keep the watcher alive so Media Library sees new DJI files.
                 resumeSavedUploader(force=true)
                 folderLabel.text="OFFSET off · file monitoring continues"
             }
         ))
-        upload.addView(row(
-            primaryButton("Media library") { showMediaLibraryPage() },
-            button("Upload queue") { showUploadQueue() }
-        ))
-        upload.addView(row(
-            button("Select cache folder") { chooseFolder() },
-            button("Add proxy files") { chooseManualFiles() }
-        ))
-        root.addView(upload,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
+        addSection(upload)
         refreshFolderLabel()
-        upload.addView(button("Copy rushes to SD card") { startManualSdBackup() })
+        if(server.text.isBlank() || token.text.isBlank()) {
+            folderLabel.text="Connection setup needed"
+        }
+
+        val setup=card("PROJECT & CONNECTION")
+        setup.addView(row(
+            button("Choose project") { showProjects() },
+            button("Share / QR") { showProjectShare() },
+            button("Connection") { showConnectionSettings() }
+        ))
+        setup.addView(row(
+            button("Cache folder") { chooseFolder() },
+            button("Add proxy files") { chooseManualFiles() },
+            button("Copy to SD") { startManualSdBackup() }
+        ).apply { setPadding(0,dp(6),0,0) })
+        addSection(setup)
+
         val tools=card("MORE TOOLS")
         tools.addView(row(
             button("Server history") { showServerUploadHistory() },
-            button("Local history") { showUploadHistory() }
+            button("Local history") { showUploadHistory() },
+            button("Diagnostics") { runDiagnostics() }
         ))
-        tools.addView(button("Camera metadata") { startMetadataCapture() })
-        tools.addView(button("Run diagnostics") { runDiagnostics() })
         val moreTools=button("More tools") {
-            val parent=tools.parent
-            if(parent is ViewGroup) parent.removeView(tools)
+            (tools.parent as? ViewGroup)?.removeView(tools)
             AlertDialog.Builder(this).setTitle("More tools")
                 .setView(ScrollView(this).apply { addView(tools) })
                 .setPositiveButton("Close",null).show()
-        }
-        root.addView(moreTools,LinearLayout.LayoutParams(-1,dp(38)).apply { bottomMargin=dp(6) })
-        if(server.text.isBlank() || token.text.isBlank()) {
-            // Do not repeatedly interrupt the operator with a connection popup.
-            // The compact Settings entry remains available for first-time setup.
-            folderLabel.text="Connection setup needed · open Settings"
         }
         val settings=card("Upload preferences")
         val lowData=Switch(this).apply {
@@ -534,26 +528,27 @@ class MainActivity : Activity() {
         settings.addView(showStatus)
         settings.addView(showProject)
         settings.addView(text("Overlay changes apply after restarting the uploader.",12f,muted))
-        settings.addView(button("Check permissions") { showPermissionStatus() })
         settings.addView(button("Allow overlay on top of DJI Pilot 2") {
             if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
             else showPermissionStatus()
         })
         settings.addView(text("Old cache files are quarantined. Switching projects requires stopping and restarting the uploader.",13f,muted))
-        val footer=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        footer.addView(button("Upload preferences") {
-            val parent=settings.parent
-            if(parent is ViewGroup) parent.removeView(settings)
+        val preferences=button("Upload preferences") {
+            (settings.parent as? ViewGroup)?.removeView(settings)
             AlertDialog.Builder(this).setTitle("Upload preferences")
                 .setView(ScrollView(this).apply { addView(settings) })
                 .setPositiveButton("Close",null).show()
-        },LinearLayout.LayoutParams(0,dp(42),1f).apply { rightMargin=dp(5) })
-        footer.addView(button("Check for updates") { checkForUpdates() },
-            LinearLayout.LayoutParams(0,dp(42),1f))
-        root.addView(footer)
-        root.addView(text("OFFSET  /  CONTROLLER",10f,muted))
-        dashboardView=ScrollView(this).apply { addView(root) }
-        setContentView(dashboardView)
+        }
+        addSection(card("PREFERENCES & TOOLS").apply {
+            addView(row(preferences,moreTools,button("Check for updates") { checkForUpdates() }))
+        })
+        settingsView=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+            addView(header)
+            addView(ScrollView(this@MainActivity).apply { addView(root) },
+                LinearLayout.LayoutParams(-1,0,1f))
+        }
         showMediaLibraryPage()
         if(intent?.getBooleanExtra("request_metadata_access",false)==true) {
             window.decorView.post { showMetadataPermissionPrompt() }
@@ -1295,23 +1290,37 @@ class MainActivity : Activity() {
     private data class LibraryClip(val file:DocumentFile,val thumb:Bitmap?)
     private data class CloudClip(val id:String,val filename:String,val bytes:Long)
 
-    /** Only an explicit tap opens the local decoder. Never preload video during flight. */
     /** Operator-only local player. No decoding or playback runs in the background. */
-    private fun showLocalClipPreview(file:DocumentFile, playlist:List<DocumentFile> = listOf(file)) {
+    private fun showLocalClipPreview(file:DocumentFile, playlist:List<DocumentFile>) {
         val files=playlist.filter { it.isFile && it.name.orEmpty().endsWith(".mp4",true) }
         if(files.isEmpty()) {
             showOffsetError("Preview unavailable","No locally accessible MP4 files.")
             return
         }
         var index=files.indexOfFirst { it.uri==file.uri }.coerceAtLeast(0)
-        val player=android.widget.VideoView(this).apply {
-            setBackgroundColor(Color.BLACK)
-        }
+        // VideoView draws to a SurfaceView behind the window. An opaque
+        // background on the VideoView itself can cover the decoded picture.
+        val player=android.widget.VideoView(this)
+        val playerStatus=text("Preparing preview…",11f,muted)
         val info=text("Loading clip details…",11f,muted)
-        val position=text("00:00 / 00:00",11f,muted)
-        val seek=android.widget.SeekBar(this).apply { max=1000 }
+        val position=text("00:00 / 00:00",11f,muted).apply {
+            typeface=android.graphics.Typeface.MONOSPACE
+        }
+        val seek=SeekBar(this).apply {
+            max=1000
+            progressTintList=android.content.res.ColorStateList.valueOf(accent)
+            thumbTintList=progressTintList
+            contentDescription="Playback position"
+        }
         var scrubbing=false
         var durationMs=0
+        val playback=primaryButton("▶ Play") {
+            if(player.isPlaying) {
+                player.pause()
+            } else {
+                player.start()
+            }
+        }
         val handler=android.os.Handler(android.os.Looper.getMainLooper())
         val ticker=object:Runnable {
             override fun run() {
@@ -1328,6 +1337,7 @@ class MainActivity : Activity() {
                             return "%02d:%02d".format(java.util.Locale.US,seconds/60,seconds%60)
                         }
                         position.text="${clock(current)} / ${clock(durationMs)}"
+                        playback.text=if(player.isPlaying) "Ⅱ Pause" else "▶ Play"
                     }catch(_:Exception){}
                 }
                 handler.postDelayed(this,250)
@@ -1350,32 +1360,71 @@ class MainActivity : Activity() {
         })
         val previous=button("◀ Previous") {}
         val next=button("Next ▶") {}
-        val title=text("",13f,Color.WHITE).apply {
+        val title=text("",16f,Color.WHITE).apply {
             setTypeface(typeface,android.graphics.Typeface.BOLD)
+            maxLines=1
+            ellipsize=android.text.TextUtils.TruncateAt.MIDDLE
         }
-        val playback=button("▶ Play / Pause") {
-            try { if(player.isPlaying)player.pause() else player.start() }
-            catch(_:Exception){ info.text="Android cannot play this video format." }
+        val clipCount=text("",11f,accent)
+        val dialog=android.app.Dialog(this)
+        val close=button("✕") { dialog.dismiss() }.apply {
+            contentDescription="Close preview"
+            textSize=16f
         }
+        fun showPlaybackError(message:String) {
+            playerStatus.text=message
+            playerStatus.visibility=View.VISIBLE
+            playback.isEnabled=false
+            seek.isEnabled=false
+        }
+        val screen=resources.configuration
+        val videoHeight=minOf(screen.screenWidthDp*9/16,screen.screenHeightDp/2)
         val content=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
-            setPadding(dp(12),dp(8),dp(12),dp(8))
-            addView(title)
-            addView(player,LinearLayout.LayoutParams(-1,dp(245)))
-            addView(seek)
-            addView(position)
-            addView(info)
-            val controls=LinearLayout(this@MainActivity).apply {
-                orientation=LinearLayout.HORIZONTAL
-                gravity=android.view.Gravity.CENTER_VERTICAL
-            }
-            controls.addView(previous,LinearLayout.LayoutParams(0,dp(38),1f))
-            controls.addView(playback,LinearLayout.LayoutParams(0,dp(38),1.3f))
-            controls.addView(next,LinearLayout.LayoutParams(0,dp(38),1f))
-            addView(controls)
+            background=rounded(bg,Color.rgb(52,62,64),16)
+            setPadding(dp(14),dp(10),dp(14),dp(12))
         }
-        val dialog=AlertDialog.Builder(this).setTitle("OFFSET · Player")
-            .setView(content).setPositiveButton("Close",null).create()
+        val header=LinearLayout(this).apply {
+            gravity=android.view.Gravity.CENTER_VERTICAL
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation=LinearLayout.VERTICAL
+                addView(clipCount)
+                addView(title)
+            },LinearLayout.LayoutParams(0,-2,1f))
+            addView(close,LinearLayout.LayoutParams(dp(44),dp(44)))
+        }
+        content.addView(header)
+        val videoStage=android.widget.FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(player,android.widget.FrameLayout.LayoutParams(
+                -1,-1,android.view.Gravity.CENTER
+            ))
+        }
+        content.addView(videoStage,LinearLayout.LayoutParams(-1,dp(videoHeight)).apply {
+            topMargin=dp(6)
+        })
+        val timeline=LinearLayout(this).apply {
+            gravity=android.view.Gravity.CENTER_VERTICAL
+            addView(seek,LinearLayout.LayoutParams(0,dp(42),1f))
+            addView(position)
+        }
+        content.addView(timeline)
+        val controls=LinearLayout(this).apply {
+            gravity=android.view.Gravity.CENTER
+            addView(previous,LinearLayout.LayoutParams(0,dp(44),1f))
+            addView(playback,LinearLayout.LayoutParams(0,dp(44),1f).apply {
+                setMargins(dp(8),0,dp(8),0)
+            })
+            addView(next,LinearLayout.LayoutParams(0,dp(44),1f))
+        }
+        content.addView(controls)
+        content.addView(playerStatus)
+        content.addView(info,LinearLayout.LayoutParams(-1,-2).apply {
+            topMargin=dp(6)
+        })
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        dialog.setContentView(content)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         var closed=false
         var requestId=0
         fun loadClip() {
@@ -1385,24 +1434,33 @@ class MainActivity : Activity() {
             durationMs=0
             seek.progress=0
             position.text="00:00 / 00:00"
-            title.text="${index+1} / ${files.size} · ${current.name ?: "Clip"}"
+            clipCount.text="LOCAL PREVIEW  ·  ${index+1} / ${files.size}"
+            title.text=current.name ?: "Clip"
+            playback.text="▶ Play"
             previous.isEnabled=index>0
             next.isEnabled=index<files.lastIndex
             info.text="Reading clip details…"
+            playback.isEnabled=false
+            seek.isEnabled=false
+            playerStatus.text="Preparing preview…"
+            playerStatus.visibility=View.VISIBLE
+            player.stopPlayback()
+            player.setOnPreparedListener { media ->
+                durationMs=media.duration.coerceAtLeast(0)
+                playback.isEnabled=true
+                seek.isEnabled=durationMs>0
+                playerStatus.visibility=View.GONE
+                // Render the first frame while keeping playback paused.
+                if(durationMs>0) player.seekTo(1)
+            }
+            player.setOnErrorListener { _,_,_ ->
+                showPlaybackError("Can't play this local clip. It may still be recording or use an unsupported codec.")
+                true
+            }
             try {
-                player.stopPlayback()
                 player.setVideoURI(current.uri)
-                // Do not autoplay on navigation or when opening the player.
-                player.setOnPreparedListener { media ->
-                    durationMs=media.duration.coerceAtLeast(0)
-                    media.setOnSeekCompleteListener { }
-                }
-                player.setOnErrorListener { _,_,_ ->
-                    info.text="This codec is not supported by the controller's Android player."
-                    true
-                }
             }catch(_:Exception){
-                info.text="Unable to open this local clip."
+                showPlaybackError("Unable to open this local clip. Check the CACHE_VIDEO folder in Settings.")
             }
             Thread {
                 val details=ControllerMediaTools.clipInfo(this,current.uri,current.lastModified())
@@ -1412,9 +1470,8 @@ class MainActivity : Activity() {
                 } ?: "Unavailable"
                 val resolution=if(details.width!=null && details.height!=null)
                     "${details.width} × ${details.height}" else "Unavailable"
-                val summary="Duration: $duration · Resolution: $resolution\n"+
-                    "Size: ${ControllerMediaTools.pretty(current.length())} · "+
-                    "Modified: ${details.recordedAt ?: "Unknown"}"
+                val summary="$resolution  ·  $duration  ·  ${ControllerMediaTools.pretty(current.length())}"+
+                    (details.recordedAt?.let { "  ·  $it" } ?: "")
                 runOnUiThread {
                     if(!closed && dialog.isShowing && requestId==thisRequest)
                         info.text=summary
@@ -1551,7 +1608,9 @@ class MainActivity : Activity() {
 
     /** Main controller screen. Cloud status is authoritative; local media is never deleted. */
     private fun showMediaLibraryPage() {
+        settingsOpen=false
         val pid=project.text.toString().trim()
+        val descending=prefs.getBoolean("media_library_descending",false)
         val root=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
             setBackgroundColor(bg)
@@ -1568,7 +1627,10 @@ class MainActivity : Activity() {
         ) { showProjects() },LinearLayout.LayoutParams(0,dp(37),1f))
         header.addView(button("▣ QR") { showProjectShare() })
         header.addView(button("⚙ Settings") {
-            dashboardView?.let { setContentView(it) }
+            settingsView?.let {
+                settingsOpen=true
+                setContentView(it)
+            }
         })
         root.addView(header)
         val nav=LinearLayout(this).apply {
@@ -1578,6 +1640,23 @@ class MainActivity : Activity() {
         nav.addView(text("OFFSET.  /  MEDIA LIBRARY",12f,accent).apply {
             setTypeface(typeface,android.graphics.Typeface.BOLD)
         },LinearLayout.LayoutParams(0,-2,1f))
+        val sortButton=button(if(descending) "Z–A ▾" else "A–Z ▾") {}
+        sortButton.contentDescription="Sort clips by filename"
+        sortButton.setOnClickListener { anchor ->
+            val menu=android.widget.PopupMenu(this,anchor)
+            menu.menu.add(0,0,0,"Filename A–Z").setCheckable(true).setChecked(!descending)
+            menu.menu.add(0,1,1,"Filename Z–A").setCheckable(true).setChecked(descending)
+            menu.setOnMenuItemClickListener { item ->
+                val newDescending=item.itemId==1
+                if(newDescending!=descending) {
+                    prefs.edit().putBoolean("media_library_descending",newDescending).apply()
+                    showMediaLibraryPage()
+                }
+                true
+            }
+            menu.show()
+        }
+        nav.addView(sortButton)
         nav.addView(button("Queue") { showUploadQueue() })
         nav.addView(button("Refresh") { showMediaLibraryPage() })
         root.addView(nav)
@@ -1608,8 +1687,9 @@ class MainActivity : Activity() {
                     ?.filter { it.isFile && (it.name ?: "").endsWith(".JPEG",true) || it.isFile && (it.name ?: "").endsWith(".JPG",true) }
                     ?.associateBy { (it.name ?: "").substringBeforeLast(".").uppercase() }
                     ?: emptyMap()
+                val byFilename=compareBy<DocumentFile> { it.name.orEmpty().uppercase() }
                 val media=tree?.listFiles()?.filter { it.isFile && (it.name ?: "").endsWith(".mp4",true) }
-                    ?.sortedBy { it.name?.uppercase() ?: "" } ?: emptyList()
+                    ?.sortedWith(if(descending) byFilename.reversed() else byFilename).orEmpty()
                 visibleMediaBytes=media.sumOf { it.length().coerceAtLeast(0L) }
                 visibleMediaCount=media.size
                 for(file in media.take(250)) {
@@ -1639,7 +1719,7 @@ class MainActivity : Activity() {
                     }
                     cloudAvailable=true
                 }catch(e:Exception) {serverError="Cloud status unavailable: ${e.localizedMessage}"}
-            }else serverError="Configure your server and device token under Dashboard → Settings"
+            }else serverError="Configure your server and device token in Settings → Connection"
             runOnUiThread {
                 if(project.text.toString().trim()!=pid) return@runOnUiThread
                 val ledger=ProjectLedger(this)
@@ -1678,7 +1758,7 @@ class MainActivity : Activity() {
                     gravity=android.view.Gravity.CENTER_VERTICAL
                 }
                 bulk.addView(selectedCount,LinearLayout.LayoutParams(0,-2,1f))
-                val bulkQueue=button("Queue") {
+                val bulkQueue=button("Add to queue") {
                     performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
                         .map { it.file },"queue")
                 }
@@ -1711,6 +1791,7 @@ class MainActivity : Activity() {
                 val cardWidth=((resources.displayMetrics.widthPixels-dp(32)-gap*(columns-1))/columns).coerceAtLeast(dp(130))
                 val libraryGrid=android.widget.GridLayout(this).apply { columnCount=columns }
                 grid.addView(libraryGrid)
+                val playlist=clips.map { it.file }
                 for((position,item) in clips.withIndex()) {
                     val file=item.file
                     val name=file.name ?: "clip.mp4"
@@ -1738,9 +1819,9 @@ class MainActivity : Activity() {
                     }
                     preview.contentDescription="Preview $name"
                     preview.isClickable=true
-                    preview.setOnClickListener { showLocalClipPreview(file,clips.map { it.file }) }
+                    preview.setOnClickListener { showLocalClipPreview(file,playlist) }
                     card.addView(preview,LinearLayout.LayoutParams(-1,dp(95)))
-                    card.addView(button("▶ Preview") { showLocalClipPreview(file) },
+                    card.addView(button("▶ Preview") { showLocalClipPreview(file,playlist) },
                         LinearLayout.LayoutParams(-1,dp(29)))
                     val selectRow=LinearLayout(this).apply {
                         orientation=LinearLayout.HORIZONTAL
@@ -1834,7 +1915,9 @@ class MainActivity : Activity() {
                         setMargins(if(position%columns==0) 0 else gap/2,dp(5),gap/2,0)
                     })
                 }
-                for(cloud in remote) if(cloud.filename !in localNames) {
+                val cloudByFilename=compareBy<CloudClip> { it.filename.uppercase() }
+                for(cloud in remote.sortedWith(if(descending) cloudByFilename.reversed() else cloudByFilename)) {
+                    if(cloud.filename in localNames) continue
                     val line=LinearLayout(this).apply {
                         orientation=LinearLayout.HORIZONTAL
                         gravity=android.view.Gravity.CENTER_VERTICAL
@@ -1960,11 +2043,12 @@ class MainActivity : Activity() {
         val queue=ledger.pendingQueue(pid)
         val layout=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
-            setPadding(dp(14),dp(8),dp(14),dp(8))
+            setPadding(dp(14),dp(8),dp(14),dp(12))
+            setBackgroundColor(bg)
         }
         val urgent=queue.count { it.priority }
         layout.addView(text("${queue.size} waiting · ${urgent} prioritized · active upload finishes first",
-            12f,Color.DKGRAY))
+            12f,muted))
         var queueDialog:AlertDialog?=null
         layout.addView(button(if(searchTerm.isBlank())"Find clip by name" else "Filter: $searchTerm · Change") {
             val field=EditText(this).apply {
@@ -1987,25 +2071,33 @@ class MainActivity : Activity() {
         })
         if(queue.isEmpty())layout.addView(text(
             "No clips waiting yet. New DJI clips appear when OFFSET discovers them.",
-            12f,Color.DKGRAY))
+            12f,muted))
         val shown=if(searchTerm.isBlank())queue.take(150) else queue.filter { item ->
             val name=try { DocumentFile.fromSingleUri(this,Uri.parse(item.uri))?.name.orEmpty() }
                 catch(_:Exception){ "" }
             name.contains(searchTerm,ignoreCase=true)
         }.take(150)
-        if(shown.isEmpty() && queue.isNotEmpty())layout.addView(text("No matching clips.",12f,Color.DKGRAY))
+        if(shown.isEmpty() && queue.isNotEmpty())layout.addView(text("No matching clips.",12f,muted))
         for(item in shown){
             val file=try { DocumentFile.fromSingleUri(this,Uri.parse(item.uri)) }catch(_:Exception){null}
             val name=file?.name ?: "Unavailable clip"
             val line=LinearLayout(this).apply {
                 orientation=LinearLayout.HORIZONTAL
                 gravity=android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(10),dp(6),dp(8),dp(6))
+                background=rounded(panel,if(item.priority) accent else Color.rgb(57,65,67),10)
             }
-            line.addView(text((if(item.priority)"★ " else "")+name+
-                if(item.manual)" · manual" else " · DJI",12f,Color.BLACK).apply {
-                maxLines=2
-                ellipsize=android.text.TextUtils.TruncateAt.MIDDLE
-            },LinearLayout.LayoutParams(0,-2,1f))
+            line.addView(LinearLayout(this).apply {
+                orientation=LinearLayout.VERTICAL
+                addView(text(name,13f).apply {
+                    setTypeface(typeface,android.graphics.Typeface.BOLD)
+                    maxLines=2
+                    ellipsize=android.text.TextUtils.TruncateAt.MIDDLE
+                })
+                val source=if(item.manual) "MANUAL" else "DJI"
+                addView(text(if(item.priority) "★ NEXT  ·  $source" else source,
+                    10f,if(item.priority) accent else muted))
+            },LinearLayout.LayoutParams(0,-2,1f).apply { rightMargin=dp(6) })
             line.addView(button(if(item.priority)"★ Next" else "Prioritize") {
                 val promoted=ledger.prioritizeNext(item.uri,pid)
                 if(!promoted){
@@ -2029,7 +2121,7 @@ class MainActivity : Activity() {
                     showUploadQueue(searchTerm)
                 }
             })
-            layout.addView(line)
+            layout.addView(line,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
         }
         AlertDialog.Builder(this).setTitle("Upload queue · ${pid}")
             .setView(ScrollView(this).apply { addView(layout) })
