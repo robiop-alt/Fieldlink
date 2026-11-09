@@ -342,7 +342,7 @@ class MainActivity : Activity() {
                 .setView(ScrollView(this).apply { addView(tools) })
                 .setPositiveButton("Close",null).show()
         }
-        val settings=card("Upload preferences")
+        val settings=card("Advanced")
         val lowData=Switch(this).apply {
             text="Low Data Mode"
             textSize=13f
@@ -536,9 +536,9 @@ class MainActivity : Activity() {
             else showPermissionStatus()
         })
         settings.addView(text("Old cache files are quarantined. Switching projects requires stopping and restarting the uploader.",13f,muted))
-        val preferences=button("Upload preferences") {
+        val preferences=button("Advanced") {
             (settings.parent as? ViewGroup)?.removeView(settings)
-            offsetDialog().setTitle("Upload preferences")
+            offsetDialog().setTitle("Advanced")
                 .setView(ScrollView(this).apply { addView(settings) })
                 .setPositiveButton("Close",null).show()
         }
@@ -720,7 +720,7 @@ class MainActivity : Activity() {
         val pid=prefs.getString("project","").orEmpty()
         if(!prefs.getBoolean("sd_backup_status",true)) {
             offsetDialog().setTitle("SD backup status")
-                .setMessage("Enable SD backup status in Upload preferences.")
+                .setMessage("Enable SD backup status in Advanced.")
                 .setPositiveButton("Close",null).show()
             return
         }
