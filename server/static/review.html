@@ -41,10 +41,18 @@ function formatStorageBytes(bytes){
 const clipSortStorageKey='offset:review-sort:'+slug;
 let clipSort='uploaded';
 try{if(localStorage.getItem(clipSortStorageKey)==='filename')clipSort='filename'}catch(_){}
+const filenameCollator=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+function filenameRoll(filename){
+ return filename.match(/(?:^|[^a-z0-9])([a-z]\d+)c\d+/i)?.[1]||'';
+}
 function compareClips(a,b){
- const names=String(a.filename||'').localeCompare(String(b.filename||''),undefined,{numeric:true,sensitivity:'base'});
- if(clipSort==='filename')return names||String(a.id).localeCompare(String(b.id));
- return (Number(b.created)||0)-(Number(a.created)||0)||names||String(a.id).localeCompare(String(b.id));
+ const aName=String(a.filename||''),bName=String(b.filename||'');
+ const names=filenameCollator.compare(aName,bName);
+ // Newest reel first, with clips in shooting order within each reel.
+ const primary=clipSort==='filename'
+  ? filenameCollator.compare(filenameRoll(bName),filenameRoll(aName))
+  : (Number(b.created)||0)-(Number(a.created)||0);
+ return primary||names||String(a.id).localeCompare(String(b.id));
 }
 function renderStorage(d){
  const target=$('storage-status');target.replaceChildren();

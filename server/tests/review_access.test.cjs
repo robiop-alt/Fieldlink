@@ -4,7 +4,7 @@ const {readFileSync}=require('node:fs');
 const {join}=require('node:path');
 const vm=require('node:vm');
 
-async function viewer(allowDownloads,validPin=true,clips=[]){
+async function viewer(allowDownloads,validPin=true,clips=[],sortMode=null){
   const nodes=new Map();let elementId=0;
   function node(id){
     if(!nodes.has(id)){
@@ -19,7 +19,8 @@ async function viewer(allowDownloads,validPin=true,clips=[]){
     return {dataset:{select:clip.id},checked:false,closest(){return card},label,card};
   }):[];
   let initialized=false;
-  const window={OffsetUploadTime:{update(){}},initOffsetPlayer(clips,base,auth,downloads){initialized=true;assert.equal(downloads,allowDownloads)}};
+  let playerClipIds=[];
+  const window={OffsetUploadTime:{update(){}},initOffsetPlayer(clips,base,auth,downloads){initialized=true;playerClipIds=Array.from(clips,clip=>clip.id);assert.equal(downloads,allowDownloads)}};
   const document={createElement(){return node('element-'+(++elementId))},getElementById(id){if(id==='selected-count'&&!allowDownloads)return null;return node(id)},querySelectorAll(selector){return selector==='[data-select]'?inputs:[]}};
   const response=(body,ok=true)=>({ok,json:async()=>body});
   const fetch=async(url)=>{
@@ -31,12 +32,12 @@ async function viewer(allowDownloads,validPin=true,clips=[]){
     if(url.includes('/storage'))return response({used_bytes:52428800,clip_count:1});
     throw Error('Unexpected request: '+url);
   };
-  const context=vm.createContext({window,document,fetch,location:{pathname:'/r/test',hash:'',search:''},URLSearchParams,sessionStorage:{getItem(){return null},setItem(){},removeItem(){}}});
+  const context=vm.createContext({window,document,fetch,location:{pathname:'/r/test',hash:'',search:''},URLSearchParams,localStorage:{getItem(){return sortMode}},sessionStorage:{getItem(){return null},setItem(){},removeItem(){}}});
   const html=readFileSync(join(__dirname,'../static/review.html'),'utf8');
   const script=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)[1];
   vm.runInContext(script,context);
   await vm.runInContext('unlock()',context);
-  return {node,initialized,inputs};
+  return {node,initialized,inputs,playerClipIds};
 }
 
 for(const allowDownloads of [false,true])test(`valid PIN opens review with downloads ${allowDownloads?'enabled':'disabled'}`,async()=>{
@@ -90,4 +91,18 @@ test('download-disabled projects do not render selection or download actions',as
  const {node,inputs}=await viewer(false,true,selectionClips);
  assert.equal(inputs.length,0);
  assert.ok(!node('clips').innerHTML.includes('class="clip-actions"'));
+});
+
+
+test('filename sort shows the latest reel first and clip numbers ascending',async()=>{
+  const clips=[
+    {id:'r2',filename:'D002C0001.mp4',created:400},
+    {id:'r10c12',filename:'D010C0012.mp4',created:300},
+    {id:'r10c2',filename:'D010C0002.mp4',created:200},
+    {id:'other',filename:'Unnumbered.mp4',created:100}
+  ];
+  const filename=await viewer(false,true,clips,'filename');
+  assert.deepEqual(filename.playerClipIds,['r10c2','r10c12','r2','other']);
+  const uploaded=await viewer(false,true,clips);
+  assert.deepEqual(uploaded.playerClipIds,['r2','r10c12','r10c2','other']);
 });
