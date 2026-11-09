@@ -856,41 +856,7 @@ class MainActivity : Activity() {
                     org.json.JSONArray(response.body?.string() ?: "[]")
                 }
                 runOnUiThread {
-                    val picker=offsetDialog().setTitle("Choose project")
-                    val rows=LinearLayout(this).apply {
-                        orientation=LinearLayout.VERTICAL
-                        setPadding(dp(20),dp(8),dp(20),dp(8))
-                    }
-                    picker.setView(ScrollView(this).apply { addView(rows) })
-                        .setNeutralButton("Manage projects") { _,_ -> showProjectManagement(result) }
-                        .setPositiveButton("New project") { _,_ -> createProjectDialog() }
-                        .setNegativeButton("Close",null)
-                    val dialog=picker.create()
-                    if(result.length()==0) rows.addView(text("No projects yet.",13f,muted))
-                    for(index in 0 until result.length()) {
-                        val item=result.getJSONObject(index)
-                        val id=item.getString("id")
-                        val name=item.optString("name","Project")
-                        val active=id==project.text.toString().trim()
-                        val row=LinearLayout(this).apply {
-                            orientation=LinearLayout.VERTICAL
-                            setPadding(dp(14),dp(6),dp(14),dp(6))
-                            background=rounded(panel,if(active) accent else Color.rgb(57,65,67),10)
-                            isFocusable=true
-                            setOnClickListener {
-                                dialog.dismiss()
-                                activateProject(id,name)
-                            }
-                        }
-                        row.addView(text(name,15f).apply {
-                            setTypeface(typeface,android.graphics.Typeface.BOLD)
-                        })
-                        val detail="$id  ·  ${item.optInt("clips")} clips"
-                        row.addView(text(if(active) "$detail  ·  Active" else detail,11f,
-                            if(active) accent else muted))
-                        rows.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(6) })
-                    }
-                    dialog.show()
+                    showProjectPicker(result)
                 }
             }catch(e:Exception) {
                 runOnUiThread {
@@ -902,18 +868,70 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun showProjectManagement(projects:org.json.JSONArray) {
-        val names=Array(projects.length()) { i ->
-            val item=projects.getJSONObject(i)
-            "${item.optString("name")} · ${item.optInt("clips")} clips"
+    private fun showProjectPicker(projects:org.json.JSONArray, managing:Boolean=false) {
+        val dialog=android.app.Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val outline=Color.rgb(57,65,67)
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            background=rounded(bg,outline,18)
+            setPadding(dp(16),dp(12),dp(16),dp(14))
         }
-        offsetDialog().setTitle("Manage projects")
-            .setItems(names) { _,index ->
-                val item=projects.getJSONObject(index)
-                confirmDeleteProject(item.getString("id"),
-                    item.optString("name","Project"),item.optInt("clips"))
+        body.addView(text(if(managing) "Manage projects" else "Choose project",18f).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        val rows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        if(projects.length()==0) rows.addView(text("No projects yet.",13f,muted))
+        for(index in 0 until projects.length()) {
+            val item=projects.getJSONObject(index)
+            val id=item.getString("id")
+            val name=item.optString("name","Project")
+            val count=item.optInt("clips")
+            val active=id==project.text.toString().trim()
+            val detail="$id  ·  $count clips"+if(active) "  ·  Active" else ""
+            val row=button("") {
+                dialog.dismiss()
+                if(managing) confirmDeleteProject(id,name,count) else activateProject(id,name)
+            }.apply {
+                gravity=android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                background=rounded(panel,if(active) accent else outline,10)
+                setPadding(dp(12),dp(7),dp(12),dp(7))
+                minHeight=dp(48)
+                textSize=14f
+                val label=android.text.SpannableString("$name\n$detail")
+                label.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                    0,name.length,android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                label.setSpan(android.text.style.ForegroundColorSpan(if(active) accent else muted),
+                    name.length+1,label.length,android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                label.setSpan(android.text.style.RelativeSizeSpan(0.8f),
+                    name.length+1,label.length,android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                text=label
             }
-            .setNegativeButton("Close",null).show()
+            rows.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(6) })
+        }
+        val scroll=ScrollView(this).apply { addView(rows) }
+        val listHeight=if(projects.length()>3) dp(minOf(220,resources.configuration.screenHeightDp/2)) else -2
+        body.addView(scroll,LinearLayout.LayoutParams(-1,listHeight))
+        val actions=LinearLayout(this).apply {
+            gravity=android.view.Gravity.END
+        }
+        fun addAction(control:Button) {
+            actions.addView(control,LinearLayout.LayoutParams(-2,dp(42)).apply { leftMargin=dp(6) })
+        }
+        if(!managing) addAction(button("Manage projects") {
+            dialog.dismiss()
+            showProjectPicker(projects,managing=true)
+        })
+        addAction(button("Close") { dialog.dismiss() })
+        if(!managing) addAction(primaryButton("New project") {
+            dialog.dismiss()
+            createProjectDialog()
+        })
+        body.addView(actions,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
+        dialog.setContentView(body)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(dp(minOf(460,resources.configuration.screenWidthDp-24)),-2)
     }
 
     private fun confirmDeleteProject(id:String,name:String,count:Int) {
