@@ -706,3 +706,36 @@ body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{
     padding-top:15px;
   }
 }
+
+/* Compact clip tools keep the search field in a panel until needed. */
+.review-panel #metadata-filters {
+  position:relative;display:flex;flex:0 0 auto;width:auto;align-items:center;gap:5px
+}
+.review-panel #metadata-filters .clip-tool {
+  position:relative;display:inline-flex;align-items:center;justify-content:center;
+  box-sizing:border-box;gap:4px;min-width:35px;min-height:35px;margin:0;
+  padding:0 7px;border:1px solid #3c4846;border-radius:8px;
+  background:#1a2223;color:#dce7e0;cursor:pointer;list-style:none
+}
+.clip-tool::-webkit-details-marker{display:none}
+.clip-tool svg{width:16px;height:16px;flex:none}
+.review-panel #metadata-filters :is(.clip-tool[data-active="true"],.new-clips-filter[aria-pressed="true"],details[open] > summary){
+  color:#a8e689;background:#203024;border-color:#628850
+}
+.review-panel #metadata-filters .clip-sort-tool select{
+  position:absolute;inset:0;width:100%;height:100%;min-width:0;max-width:none;
+  margin:0;opacity:0;cursor:pointer
+}
+.review-panel #metadata-filters .clip-tool:focus-visible,
+.review-panel #metadata-filters .clip-sort-tool:focus-within{
+  outline:2px solid #78ca54;outline-offset:2px
+}
+.review-panel #metadata-filters .clip-filter-panel{
+  position:absolute;z-index:8;left:0;top:calc(100% + 6px);display:grid;gap:6px;
+  width:min(255px,calc(100vw - 48px));box-sizing:border-box;margin:0;padding:10px;
+  border:1px solid #3e4a4d;border-radius:10px;background:#111719;
+  box-shadow:0 8px 20px #0008;color:#dce7e0;font-size:11px
+}
+@media(pointer:coarse){
+  .review-panel #metadata-filters .clip-tool{min-width:44px;min-height:44px}
+}
