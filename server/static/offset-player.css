@@ -223,17 +223,29 @@ body.offset-theater-open{overflow:hidden!important}
 }
 .offset-frame-panel{
   position:absolute;z-index:1;right:0;bottom:calc(100% + 4px);
-  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;
   width:min(100%,260px);max-height:calc(100dvh - 86px);overflow:auto;
   box-sizing:border-box;padding:7px;border:1px solid #3e4a4d;border-radius:12px;
   background:rgba(14,19,21,.95);box-shadow:0 8px 22px #0008;
   -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)
 }
 .offset-frame-choice{
-  display:flex;align-items:center;justify-content:center;gap:6px;min-height:39px;
+  display:flex;align-items:center;justify-content:flex-start;gap:6px;
+  min-width:0;min-height:36px;margin:0;padding:0 7px;
   border-radius:6px;color:#e9f0ef;font-size:12px;white-space:nowrap;cursor:pointer
 }
-.offset-frame-choice input{margin:0;accent-color:#78ca54}
+.offset-frame-choice input[type="radio"]{
+  -webkit-appearance:none;appearance:none;
+  flex:0 0 14px;width:14px;height:14px;min-width:0;min-height:0;
+  margin:0;padding:0;border:1px solid #81908a;border-radius:50%;background:transparent;
+  cursor:pointer
+}
+.offset-frame-choice input[type="radio"]:checked{
+  border-color:#9fdb7c;background:radial-gradient(circle,#9fdb7c 0 3px,transparent 3.5px)
+}
+@media(max-width:360px){
+  .offset-frame-panel{grid-template-columns:repeat(2,minmax(0,1fr));width:min(100%,210px)}
+}
 .offset-frame-choice:hover,.offset-frame-choice:focus-within{background:#29362e}
 .offset-frame-choice:has(input:checked){color:#a8e689;background:#203024}
 @media(pointer:coarse){
