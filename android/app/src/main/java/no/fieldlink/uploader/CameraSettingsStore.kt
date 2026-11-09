@@ -49,6 +49,22 @@ object CameraSettingsStore {
             ?.let { v -> v.toIntOrNull()?.takeIf { it in 2000..12000 }?.let {
                 values.putIfAbsent("white_balance",v+"K")
             } }
+        // The DJI Pilot HUD groups format, resolution and the unlabelled frame rate.
+        val hud=Regex("\\b(CINEMA\\s*DNG|CINEDNG|CDNG|(?:APPLE\\s+)?PRORES(?:\\s+(?:RAW(?: HQ)?|422(?: HQ)?))?)\\s*[|·]?\\s*(?:[248](?:\\.\\d+)?\\s*K|1080P?)\\s*[|·]?\\s*(23\\.98|24|25|29\\.97|30|48|50|59\\.94|60|100|120)(?![\\d.:])")
+            .find(lines.joinToString(" "))
+        if(hud!=null) {
+            val format=hud.groupValues[1]
+            values.putIfAbsent("recording_format",if(format.replace(" ","") in setOf("CINEMADNG","CINEDNG","CDNG")) "CinemaDNG" else format)
+            values.putIfAbsent("fps",hud.groupValues[2])
+            first(Regex("\\bEI\\s*[:=]?\\s*(?:N\\s*)?(\\d{2,5})\\b"))
+                ?.let { v -> v.toIntOrNull()?.takeIf { it in 50..25600 }?.let {
+                    values.putIfAbsent("iso","EI $v")
+                } }
+            first(Regex("(?<![\\d.])(\\d{2,3}(?:\\.\\d+)?)\\s*°"))
+                ?.let { v -> v.toDoubleOrNull()?.takeIf { it in 1.0..360.0 }?.let {
+                    values.putIfAbsent("shutter",v.removeSuffix(".0")+"°")
+                } }
+        }
         // Require at least two independently identifiable settings on the screen.
         return if(values.size>=2)values else emptyMap()
     }
