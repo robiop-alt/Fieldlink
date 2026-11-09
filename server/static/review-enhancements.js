@@ -9,15 +9,16 @@ function enhance(){
  if(filter&&filter.parentElement!==document.getElementById('review-toolbar'))document.getElementById('review-toolbar').prepend(filter);
  if(toolbar.parentElement!==document.getElementById('review-toolbar'))document.getElementById('review-toolbar').append(toolbar);
  toolbar.querySelectorAll('p').forEach(p=>p.remove());
- if(!document.getElementById('view-switch')){
+ if(filter&&!document.getElementById('view-switch')){
   const switcher=document.createElement('span');switcher.className='view-switch';switcher.id='view-switch';
-  const grid=document.createElement('button');grid.type='button';grid.textContent='▦';grid.title='Grid view';grid.className='active';
-  const list=document.createElement('button');list.type='button';list.textContent='☷';list.title='List view';
+  const grid=document.createElement('button');grid.type='button';grid.textContent='▦';grid.title='Grid view';grid.className='clip-tool active';
+  const list=document.createElement('button');list.type='button';list.textContent='☷';list.title='List view';list.className='clip-tool';
   let savedView='grid';try{savedView=localStorage.getItem('offset-review-layout')||'grid'}catch(_){}
   const setView=view=>{
    const isList=view==='list' && !window.matchMedia('(max-width:767px)').matches;
    clips.classList.toggle('list-view',isList);
    grid.classList.toggle('active',!isList);list.classList.toggle('active',isList);
+   grid.dataset.active=String(!isList);list.dataset.active=String(isList);
    grid.setAttribute('aria-pressed',String(!isList));list.setAttribute('aria-pressed',String(isList));
    try{localStorage.setItem('offset-review-layout',view)}catch(_){}
   };
@@ -25,7 +26,7 @@ function enhance(){
   grid.onclick=()=>setView('grid');
   setView(savedView);
   list.onclick=()=>setView('list');
-  switcher.append(grid,list);toolbar.append(switcher);
+  switcher.append(grid,list);filter.append(switcher);
  }
  clips.querySelectorAll('.clip').forEach(card=>{
   if(card.dataset.enhanced)return;card.dataset.enhanced='true';
