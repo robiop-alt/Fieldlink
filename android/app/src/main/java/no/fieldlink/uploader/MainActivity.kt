@@ -1295,23 +1295,30 @@ class MainActivity : Activity() {
     private data class LibraryClip(val file:DocumentFile,val thumb:Bitmap?)
     private data class CloudClip(val id:String,val filename:String,val bytes:Long)
 
-    /** Only an explicit tap opens the local decoder. Never preload video during flight. */
     /** Operator-only local player. No decoding or playback runs in the background. */
-    private fun showLocalClipPreview(file:DocumentFile, playlist:List<DocumentFile> = listOf(file)) {
+    private fun showLocalClipPreview(file:DocumentFile, playlist:List<DocumentFile>) {
         val files=playlist.filter { it.isFile && it.name.orEmpty().endsWith(".mp4",true) }
         if(files.isEmpty()) {
             showOffsetError("Preview unavailable","No locally accessible MP4 files.")
             return
         }
         var index=files.indexOfFirst { it.uri==file.uri }.coerceAtLeast(0)
-        val player=android.widget.VideoView(this).apply {
-            setBackgroundColor(Color.BLACK)
-        }
+        // VideoView draws to a SurfaceView behind the window. An opaque
+        // background on the VideoView itself can cover the decoded picture.
+        val player=android.widget.VideoView(this)
+        val playerStatus=text("Preparing preview…",11f,muted)
         val info=text("Loading clip details…",11f,muted)
         val position=text("00:00 / 00:00",11f,muted)
         val seek=android.widget.SeekBar(this).apply { max=1000 }
         var scrubbing=false
         var durationMs=0
+        val playback=button("▶ Play") {
+            if(player.isPlaying) {
+                player.pause()
+            } else {
+                player.start()
+            }
+        }
         val handler=android.os.Handler(android.os.Looper.getMainLooper())
         val ticker=object:Runnable {
             override fun run() {
@@ -1328,6 +1335,7 @@ class MainActivity : Activity() {
                             return "%02d:%02d".format(java.util.Locale.US,seconds/60,seconds%60)
                         }
                         position.text="${clock(current)} / ${clock(durationMs)}"
+                        playback.text=if(player.isPlaying) "Ⅱ Pause" else "▶ Play"
                     }catch(_:Exception){}
                 }
                 handler.postDelayed(this,250)
@@ -1353,9 +1361,11 @@ class MainActivity : Activity() {
         val title=text("",13f,Color.WHITE).apply {
             setTypeface(typeface,android.graphics.Typeface.BOLD)
         }
-        val playback=button("▶ Play / Pause") {
-            try { if(player.isPlaying)player.pause() else player.start() }
-            catch(_:Exception){ info.text="Android cannot play this video format." }
+        fun showPlaybackError(message:String) {
+            playerStatus.text=message
+            playerStatus.visibility=View.VISIBLE
+            playback.isEnabled=false
+            seek.isEnabled=false
         }
         val content=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
@@ -1364,6 +1374,7 @@ class MainActivity : Activity() {
             addView(player,LinearLayout.LayoutParams(-1,dp(245)))
             addView(seek)
             addView(position)
+            addView(playerStatus)
             addView(info)
             val controls=LinearLayout(this@MainActivity).apply {
                 orientation=LinearLayout.HORIZONTAL
@@ -1389,20 +1400,27 @@ class MainActivity : Activity() {
             previous.isEnabled=index>0
             next.isEnabled=index<files.lastIndex
             info.text="Reading clip details…"
+            playback.isEnabled=false
+            seek.isEnabled=false
+            playerStatus.text="Preparing preview…"
+            playerStatus.visibility=View.VISIBLE
+            player.stopPlayback()
+            player.setOnPreparedListener { media ->
+                durationMs=media.duration.coerceAtLeast(0)
+                playback.isEnabled=true
+                seek.isEnabled=durationMs>0
+                playerStatus.visibility=View.GONE
+                // Render the first frame while keeping playback paused.
+                if(durationMs>0) player.seekTo(1)
+            }
+            player.setOnErrorListener { _,_,_ ->
+                showPlaybackError("Can't play this local clip. It may still be recording or use an unsupported codec.")
+                true
+            }
             try {
-                player.stopPlayback()
                 player.setVideoURI(current.uri)
-                // Do not autoplay on navigation or when opening the player.
-                player.setOnPreparedListener { media ->
-                    durationMs=media.duration.coerceAtLeast(0)
-                    media.setOnSeekCompleteListener { }
-                }
-                player.setOnErrorListener { _,_,_ ->
-                    info.text="This codec is not supported by the controller's Android player."
-                    true
-                }
             }catch(_:Exception){
-                info.text="Unable to open this local clip."
+                showPlaybackError("Unable to open this local clip. Check the CACHE_VIDEO folder in Settings.")
             }
             Thread {
                 val details=ControllerMediaTools.clipInfo(this,current.uri,current.lastModified())
@@ -1552,6 +1570,7 @@ class MainActivity : Activity() {
     /** Main controller screen. Cloud status is authoritative; local media is never deleted. */
     private fun showMediaLibraryPage() {
         val pid=project.text.toString().trim()
+        val descending=prefs.getBoolean("media_library_descending",false)
         val root=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
             setBackgroundColor(bg)
@@ -1578,6 +1597,23 @@ class MainActivity : Activity() {
         nav.addView(text("OFFSET.  /  MEDIA LIBRARY",12f,accent).apply {
             setTypeface(typeface,android.graphics.Typeface.BOLD)
         },LinearLayout.LayoutParams(0,-2,1f))
+        val sortButton=button(if(descending) "Z–A ▾" else "A–Z ▾") {}
+        sortButton.contentDescription="Sort clips by filename"
+        sortButton.setOnClickListener { anchor ->
+            val menu=android.widget.PopupMenu(this,anchor)
+            menu.menu.add(0,0,0,"Filename A–Z").setCheckable(true).setChecked(!descending)
+            menu.menu.add(0,1,1,"Filename Z–A").setCheckable(true).setChecked(descending)
+            menu.setOnMenuItemClickListener { item ->
+                val newDescending=item.itemId==1
+                if(newDescending!=descending) {
+                    prefs.edit().putBoolean("media_library_descending",newDescending).apply()
+                    showMediaLibraryPage()
+                }
+                true
+            }
+            menu.show()
+        }
+        nav.addView(sortButton)
         nav.addView(button("Queue") { showUploadQueue() })
         nav.addView(button("Refresh") { showMediaLibraryPage() })
         root.addView(nav)
@@ -1608,8 +1644,9 @@ class MainActivity : Activity() {
                     ?.filter { it.isFile && (it.name ?: "").endsWith(".JPEG",true) || it.isFile && (it.name ?: "").endsWith(".JPG",true) }
                     ?.associateBy { (it.name ?: "").substringBeforeLast(".").uppercase() }
                     ?: emptyMap()
+                val byFilename=compareBy<DocumentFile> { it.name.orEmpty().uppercase() }
                 val media=tree?.listFiles()?.filter { it.isFile && (it.name ?: "").endsWith(".mp4",true) }
-                    ?.sortedBy { it.name?.uppercase() ?: "" } ?: emptyList()
+                    ?.sortedWith(if(descending) byFilename.reversed() else byFilename).orEmpty()
                 visibleMediaBytes=media.sumOf { it.length().coerceAtLeast(0L) }
                 visibleMediaCount=media.size
                 for(file in media.take(250)) {
@@ -1711,6 +1748,7 @@ class MainActivity : Activity() {
                 val cardWidth=((resources.displayMetrics.widthPixels-dp(32)-gap*(columns-1))/columns).coerceAtLeast(dp(130))
                 val libraryGrid=android.widget.GridLayout(this).apply { columnCount=columns }
                 grid.addView(libraryGrid)
+                val playlist=clips.map { it.file }
                 for((position,item) in clips.withIndex()) {
                     val file=item.file
                     val name=file.name ?: "clip.mp4"
@@ -1738,9 +1776,9 @@ class MainActivity : Activity() {
                     }
                     preview.contentDescription="Preview $name"
                     preview.isClickable=true
-                    preview.setOnClickListener { showLocalClipPreview(file,clips.map { it.file }) }
+                    preview.setOnClickListener { showLocalClipPreview(file,playlist) }
                     card.addView(preview,LinearLayout.LayoutParams(-1,dp(95)))
-                    card.addView(button("▶ Preview") { showLocalClipPreview(file) },
+                    card.addView(button("▶ Preview") { showLocalClipPreview(file,playlist) },
                         LinearLayout.LayoutParams(-1,dp(29)))
                     val selectRow=LinearLayout(this).apply {
                         orientation=LinearLayout.HORIZONTAL
@@ -1834,7 +1872,9 @@ class MainActivity : Activity() {
                         setMargins(if(position%columns==0) 0 else gap/2,dp(5),gap/2,0)
                     })
                 }
-                for(cloud in remote) if(cloud.filename !in localNames) {
+                val cloudByFilename=compareBy<CloudClip> { it.filename.uppercase() }
+                for(cloud in remote.sortedWith(if(descending) cloudByFilename.reversed() else cloudByFilename)) {
+                    if(cloud.filename in localNames) continue
                     val line=LinearLayout(this).apply {
                         orientation=LinearLayout.HORIZONTAL
                         gravity=android.view.Gravity.CENTER_VERTICAL
