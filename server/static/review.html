@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0d0f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="OFFSET"><link rel="apple-touch-icon" sizes="180x180" href="/pwa/iphone-logo-v2-180.png"><link id="offset-pwa-manifest" rel="manifest" href="/app.webmanifest"><script>document.getElementById('offset-pwa-manifest').href='/app.webmanifest?project='+encodeURIComponent(location.pathname.split('/').filter(Boolean).pop()||'');</script><title>OFFSET · Review</title><script src="/static/new-clips.js?v=1"></script><script defer src="/static/upload-time.js?v=1"></script><link rel="stylesheet" href="/static/style.css?v=logo-fix-2"><link rel="stylesheet" href="/static/review-enhancements.css?v=logo-green-1"><link rel="stylesheet" href="/static/offset-player.css?v=frame-panel-1"><link rel="stylesheet" href="/static/incoming-status.css?v=5"><link rel="stylesheet" href="/static/review-finish.css?v=storage-footer-1"><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0d0f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="OFFSET"><link rel="apple-touch-icon" sizes="180x180" href="/pwa/iphone-logo-v2-180.png"><link id="offset-pwa-manifest" rel="manifest" href="/app.webmanifest"><script>document.getElementById('offset-pwa-manifest').href='/app.webmanifest?project='+encodeURIComponent(location.pathname.split('/').filter(Boolean).pop()||'');</script><title>OFFSET · Review</title><script src="/static/new-clips.js?v=1"></script><script defer src="/static/upload-time.js?v=1"></script><link rel="stylesheet" href="/static/style.css?v=logo-fix-2"><link rel="stylesheet" href="/static/review-enhancements.css?v=logo-green-1"><link rel="stylesheet" href="/static/offset-player.css?v=frame-panel-1"><link rel="stylesheet" href="/static/incoming-status.css?v=5"><link rel="stylesheet" href="/static/review-finish.css?v=clip-tools-1"><style>
 .offset-uploaded-name{display:grid;gap:3px;min-width:0}.offset-uploaded-name b{overflow-wrap:anywhere}.clipmeta .offset-uploaded-age{display:block;color:#57b62f;font-size:11px;letter-spacing:.01em;font-variant-numeric:tabular-nums}
 .offset-video-stage{position:relative;background:#080b0c;overflow:hidden;border-radius:9px}
 .offset-video-stage video{display:block;width:100%;height:auto;min-height:160px;background:#000}
@@ -99,7 +99,13 @@ async function load(){
  let filters=document.getElementById('metadata-filters');
  if(!filters){filters=document.createElement('div');filters.id='metadata-filters';$('clips').before(filters)}
  const savedSearch=$('clip-filter')?.value||'';
- filters.innerHTML='<label class="filter-compact"><span>Filter clips</span><input id="clip-filter" type="search" placeholder="Filter clips…" title="Search filename, RAW/ProRes, lens, FPS or ISO" aria-label="Filter clips"></label><button type="button" class="new-clips-filter" id="new-clips-filter" aria-pressed="false" title="Clips added since your last visit in this browser">New · 0</button><label class="offset-sort-label" for="offset-sort-clips"><span>Sort</span><select id="offset-sort-clips" aria-label="Sort clips"><option value="filename">Filename</option><option value="uploaded">Last uploaded</option></select></label>';
+ const icon=path=>`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+ filters.innerHTML=`<details class="clip-filter-menu">
+  <summary class="clip-tool" id="clip-filter-trigger" aria-label="Filter clips" title="Filter clips">${icon('M4 5h16l-6 7v5l-4 2v-7z')}</summary>
+  <label class="clip-filter-panel">Filter clips<input id="clip-filter" type="search" placeholder="Filename or camera details" aria-label="Filter clips"></label>
+ </details>
+ <button type="button" class="clip-tool new-clips-filter" id="new-clips-filter" aria-pressed="false" aria-label="New clips since last visit" title="New clips since last visit">${icon('M12 3v5m0 8v5M3 12h5m8 0h5M7 7l2 2m6 6 2 2M7 17l2-2m6-6 2-2')}<span id="new-clips-count" aria-hidden="true"></span></button>
+ <label class="clip-tool clip-sort-tool" title="Sort clips">${icon('M8 4v16m-4-4 4 4 4-4m4 4V4m-4 4 4-4 4 4')}<select id="offset-sort-clips" aria-label="Sort clips"><option value="filename">Filename</option><option value="uploaded">Last uploaded</option></select></label>`;
  $('offset-sort-clips').value=clipSort;
  $('clip-filter').value=savedSearch;
  const renderFilter=()=>{
@@ -108,7 +114,10 @@ async function load(){
    const show=el.dataset.search.includes(q)&&(!onlyNewClips||el.dataset.new==='true');
    el.style.display=show?'':'none';if(show)visible++;
   });
-  const toggle=$('new-clips-filter');toggle.textContent='New · '+newClipIds.size;
+  const toggle=$('new-clips-filter');
+  $('new-clips-count').textContent=newClipIds.size?String(newClipIds.size):'';
+  $('clip-filter-trigger').setAttribute('data-active',String(!!q));
+  toggle.setAttribute('aria-label','New clips since last visit: '+newClipIds.size);
   toggle.setAttribute('aria-pressed',String(onlyNewClips));
   const empty=$('clip-filter-empty');empty.hidden=!clips.length||visible>0;
   empty.textContent=onlyNewClips&&!newClipIds.size?'No new clips since your last visit.':'No matching clips.';
