@@ -868,6 +868,40 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun showOffsetPanel(title:String, content:View, vararg actions:Button):android.app.Dialog {
+        val dialog=android.app.Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            background=rounded(bg,Color.rgb(57,65,67),18)
+            setPadding(dp(16),dp(12),dp(16),dp(14))
+        }
+        body.addView(text(title,18f).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        val scroll=object:ScrollView(this) {
+            override fun onMeasure(widthMeasureSpec:Int,heightMeasureSpec:Int) {
+                val limit=dp((resources.configuration.screenHeightDp-120).coerceAtLeast(80))
+                val cap=if(View.MeasureSpec.getMode(heightMeasureSpec)==View.MeasureSpec.UNSPECIFIED)
+                    limit else minOf(limit,View.MeasureSpec.getSize(heightMeasureSpec))
+                super.onMeasure(widthMeasureSpec,View.MeasureSpec.makeMeasureSpec(cap,View.MeasureSpec.AT_MOST))
+            }
+        }
+        scroll.addView(content)
+        body.addView(scroll,LinearLayout.LayoutParams(-1,-2))
+        body.addView(LinearLayout(this).apply {
+            gravity=android.view.Gravity.END
+            for(action in actions) addView(action,LinearLayout.LayoutParams(-2,dp(42)).apply {
+                leftMargin=dp(6)
+            })
+        },LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
+        dialog.setContentView(body)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(dp(minOf(460,resources.configuration.screenWidthDp-24)),-2)
+        return dialog
+    }
+
     private fun showProjectPicker(projects:org.json.JSONArray, managing:Boolean=false) {
         val dialog=android.app.Dialog(this)
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
@@ -1233,19 +1267,16 @@ class MainActivity : Activity() {
             addView(text("Access follows the project settings. This QR code does not expire.",
                 11f,muted))
         }
-        offsetDialog().setTitle("Share · $projectName")
-            .setView(layout)
-            .setPositiveButton("Share link") { _,_ ->
+        lateinit var dialog:android.app.Dialog
+        dialog=showOffsetPanel("Share · $projectName",layout,
+            button("Close") { dialog.dismiss() },
+            primaryButton("Share link") {
+                dialog.dismiss()
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                     type="text/plain"
                     putExtra(Intent.EXTRA_TEXT,url)
                 },"Share OFFSET project"))
-            }
-            .setNegativeButton("Close",null)
-            .show().also { dialog ->
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.isAllCaps=false
-                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.isAllCaps=false
-            }
+            })
     }
 
     private fun showProjectShare() {
@@ -1968,14 +1999,16 @@ class MainActivity : Activity() {
                         menuButton.minWidth=dp(34)
                         menuButton.minimumWidth=dp(34)
                         menuButton.setPadding(0,0,0,0)
-                        menuButton.setOnClickListener { view ->
-                            val popup=android.widget.PopupMenu(this,view)
-                            actions.forEachIndexed { index,action -> popup.menu.add(0,index,index,action.first) }
-                            popup.setOnMenuItemClickListener { selected ->
-                                actions.getOrNull(selected.itemId)?.second?.invoke()
-                                true
+                        menuButton.setOnClickListener {
+                            val menu=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+                            lateinit var dialog:android.app.Dialog
+                            for((label,action) in actions) {
+                                menu.addView(button(label) {
+                                    dialog.dismiss()
+                                    action()
+                                },LinearLayout.LayoutParams(-1,dp(42)).apply { topMargin=dp(6) })
                             }
-                            popup.show()
+                            dialog=showOffsetPanel(name,menu,button("Close") { dialog.dismiss() })
                         }
                         detail.addView(menuButton,LinearLayout.LayoutParams(dp(38),dp(36)))
                     }
@@ -2120,24 +2153,20 @@ class MainActivity : Activity() {
         val urgent=queue.count { it.priority }
         layout.addView(text("${queue.size} waiting · ${urgent} prioritized · active upload finishes first",
             12f,muted))
-        var queueDialog:AlertDialog?=null
+        lateinit var queueDialog:android.app.Dialog
         layout.addView(button(if(searchTerm.isBlank())"Find clip by name" else "Filter: $searchTerm · Change") {
-            val field=EditText(this).apply {
-                hint="DJI filename"
-                setSingleLine(true)
-                setText(searchTerm)
-                setSelectAllOnFocus(true)
-            }
-            offsetDialog().setTitle("Find clip in queue")
-                .setView(field)
-                .setNegativeButton("Cancel",null)
-                .setPositiveButton("Filter") { _,_ ->
-                    queueDialog?.dismiss()
-                    showUploadQueue(field.text.toString().trim())
-                }.show()
+            val search=field("DJI filename",searchTerm).apply { setSelectAllOnFocus(true) }
+            lateinit var filterDialog:android.app.Dialog
+            filterDialog=showOffsetPanel("Find clip in queue",search,
+                button("Cancel") { filterDialog.dismiss() },
+                primaryButton("Filter") {
+                    filterDialog.dismiss()
+                    queueDialog.dismiss()
+                    showUploadQueue(search.text.toString().trim())
+                })
         })
         if(searchTerm.isNotBlank())layout.addView(button("Show all waiting clips") {
-            queueDialog?.dismiss()
+            queueDialog.dismiss()
             showUploadQueue()
         })
         if(queue.isEmpty())layout.addView(text(
@@ -2174,12 +2203,12 @@ class MainActivity : Activity() {
                 if(!promoted){
                     showOffsetError("Priority unavailable","The clip is no longer pending in this project.")
                 }
-                queueDialog?.dismiss()
+                queueDialog.dismiss()
                 showUploadQueue(searchTerm)
             })
             if(item.priority)line.addView(button("Clear") {
                 ledger.clearPriority(item.uri,pid)
-                queueDialog?.dismiss()
+                queueDialog.dismiss()
                 showUploadQueue(searchTerm)
             })
             if(item.manual)line.addView(button("Remove") {
@@ -2188,18 +2217,14 @@ class MainActivity : Activity() {
                     "Remove ${name} from the upload queue? The DJI original is not deleted.",
                     "Remove") {
                     ledger.removeFromQueue(item.uri,pid)
-                    queueDialog?.dismiss()
+                    queueDialog.dismiss()
                     showUploadQueue(searchTerm)
                 }
             })
             layout.addView(line,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
         }
-        offsetDialog().setTitle("Upload queue · ${pid}")
-            .setView(ScrollView(this).apply { addView(layout) })
-            .setPositiveButton("Close",null).create().also {
-                queueDialog=it
-                it.show()
-            }
+        queueDialog=showOffsetPanel("Upload queue · $pid",layout,
+            button("Close") { queueDialog.dismiss() })
     }
     private fun chooseManualFiles() {
         val pid=project.text.toString().trim()
