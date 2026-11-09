@@ -393,7 +393,7 @@ def admin_project_clips(project_id:str, request:Request):
         if not c.execute('SELECT id FROM projects WHERE id=?',(project_id,)).fetchone():
             raise HTTPException(404,'Project not found')
         rows=c.execute(
-            'SELECT id,filename,hidden FROM clips WHERE project_id=? AND status=? ORDER BY filename,id',
+            'SELECT id,filename,size,hidden FROM clips WHERE project_id=? AND status=? ORDER BY filename,id',
             (project_id,'ready')).fetchall()
     return JSONResponse([dict(row) for row in rows],headers={'Cache-Control':'no-store'})
 
@@ -407,6 +407,11 @@ def set_clip_visibility(project_id:str, clip_id:str, body:ClipVisibilityIn, requ
         if not updated.rowcount:
             raise HTTPException(404,'Clip not found')
     return {'id':clip_id,'hidden':body.hidden}
+
+@app.delete('/api/admin/projects/{project_id}/clips/{clip_id}')
+def admin_delete_uploaded_clip(project_id:str, clip_id:str, request:Request):
+    require_admin('',request)
+    return _delete_uploaded_clip(project_id,clip_id)
 
 @app.get('/api/admin/projects/{project_id}/activity')
 def admin_project_activity(project_id:str, request:Request, x_admin_key:str=Header(default='')):
@@ -650,6 +655,9 @@ def device_project_uploads(project_id:str, x_device_token:str=Header(default='')
 def device_delete_uploaded_clip(project_id:str, clip_id:str, x_device_token:str=Header(default='')):
     """Remove a delivered proxy from review. Never delete source media on the controller."""
     require_device(x_device_token)
+    return _delete_uploaded_clip(project_id,clip_id)
+
+def _delete_uploaded_clip(project_id:str, clip_id:str):
     with db() as conn:
         clip=conn.execute(
             'SELECT id,filename FROM clips WHERE id=? AND project_id=? AND status=?',
@@ -663,8 +671,8 @@ def device_delete_uploaded_clip(project_id:str, clip_id:str, x_device_token:str=
         if in_progress: raise HTTPException(409,'Clip is being uploaded; stop or finish the upload first')
         if r2_enabled():
             try:
-                delete_file(f"clips/{clip_id}")
                 delete_file(f"thumbnails/{clip_id}.jpg")
+                delete_file(f"clips/{clip_id}")
             except Exception:
                 import logging
                 logging.exception('Unable to delete cloud clip %s',clip_id)
@@ -673,6 +681,7 @@ def device_delete_uploaded_clip(project_id:str, clip_id:str, x_device_token:str=
         (THUMBS/(clip_id+'.jpg')).unlink(missing_ok=True)
         conn.execute('DELETE FROM clip_metadata WHERE clip_id=?',(clip_id,))
         conn.execute('DELETE FROM camera_metadata WHERE clip_id=?',(clip_id,))
+        conn.execute('DELETE FROM completed_uploads WHERE clip_id=? AND project_id=?',(clip_id,project_id))
         conn.execute('DELETE FROM clips WHERE id=? AND project_id=?',(clip_id,project_id))
     return {'deleted':True,'id':clip_id,'project_id':project_id}
 

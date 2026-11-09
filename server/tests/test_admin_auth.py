@@ -69,7 +69,7 @@ def test_rate_limit_rejects_repeated_bad_logins(client):
     }).status_code == 429
 
 
-def test_admin_can_hide_and_show_project_clip(client, monkeypatch):
+def test_admin_can_manage_project_clip(client, monkeypatch):
     import db_persistence
     monkeypatch.setattr(db_persistence, "snapshot", lambda *args: None)
     import time
@@ -93,6 +93,8 @@ def test_admin_can_hide_and_show_project_clip(client, monkeypatch):
         review = f'/api/review/{slug}'
         admin = f'/api/admin/projects/{pid}/clips'
         visibility = f'{admin}/{clip_id}/visibility'
+        deletion = f'{admin}/{clip_id}'
+        assert client.delete(deletion, headers=review_headers).status_code == 401
         assert client.get(admin).status_code == 401
         assert client.patch(visibility, headers=review_headers, json={'hidden': True}).status_code == 401
         assert [clip['id'] for clip in client.get(review + '/clips', headers=review_headers).json()] == [clip_id]
@@ -112,6 +114,22 @@ def test_admin_can_hide_and_show_project_clip(client, monkeypatch):
         assert path.read_bytes() == b'TEST'
         assert client.patch(visibility, headers=origin, json={'hidden': False}).json()['hidden'] is False
         assert [clip['id'] for clip in client.get(review + '/clips', headers=review_headers).json()] == [clip_id]
+        assert client.delete(deletion, headers={'Origin': 'https://untrusted.example'}).status_code == 403
+        assert client.delete(f'/api/admin/projects/wrong/clips/{clip_id}', headers=origin).status_code == 404
+        objects = []
+        monkeypatch.setattr(backend, 'r2_enabled', lambda: True)
+        monkeypatch.setattr(backend, 'delete_file', objects.append)
+        with backend.db() as db:
+            db.execute('INSERT INTO completed_uploads VALUES(?,?,?,?,?)',
+                       ('completed-' + clip_id, pid, clip_id, 4, 'test-sha'))
+        assert client.delete(deletion, headers=origin).json()['deleted'] is True
+        assert objects == [f'thumbnails/{clip_id}.jpg', f'clips/{clip_id}']
+        assert not path.exists()
+        assert client.get(admin).json() == []
+        assert client.get(review + '/clips', headers=review_headers).json() == []
+        with backend.db() as db:
+            assert db.execute('SELECT 1 FROM completed_uploads WHERE clip_id=?',
+                              (clip_id,)).fetchone() is None
     finally:
         path.unlink(missing_ok=True)
         with backend.db() as db:
