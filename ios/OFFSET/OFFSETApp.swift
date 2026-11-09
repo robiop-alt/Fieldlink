@@ -151,14 +151,25 @@ struct AddProjectView: View {
 
 struct ReviewView: View {
     let project: SavedProject
+    @State private var refreshCount = 0
+
     var body: some View {
-        ReviewWebView(url: URL(string: project.url)!)
+        ReviewWebView(url: URL(string: project.url)!, refreshCount: refreshCount)
             .background(Theme.background)
             .navigationTitle(project.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ShareLink(item: URL(string: project.url)!) {
-                    Image(systemName: "square.and.arrow.up")
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        refreshCount += 1
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh project")
+
+                    ShareLink(item: URL(string: project.url)!) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
                 }
             }
     }
@@ -166,6 +177,20 @@ struct ReviewView: View {
 
 struct ReviewWebView: UIViewRepresentable {
     let url: URL
+    let refreshCount: Int
+
+    final class Coordinator {
+        var lastRefreshCount: Int
+
+        init(refreshCount: Int) {
+            lastRefreshCount = refreshCount
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(refreshCount: refreshCount)
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let view = WKWebView()
         view.allowsBackForwardNavigationGestures = true
@@ -173,5 +198,11 @@ struct ReviewWebView: UIViewRepresentable {
         view.load(URLRequest(url: url))
         return view
     }
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        guard context.coordinator.lastRefreshCount != refreshCount else { return }
+        context.coordinator.lastRefreshCount = refreshCount
+        if uiView.reloadFromOrigin() == nil {
+            uiView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+        }
+    }
 }
