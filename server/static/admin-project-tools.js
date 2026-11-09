@@ -121,55 +121,6 @@ async function loadActivity(project,panel,container){
    container.append(list);
  }catch(err){container.replaceChildren(el('p','error',err.message||'Could not load history'))}
 }
-async function manageClips(project){
- const panel=drawer(project,'Clip visibility','Hidden clips stay in the project and can be shown again here.');
- const endpoint='/api/admin/projects/'+encodeURIComponent(project.id)+'/clips';
- const search=el('input');
- search.type='search';search.placeholder='Find a clip';search.setAttribute('aria-label','Find a clip');
- const notice=el('p','admin-drawer-feedback','Loading clips…');
- notice.setAttribute('role','status');
- const list=el('div','admin-activity-list');
- panel.append(search,notice,list);
- try{
-   const clips=await api(endpoint,{cache:'no-store'});
-   if(!panel.isConnected)return;
-   notice.textContent='';
-   const items=[];
-   for(const clip of clips){
-     const item=el('div','admin-activity-item');
-     const info=el('div','admin-activity-desc');
-     const state=el('small',null,clip.hidden?'Hidden':'Visible');
-     info.append(el('strong',null,clip.filename),state);
-     const toggle=action(clip.hidden?'Show':'Hide',async()=>{
-       toggle.disabled=true;
-       notice.textContent='';
-       try{
-         const updated=await api(endpoint+'/'+encodeURIComponent(clip.id)+'/visibility',{
-           method:'PATCH',headers:{'Content-Type':'application/json'},
-           body:JSON.stringify({hidden:!clip.hidden})
-         });
-         clip.hidden=updated.hidden;
-         state.textContent=clip.hidden?'Hidden':'Visible';
-         toggle.textContent=clip.hidden?'Show':'Hide';
-         toggle.setAttribute('aria-label',toggle.textContent+' '+clip.filename);
-         notice.textContent=clip.filename+(clip.hidden?' is hidden from review.':' is visible in review.');
-       }catch(err){notice.textContent=err.message||'Could not update visibility'}
-       finally{toggle.disabled=false}
-     });
-     toggle.setAttribute('aria-label',toggle.textContent+' '+clip.filename);
-     item.append(info,toggle);
-     items.push({item,name:clip.filename.toLowerCase()});
-   }
-   const render=()=>{
-     const query=search.value.trim().toLowerCase();
-     const matches=items.filter(({name})=>name.includes(query));
-     list.replaceChildren(...matches.map(({item})=>item));
-     if(!matches.length)list.append(el('p','hint',clips.length?'No matching clips.':'No uploaded clips yet.'));
-   };
-   search.addEventListener('input',render);
-   render();
- }catch(err){notice.textContent=err.message||'Could not load clips'}
-}
 function clipSize(bytes){
  if(bytes<1000)return bytes+' B';
  const units=['kB','MB','GB','TB'];
@@ -178,7 +129,7 @@ function clipSize(bytes){
  return new Intl.NumberFormat('en-GB',{maximumFractionDigits:2}).format(value)+' '+units[index];
 }
 async function manageStorage(project){
- const panel=drawer(project,'Clip storage','Largest clips first. Delete clips to free project storage.');
+ const panel=drawer(project,'Clip storage','Largest clips first. Manage review visibility or delete clips to free storage.');
  const endpoint='/api/admin/projects/'+encodeURIComponent(project.id)+'/clips';
  const search=el('input');search.type='search';search.placeholder='Find a clip';
  search.setAttribute('aria-label','Find a clip');
@@ -194,20 +145,42 @@ async function manageStorage(project){
    const items=clips.map(clip=>{
      const item=el('div','admin-activity-item');
      const info=el('div','admin-activity-desc');
-     info.append(el('strong',null,clip.filename),
-       el('small',null,clipSize(clip.size)+(clip.hidden?' · Hidden':'')));
+     const state=el('small');
+     info.append(el('strong',null,clip.filename),state);
+     const clipUrl=endpoint+'/'+encodeURIComponent(clip.id);
+     const updateVisibility=()=>{
+       state.textContent=clipSize(clip.size)+(clip.hidden?' · Hidden':' · Visible');
+       toggle.textContent=clip.hidden?'Show':'Hide';
+       toggle.setAttribute('aria-label',toggle.textContent+' '+clip.filename);
+     };
+     const toggle=action('',async()=>{
+       toggle.disabled=remove.disabled=true;
+       try{
+         const result=await api(clipUrl+'/visibility',{
+           method:'PATCH',headers:{'Content-Type':'application/json'},
+           body:JSON.stringify({hidden:!clip.hidden})
+         });
+         clip.hidden=result.hidden;
+         updateVisibility();
+         notice.textContent=clip.filename+(clip.hidden?' is hidden from review.':' is visible in review.');
+       }catch(err){notice.textContent=err.message||'Could not update visibility'}
+       finally{toggle.disabled=remove.disabled=false}
+     });
      const remove=action('Delete',async()=>{
        if(!confirm('Permanently delete '+clip.filename+' ('+clipSize(clip.size)+') from '+project.name+'?'))return;
-       remove.disabled=true;
+       toggle.disabled=remove.disabled=true;
        try{
-         await api(endpoint+'/'+encodeURIComponent(clip.id),{method:'DELETE'});
+         await api(clipUrl,{method:'DELETE'});
          items.splice(items.findIndex(entry=>entry.clip===clip),1);
          render();
          notice.textContent=clip.filename+' deleted.';
-       }catch(err){notice.textContent=err.message||'Could not delete clip';remove.disabled=false}
+       }catch(err){notice.textContent=err.message||'Could not delete clip';toggle.disabled=remove.disabled=false}
      },'secondary admin-manage-delete');
      remove.setAttribute('aria-label','Delete '+clip.filename);
-     item.append(info,remove);
+     updateVisibility();
+     const actions=el('div','project-actions');
+     actions.append(toggle,remove);
+     item.append(info,actions);
      return {clip,item};
    });
    const render=()=>{
@@ -249,7 +222,7 @@ async function manage(projectId){
    }catch(err){notice.textContent=err.message||'Archive change failed';archive.disabled=false}
  });
  const remove=action('Delete project',()=>deleteProject(projectId),'secondary admin-manage-delete');
- controls.append(settings,action('Clip visibility',()=>manageClips(project)),action('Clip storage',()=>manageStorage(project)),rename,archive,remove);
+ controls.append(settings,action('Clip storage',()=>manageStorage(project)),rename,archive,remove);
  panel.append(controls,notice);
  const header=el('div','admin-activity-heading');
  header.append(el('h4',null,'Recent transfers'),action('Refresh history',()=>loadActivity(project,panel,history)));
