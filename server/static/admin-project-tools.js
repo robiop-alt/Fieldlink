@@ -170,6 +170,58 @@ async function manageClips(project){
    render();
  }catch(err){notice.textContent=err.message||'Could not load clips'}
 }
+function clipSize(bytes){
+ if(bytes<1000)return bytes+' B';
+ const units=['kB','MB','GB','TB'];
+ let value=bytes/1000,index=0;
+ while(value>=1000&&index<units.length-1){value/=1000;index++}
+ return new Intl.NumberFormat('en-GB',{maximumFractionDigits:2}).format(value)+' '+units[index];
+}
+async function manageStorage(project){
+ const panel=drawer(project,'Clip storage','Largest clips first. Delete clips to free project storage.');
+ const endpoint='/api/admin/projects/'+encodeURIComponent(project.id)+'/clips';
+ const search=el('input');search.type='search';search.placeholder='Find a clip';
+ search.setAttribute('aria-label','Find a clip');
+ const totals=el('p','hint');
+ const notice=el('p','admin-drawer-feedback','Loading clips…');
+ notice.setAttribute('role','status');
+ const list=el('div','admin-activity-list');
+ panel.append(search,totals,notice,list);
+ try{
+   const clips=await api(endpoint,{cache:'no-store'});
+   if(!panel.isConnected)return;
+   clips.sort((a,b)=>b.size-a.size);
+   const items=clips.map(clip=>{
+     const item=el('div','admin-activity-item');
+     const info=el('div','admin-activity-desc');
+     info.append(el('strong',null,clip.filename),
+       el('small',null,clipSize(clip.size)+(clip.hidden?' · Hidden':'')));
+     const remove=action('Delete',async()=>{
+       if(!confirm('Permanently delete '+clip.filename+' ('+clipSize(clip.size)+') from '+project.name+'?'))return;
+       remove.disabled=true;
+       try{
+         await api(endpoint+'/'+encodeURIComponent(clip.id),{method:'DELETE'});
+         items.splice(items.findIndex(entry=>entry.clip===clip),1);
+         render();
+         notice.textContent=clip.filename+' deleted.';
+       }catch(err){notice.textContent=err.message||'Could not delete clip';remove.disabled=false}
+     },'secondary admin-manage-delete');
+     remove.setAttribute('aria-label','Delete '+clip.filename);
+     item.append(info,remove);
+     return {clip,item};
+   });
+   const render=()=>{
+     const query=search.value.trim().toLowerCase();
+     const matches=items.filter(({clip})=>clip.filename.toLowerCase().includes(query));
+     totals.textContent=items.length+' clips · '+clipSize(items.reduce((sum,{clip})=>sum+clip.size,0));
+     list.replaceChildren(...matches.map(({item})=>item));
+     if(!matches.length)list.append(el('p','hint',items.length?'No matching clips.':'No uploaded clips yet.'));
+   };
+   notice.textContent='';
+   search.addEventListener('input',render);
+   render();
+ }catch(err){notice.textContent=err.message||'Could not load clips'}
+}
 async function manage(projectId){
  const project=allProjects.find(p=>p.id===projectId);
  if(!project)return;
@@ -197,7 +249,7 @@ async function manage(projectId){
    }catch(err){notice.textContent=err.message||'Archive change failed';archive.disabled=false}
  });
  const remove=action('Delete project',()=>deleteProject(projectId),'secondary admin-manage-delete');
- controls.append(settings,action('Clip visibility',()=>manageClips(project)),rename,archive,remove);
+ controls.append(settings,action('Clip visibility',()=>manageClips(project)),action('Clip storage',()=>manageStorage(project)),rename,archive,remove);
  panel.append(controls,notice);
  const header=el('div','admin-activity-heading');
  header.append(el('h4',null,'Recent transfers'),action('Refresh history',()=>loadActivity(project,panel,history)));
