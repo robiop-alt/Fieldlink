@@ -67,3 +67,53 @@ def test_rate_limit_rejects_repeated_bad_logins(client):
     assert client.post("/api/admin/login", json={
         "username": "offset-admin", "password": "bad"
     }).status_code == 429
+
+
+def test_admin_can_hide_and_show_project_clip(client, monkeypatch):
+    import db_persistence
+    monkeypatch.setattr(db_persistence, "snapshot", lambda *args: None)
+    import time
+    import uuid
+
+    pid, clip_id = uuid.uuid4().hex, uuid.uuid4().hex
+    slug = 'test-' + pid
+    now = int(time.time())
+    with backend.db() as db:
+        db.execute(
+            'INSERT INTO projects(id,name,slug,pin_hash,created) VALUES(?,?,?,?,?)',
+            (pid, 'Visibility test', slug, 'unused', now))
+        db.execute(
+            'INSERT INTO clips(id,project_id,filename,size,created,status) VALUES(?,?,?,?,?,?)',
+            (clip_id, pid, 'test.mp4', 4, now, 'ready'))
+    path = backend.FILES / clip_id
+    path.write_bytes(b'TEST')
+    try:
+        token = backend.session_token(pid, now + 3600)
+        review_headers = {'Authorization': 'Bearer ' + token}
+        review = f'/api/review/{slug}'
+        admin = f'/api/admin/projects/{pid}/clips'
+        visibility = f'{admin}/{clip_id}/visibility'
+        assert client.get(admin).status_code == 401
+        assert client.patch(visibility, headers=review_headers, json={'hidden': True}).status_code == 401
+        assert [clip['id'] for clip in client.get(review + '/clips', headers=review_headers).json()] == [clip_id]
+        assert client.post('/api/admin/login', json={
+            'username': 'offset-admin', 'password': 'test-password'
+        }).status_code == 200
+        assert client.patch(visibility, headers={'Origin': 'https://untrusted.example'},
+                            json={'hidden': True}).status_code == 403
+        origin = {'Origin': 'https://testserver'}
+        assert client.patch(visibility, headers=origin, json={'hidden': True}).json()['hidden'] is True
+        assert client.get(admin).json()[0]['hidden'] == 1
+        assert client.get(review + '/clips', headers=review_headers).json() == []
+        for suffix in ('file', 'file?download=1', 'thumbnail', 'duration'):
+            separator = '&' if '?' in suffix else '?'
+            assert client.get(f'{review}/clips/{clip_id}/{suffix}{separator}session={token}').status_code == 404
+        assert client.get(f'{review}/download-selected?session={token}&ids={clip_id}').status_code == 404
+        assert path.read_bytes() == b'TEST'
+        assert client.patch(visibility, headers=origin, json={'hidden': False}).json()['hidden'] is False
+        assert [clip['id'] for clip in client.get(review + '/clips', headers=review_headers).json()] == [clip_id]
+    finally:
+        path.unlink(missing_ok=True)
+        with backend.db() as db:
+            db.execute('DELETE FROM clips WHERE id=?', (clip_id,))
+            db.execute('DELETE FROM projects WHERE id=?', (pid,))
