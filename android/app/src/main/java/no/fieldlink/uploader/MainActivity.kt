@@ -1317,7 +1317,7 @@ class MainActivity : Activity() {
     private data class CloudClip(val id:String,val filename:String,val bytes:Long)
 
     /** Operator-only local player. No decoding or playback runs in the background. */
-    private fun showLocalClipPreview(file:DocumentFile, playlist:List<DocumentFile>) {
+    private fun showLocalClipPreview(file:DocumentFile, playlist:List<DocumentFile>, selectionBoxes:Map<Uri,android.widget.CheckBox>) {
         val files=playlist.filter { it.isFile && it.name.orEmpty().endsWith(".mp4",true) }
         if(files.isEmpty()) {
             showOffsetError("Preview unavailable","No locally accessible MP4 files.")
@@ -1340,7 +1340,9 @@ class MainActivity : Activity() {
         }
         var scrubbing=false
         var durationMs=0
-        val playback=primaryButton("▶ Play") {
+        var controlsUntil=0L
+        val playback=button("▶") {
+            controlsUntil=android.os.SystemClock.uptimeMillis()+2500
             if(player.isPlaying) {
                 player.pause()
             } else {
@@ -1348,8 +1350,18 @@ class MainActivity : Activity() {
             }
         }
         val handler=android.os.Handler(android.os.Looper.getMainLooper())
+        lateinit var header:View
+        lateinit var footer:View
+        fun showControls() {
+            controlsUntil=android.os.SystemClock.uptimeMillis()+2500
+            header.visibility=View.VISIBLE
+            footer.visibility=View.VISIBLE
+        }
         val ticker=object:Runnable {
             override fun run() {
+                val visible=!player.isPlaying || scrubbing || android.os.SystemClock.uptimeMillis()<controlsUntil
+                header.visibility=if(visible) View.VISIBLE else View.GONE
+                footer.visibility=header.visibility
                 if(!scrubbing) {
                     try {
                         val total=player.duration.coerceAtLeast(0)
@@ -1363,7 +1375,8 @@ class MainActivity : Activity() {
                             return "%02d:%02d".format(java.util.Locale.US,seconds/60,seconds%60)
                         }
                         position.text="${clock(current)} / ${clock(durationMs)}"
-                        playback.text=if(player.isPlaying) "Ⅱ Pause" else "▶ Play"
+                        playback.text=if(player.isPlaying) "Ⅱ" else "▶"
+                        playback.contentDescription=if(player.isPlaying) "Pause" else "Play"
                     }catch(_:Exception){}
                 }
                 handler.postDelayed(this,250)
@@ -1382,10 +1395,11 @@ class MainActivity : Activity() {
                     player.seekTo((durationMs.toLong()*seek.progress/1000).toInt())
                 }catch(_:Exception){}
                 scrubbing=false
+                showControls()
             }
         })
-        val previous=button("◀ Previous") {}
-        val next=button("Next ▶") {}
+        val previous=button("‹") {}.apply { contentDescription="Previous clip" }
+        val next=button("›") {}.apply { contentDescription="Next clip" }
         val title=text("",16f,Color.WHITE).apply {
             setTypeface(typeface,android.graphics.Typeface.BOLD)
             maxLines=1
@@ -1403,66 +1417,70 @@ class MainActivity : Activity() {
             playback.isEnabled=false
             seek.isEnabled=false
         }
-        val screen=resources.configuration
-        val videoHeight=minOf(screen.screenWidthDp*9/16,screen.screenHeightDp/2)
-        val content=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL
-            background=rounded(bg,Color.rgb(52,62,64),16)
-            setPadding(dp(14),dp(10),dp(14),dp(12))
-        }
-        val header=LinearLayout(this).apply {
-            gravity=android.view.Gravity.CENTER_VERTICAL
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation=LinearLayout.VERTICAL
-                addView(clipCount)
-                addView(title)
-            },LinearLayout.LayoutParams(0,-2,1f))
-            addView(close,LinearLayout.LayoutParams(dp(44),dp(44)))
-        }
-        content.addView(header)
-        val videoStage=android.widget.FrameLayout(this).apply {
+        val choose=button("Clips ▾") {}
+        val select=button("Select") {}
+        val content=android.widget.FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
-            addView(player,android.widget.FrameLayout.LayoutParams(
-                -1,-1,android.view.Gravity.CENTER
-            ))
+            addView(player,android.widget.FrameLayout.LayoutParams(-1,-1,android.view.Gravity.CENTER))
         }
-        content.addView(videoStage,LinearLayout.LayoutParams(-1,dp(videoHeight)).apply {
-            topMargin=dp(6)
-        })
-        val timeline=LinearLayout(this).apply {
+        val tapSurface=View(this).apply {
+            contentDescription="Show playback controls"
+            setOnClickListener { showControls() }
+        }
+        content.addView(tapSurface,android.widget.FrameLayout.LayoutParams(-1,-1))
+        header=LinearLayout(this).apply {
+            setBackgroundColor(Color.argb(215,17,20,22))
             gravity=android.view.Gravity.CENTER_VERTICAL
-            addView(seek,LinearLayout.LayoutParams(0,dp(42),1f))
-            addView(position)
+            setPadding(dp(12),0,dp(8),0)
+            addView(title,LinearLayout.LayoutParams(0,-2,1f))
+            addView(clipCount)
+            addView(choose,LinearLayout.LayoutParams(-2,dp(38)))
+            addView(select,LinearLayout.LayoutParams(-2,dp(38)))
+            addView(close,LinearLayout.LayoutParams(dp(40),dp(38)))
         }
-        content.addView(timeline)
-        val controls=LinearLayout(this).apply {
-            gravity=android.view.Gravity.CENTER
-            addView(previous,LinearLayout.LayoutParams(0,dp(44),1f))
-            addView(playback,LinearLayout.LayoutParams(0,dp(44),1f).apply {
-                setMargins(dp(8),0,dp(8),0)
+        content.addView(header,android.widget.FrameLayout.LayoutParams(-1,-2,android.view.Gravity.TOP))
+        footer=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setBackgroundColor(Color.argb(215,17,20,22))
+            setPadding(dp(8),0,dp(12),0)
+            addView(LinearLayout(this@MainActivity).apply {
+                gravity=android.view.Gravity.CENTER_VERTICAL
+                for(control in listOf(previous,playback,next))
+                    addView(control,LinearLayout.LayoutParams(dp(40),dp(38)))
+                addView(seek,LinearLayout.LayoutParams(0,dp(38),1f))
+                addView(position)
             })
-            addView(next,LinearLayout.LayoutParams(0,dp(44),1f))
+            addView(playerStatus)
+            addView(info)
         }
-        content.addView(controls)
-        content.addView(playerStatus)
-        content.addView(info,LinearLayout.LayoutParams(-1,-2).apply {
-            topMargin=dp(6)
-        })
+        content.addView(footer,android.widget.FrameLayout.LayoutParams(-1,-2,android.view.Gravity.BOTTOM))
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         dialog.setContentView(content)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         var closed=false
         var requestId=0
+        fun updateSelection() {
+            val box=selectionBoxes[files[index].uri]
+            select.isEnabled=box?.isEnabled==true
+            select.text=if(box?.isChecked==true) "Selected ✓" else "Select"
+        }
+        select.setOnClickListener {
+            selectionBoxes[files[index].uri]?.performClick()
+            updateSelection()
+            showControls()
+        }
         fun loadClip() {
+            showControls()
+            updateSelection()
             val current=files[index]
             requestId++
             val thisRequest=requestId
             durationMs=0
             seek.progress=0
             position.text="00:00 / 00:00"
-            clipCount.text="LOCAL PREVIEW  ·  ${index+1} / ${files.size}"
+            clipCount.text="${index+1} / ${files.size}"
             title.text=current.name ?: "Clip"
-            playback.text="▶ Play"
+            playback.text="▶"
             previous.isEnabled=index>0
             next.isEnabled=index<files.lastIndex
             info.text="Reading clip details…"
@@ -1504,6 +1522,16 @@ class MainActivity : Activity() {
                 }
             }.start()
         }
+        choose.setOnClickListener {
+            player.pause()
+            showControls()
+            offsetDialog().setTitle("Choose clip")
+                .setSingleChoiceItems(files.map { it.name ?: "Clip" }.toTypedArray(),index) { list,which ->
+                    list.dismiss()
+                    if(index!=which) { index=which;loadClip() }
+                }
+                .setNegativeButton("Close",null).show()
+        }
         previous.setOnClickListener {
             if(index>0) { index--;loadClip() }
         }
@@ -1516,11 +1544,8 @@ class MainActivity : Activity() {
             try { player.stopPlayback() }catch(_:Exception){}
         }
         dialog.show()
-        // Fill the available controller display without forcing global orientation.
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels*0.95).toInt(),
-            android.view.WindowManager.LayoutParams.WRAP_CONTENT
-        )
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        dialog.window?.setLayout(-1,-1)
         loadClip()
         handler.post(ticker)
     }
@@ -1723,7 +1748,7 @@ class MainActivity : Activity() {
                     val thumb=thumbs[stem]
                     val bitmap=try {
                         thumb?.let { t -> contentResolver.openInputStream(t.uri)?.use { stream ->
-                            BitmapFactory.decodeStream(stream,null,BitmapFactory.Options().apply { inSampleSize=4 })
+                            BitmapFactory.decodeStream(stream,null,BitmapFactory.Options().apply { inSampleSize=2 })
                         } }
                     }catch(_:Exception){null}
                     clips.add(LibraryClip(file,bitmap))
@@ -1818,6 +1843,7 @@ class MainActivity : Activity() {
                 val libraryGrid=android.widget.GridLayout(this).apply { columnCount=columns }
                 grid.addView(libraryGrid)
                 val playlist=clips.map { it.file }
+                val selectionBoxes=mutableMapOf<Uri,android.widget.CheckBox>()
                 for((position,item) in clips.withIndex()) {
                     val file=item.file
                     val name=file.name ?: "clip.mp4"
@@ -1845,9 +1871,9 @@ class MainActivity : Activity() {
                     }
                     preview.contentDescription="Preview $name"
                     preview.isClickable=true
-                    preview.setOnClickListener { showLocalClipPreview(file,playlist) }
+                    preview.setOnClickListener { showLocalClipPreview(file,playlist,selectionBoxes) }
                     card.addView(preview,LinearLayout.LayoutParams(-1,dp(95)))
-                    card.addView(button("▶ Preview") { showLocalClipPreview(file,playlist) },
+                    card.addView(button("▶ Preview") { showLocalClipPreview(file,playlist,selectionBoxes) },
                         LinearLayout.LayoutParams(-1,dp(29)))
                     val selectRow=LinearLayout(this).apply {
                         orientation=LinearLayout.HORIZONTAL
@@ -1864,6 +1890,7 @@ class MainActivity : Activity() {
                             refreshBulk()
                         }
                     }
+                    selectionBoxes[file.uri]=selectBox
                     selectRow.addView(selectBox,LinearLayout.LayoutParams(dp(33),dp(34)))
                     selectRow.addView(text(name,12f,Color.WHITE).apply {
                         maxLines=1
