@@ -1308,11 +1308,18 @@ class MainActivity : Activity() {
         val player=android.widget.VideoView(this)
         val playerStatus=text("Preparing preview…",11f,muted)
         val info=text("Loading clip details…",11f,muted)
-        val position=text("00:00 / 00:00",11f,muted)
-        val seek=android.widget.SeekBar(this).apply { max=1000 }
+        val position=text("00:00 / 00:00",11f,muted).apply {
+            typeface=android.graphics.Typeface.MONOSPACE
+        }
+        val seek=SeekBar(this).apply {
+            max=1000
+            progressTintList=android.content.res.ColorStateList.valueOf(accent)
+            thumbTintList=progressTintList
+            contentDescription="Playback position"
+        }
         var scrubbing=false
         var durationMs=0
-        val playback=button("▶ Play") {
+        val playback=primaryButton("▶ Play") {
             if(player.isPlaying) {
                 player.pause()
             } else {
@@ -1358,8 +1365,16 @@ class MainActivity : Activity() {
         })
         val previous=button("◀ Previous") {}
         val next=button("Next ▶") {}
-        val title=text("",13f,Color.WHITE).apply {
+        val title=text("",16f,Color.WHITE).apply {
             setTypeface(typeface,android.graphics.Typeface.BOLD)
+            maxLines=1
+            ellipsize=android.text.TextUtils.TruncateAt.MIDDLE
+        }
+        val clipCount=text("",11f,accent)
+        val dialog=android.app.Dialog(this)
+        val close=button("✕") { dialog.dismiss() }.apply {
+            contentDescription="Close preview"
+            textSize=16f
         }
         fun showPlaybackError(message:String) {
             playerStatus.text=message
@@ -1367,26 +1382,54 @@ class MainActivity : Activity() {
             playback.isEnabled=false
             seek.isEnabled=false
         }
+        val screen=resources.configuration
+        val videoHeight=minOf(screen.screenWidthDp*9/16,screen.screenHeightDp/2)
         val content=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
-            setPadding(dp(12),dp(8),dp(12),dp(8))
-            addView(title)
-            addView(player,LinearLayout.LayoutParams(-1,dp(245)))
-            addView(seek)
-            addView(position)
-            addView(playerStatus)
-            addView(info)
-            val controls=LinearLayout(this@MainActivity).apply {
-                orientation=LinearLayout.HORIZONTAL
-                gravity=android.view.Gravity.CENTER_VERTICAL
-            }
-            controls.addView(previous,LinearLayout.LayoutParams(0,dp(38),1f))
-            controls.addView(playback,LinearLayout.LayoutParams(0,dp(38),1.3f))
-            controls.addView(next,LinearLayout.LayoutParams(0,dp(38),1f))
-            addView(controls)
+            background=rounded(bg,Color.rgb(52,62,64),16)
+            setPadding(dp(14),dp(10),dp(14),dp(12))
         }
-        val dialog=AlertDialog.Builder(this).setTitle("OFFSET · Player")
-            .setView(content).setPositiveButton("Close",null).create()
+        val header=LinearLayout(this).apply {
+            gravity=android.view.Gravity.CENTER_VERTICAL
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation=LinearLayout.VERTICAL
+                addView(clipCount)
+                addView(title)
+            },LinearLayout.LayoutParams(0,-2,1f))
+            addView(close,LinearLayout.LayoutParams(dp(44),dp(44)))
+        }
+        content.addView(header)
+        val videoStage=android.widget.FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(player,android.widget.FrameLayout.LayoutParams(
+                -1,-1,android.view.Gravity.CENTER
+            ))
+        }
+        content.addView(videoStage,LinearLayout.LayoutParams(-1,dp(videoHeight)).apply {
+            topMargin=dp(6)
+        })
+        val timeline=LinearLayout(this).apply {
+            gravity=android.view.Gravity.CENTER_VERTICAL
+            addView(seek,LinearLayout.LayoutParams(0,dp(42),1f))
+            addView(position)
+        }
+        content.addView(timeline)
+        val controls=LinearLayout(this).apply {
+            gravity=android.view.Gravity.CENTER
+            addView(previous,LinearLayout.LayoutParams(0,dp(44),1f))
+            addView(playback,LinearLayout.LayoutParams(0,dp(44),1f).apply {
+                setMargins(dp(8),0,dp(8),0)
+            })
+            addView(next,LinearLayout.LayoutParams(0,dp(44),1f))
+        }
+        content.addView(controls)
+        content.addView(playerStatus)
+        content.addView(info,LinearLayout.LayoutParams(-1,-2).apply {
+            topMargin=dp(6)
+        })
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        dialog.setContentView(content)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         var closed=false
         var requestId=0
         fun loadClip() {
@@ -1396,7 +1439,9 @@ class MainActivity : Activity() {
             durationMs=0
             seek.progress=0
             position.text="00:00 / 00:00"
-            title.text="${index+1} / ${files.size} · ${current.name ?: "Clip"}"
+            clipCount.text="LOCAL PREVIEW  ·  ${index+1} / ${files.size}"
+            title.text=current.name ?: "Clip"
+            playback.text="▶ Play"
             previous.isEnabled=index>0
             next.isEnabled=index<files.lastIndex
             info.text="Reading clip details…"
@@ -1430,9 +1475,8 @@ class MainActivity : Activity() {
                 } ?: "Unavailable"
                 val resolution=if(details.width!=null && details.height!=null)
                     "${details.width} × ${details.height}" else "Unavailable"
-                val summary="Duration: $duration · Resolution: $resolution\n"+
-                    "Size: ${ControllerMediaTools.pretty(current.length())} · "+
-                    "Modified: ${details.recordedAt ?: "Unknown"}"
+                val summary="$resolution  ·  $duration  ·  ${ControllerMediaTools.pretty(current.length())}"+
+                    (details.recordedAt?.let { "  ·  $it" } ?: "")
                 runOnUiThread {
                     if(!closed && dialog.isShowing && requestId==thisRequest)
                         info.text=summary
