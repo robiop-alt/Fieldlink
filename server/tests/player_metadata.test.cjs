@@ -10,7 +10,7 @@ function setup(clips,compact=true){
     constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.style={};this.events={};this.className='';this.value='off';this.paused=true;const classes=new Set();this.classList={add(name){classes.add(name)},remove(name){classes.delete(name)},contains(name){return classes.has(name)},toggle(name,on){on?classes.add(name):classes.delete(name)}};}
     append(...children){this.children.push(...children)}
     replaceChildren(...children){this.children=children}
-    setAttribute(){} removeAttribute(){} pause(){} load(){}
+    setAttribute(){} removeAttribute(){} pause(){} load(){} focus(){}
     play(){this.paused=false;return Promise.resolve()}
     addEventListener(name,fn){const previous=this.events[name];this.events[name]=previous?(...args)=>{previous(...args);fn(...args)}:fn}
     contains(){return false}
@@ -52,7 +52,7 @@ test('camera readings are rendered as text',()=>{
 
 test('landscape fullscreen hides controls during playback and a tap reveals them',async()=>{
  const s=setup([{id:'a',filename:'A.mov'}]);s.video.paused=false;
- await s.controls.children[5].events.click();
+ await s.controls.children.find(el=>el.classList.contains('offset-fullscreen-toggle')).events.click();
  assert.equal(s.player.classList.contains('offset-player-theater'),true);
  assert.equal(s.timers.size,1);
  s.flush();assert.equal(s.player.classList.contains('offset-player-chrome-hidden'),true);
@@ -65,10 +65,10 @@ test('landscape fullscreen hides controls during playback and a tap reveals them
 
 test('scrubbing holds controls visible and exiting fullscreen clears the timer',async()=>{
  const s=setup([{id:'a',filename:'A.mov'}]);s.video.paused=false;
- await s.controls.children[5].events.click();
+ await s.controls.children.find(el=>el.classList.contains('offset-fullscreen-toggle')).events.click();
  s.controls.events.pointerdown();assert.equal(s.timers.size,0);
  s.document.events.pointerup();assert.equal(s.timers.size,1);
- await s.controls.children[5].events.click();
+ await s.controls.children.find(el=>el.classList.contains('offset-fullscreen-toggle')).events.click();
  assert.equal(s.timers.size,0);
  assert.equal(s.player.classList.contains('offset-player-theater'),false);
  assert.equal(s.player.classList.contains('offset-player-chrome-hidden'),false);
@@ -76,8 +76,21 @@ test('scrubbing holds controls visible and exiting fullscreen clears the timer',
 
 test('portrait fullscreen keeps controls visible',async()=>{
  const s=setup([{id:'a',filename:'A.mov'}],false);s.video.paused=false;
- await s.controls.children[5].events.click();
+ await s.controls.children.find(el=>el.classList.contains('offset-fullscreen-toggle')).events.click();
  assert.equal(s.timers.size,0);
  s.stage.events.click();
  assert.equal(s.player.classList.contains('offset-player-chrome-hidden'),false);
+});
+
+test('choosing a frame line shows the guide and closes the panel',()=>{
+  const {controls,stage}=setup([{id:'a',filename:'A.mov'}]);
+  const menu=controls.children.find(el=>el.className==='offset-frame-menu');
+  const [trigger,panel]=menu.children;
+  const choice=panel.children.find(el=>el.children[0].value==='2.39').children[0];
+  menu.open=true;
+  choice.checked=true;
+  choice.events.change();
+  assert.equal(stage.children[1].hidden,false);
+  assert.equal(trigger.dataset.active,'true');
+  assert.equal(menu.open,false);
 });

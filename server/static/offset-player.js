@@ -77,27 +77,48 @@
     const fullscreenEnterSvg='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 4H4v5M15 4h5v5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const fullscreenExitSvg='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     fullscreen.innerHTML=fullscreenEnterSvg;
-    controls.append(previous,toggle,clock,seek,next,fullscreen);
-
-    const options=make('div','offset-player-options');
-    const frameLabel=make('label','offset-frame-inline','Frame lines');
-    const frameSelect=make('select','offset-player-frames-select');
-    [['off','Off'],['1.333333','4:3'],['1.777778','16:9'],['1.85','1.85:1'],['2.00','2.00:1'],['2.20','2.20:1'],['2.39','2.39:1']].forEach(([value,text])=>{
-      const opt=make('option',null,text);opt.value=value;frameSelect.append(opt);
-    });
-    // Per-project setting in this browser, never attached to the media file.
+    const listeners=[];
+    const listen=(el,type,fn) => {el.addEventListener(type,fn);listeners.push([el,type,fn]);};
+    const frameMenu=make('details','offset-frame-menu');
+    const frameTrigger=make('summary','offset-frame-trigger');
+    frameTrigger.title='Frame lines';
+    frameTrigger.setAttribute('aria-label','Frame lines');
+    frameTrigger.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 10h16M4 14h16" stroke="currentColor" stroke-width="1.4"/></svg>';
+    const framePanel=make('div','offset-frame-panel');
+    framePanel.setAttribute('role','group');
+    framePanel.setAttribute('aria-label','Frame line formats');
     const frameStorageKey='offset:framelines:'+encodeURIComponent(location.pathname.split('/').filter(Boolean).pop()||'');
-    try {
-      const saved=localStorage.getItem(frameStorageKey);
-      if(saved && [...frameSelect.options].some(option=>option.value===saved)) frameSelect.value=saved;
-    } catch (_) { /* Private browsing can disable storage. */ }
-    frameLabel.append(frameSelect);
+    let frameValue='off';
+    try { frameValue=localStorage.getItem(frameStorageKey)||'off' } catch (_) {}
+    const formats=[['off','Off'],['2.39','2.39:1'],['2.20','2.20:1'],['2.00','2.00:1'],['1.85','1.85:1'],['1.777778','16:9'],['1.333333','4:3']];
+    if(!formats.some(([value])=>value===frameValue))frameValue='off';
+    frameTrigger.dataset.active=String(frameValue!=='off');
+    for(const [value,title] of formats){
+      const choice=make('label','offset-frame-choice');
+      const radio=make('input');
+      radio.type='radio';radio.name='offset-frame-format';radio.value=value;radio.checked=value===frameValue;
+      listen(radio,'change',()=>{
+        if(!radio.checked)return;
+        frameValue=value;
+        frameTrigger.dataset.active=String(value!=='off');
+        try { localStorage.setItem(frameStorageKey,value) } catch (_) {}
+        updateFrames();
+        frameMenu.open=false;
+        frameTrigger.focus();
+        showChrome();
+      });
+      choice.append(radio,make('span',null,title));
+      framePanel.append(choice);
+    }
+    frameMenu.append(frameTrigger,framePanel);
+    controls.append(previous,toggle,clock,seek,next,frameMenu,fullscreen);
+    const options=make('div','offset-player-options');
     const download=make('a','offset-player-download','Download clip ↓');
     if(allowDownloads) options.append(download);
     const metadata=make('div','offset-player-metadata');
     const cameraFields=make('div','offset-camera-fields');
     cameraFields.setAttribute('aria-label','Camera details for selected clip');
-    metadata.append(cameraFields,frameLabel);
+    metadata.append(cameraFields);
     const updateCameraDetails=clip=>{
       // Only DJI Pilot camera readings; proxy metadata must never fill these fields.
       const data=clip.camera_metadata&&typeof clip.camera_metadata==='object'?clip.camera_metadata:{};
@@ -115,8 +136,6 @@
 
     let index=0, loading=false;
     let cards=[...list.querySelectorAll('.clip')];
-    const listeners=[];
-    const listen=(el,type,fn) => {el.addEventListener(type,fn);listeners.push([el,type,fn]);};
     const duration = () => Number.isFinite(video.duration) && video.duration>0 ? video.duration : NaN;
     const updateTime=()=>{
       const total=duration();
@@ -131,8 +150,8 @@
       next.disabled=index===clips.length-1;
     };
     const updateFrames=()=>{
-      if(frameSelect.value==='off'){frames.hidden=true;return}
-      const ratio=Number(frameSelect.value);
+      if(frameValue==='off'){frames.hidden=true;return}
+      const ratio=Number(frameValue);
       const bounds=stage.getBoundingClientRect();
       if(!bounds.width||!bounds.height)return;
       const native=(video.videoWidth&&video.videoHeight)?video.videoWidth/video.videoHeight:16/9;
@@ -199,11 +218,11 @@
     const stopChromeTimer=()=>{if(chromeTimer!==null){clearTimeout(chromeTimer);chromeTimer=null}};
     const showChrome=(autoHide=true)=>{
       stopChromeTimer();player.classList.remove('offset-player-chrome-hidden');
-      if(autoHide&&compactFullscreen()&&!video.paused&&!video.ended&&!chromeInteracting){
+      if(autoHide&&compactFullscreen()&&!video.paused&&!video.ended&&!chromeInteracting&&!frameMenu.open&&!frameMenu.open){
         chromeTimer=setTimeout(()=>{
           chromeTimer=null;
           const focused=document.activeElement;
-          if(compactFullscreen()&&!video.paused&&!chromeInteracting&&
+          if(compactFullscreen()&&!video.paused&&!chromeInteracting&&!frameMenu.open&&
              !(focused&&player.contains(focused)&&focused.matches?.(':focus-visible')))
             player.classList.add('offset-player-chrome-hidden');
         },2500);
@@ -243,12 +262,15 @@
     listen(document,'fullscreenchange',updateFullscreenButton);
     listen(document,'webkitfullscreenchange',updateFullscreenButton);
     listen(document,'keydown',event=>{
+      if(event.key==='Escape'&&frameMenu.open){
+        frameMenu.open=false;frameTrigger.focus();event.preventDefault();return;
+      }
       if(isFullscreen())showChrome(false);
       if(event.key==='Escape' && player.classList.contains('offset-player-theater'))exitTheater();
     });
-    listen(frameSelect,'change',()=>{
-      try {localStorage.setItem(frameStorageKey,frameSelect.value)} catch (_) {}
-      updateFrames();
+    listen(frameMenu,'toggle',()=>showChrome());
+    listen(document,'click',event=>{
+      if(frameMenu.open&&!frameMenu.contains(event.target))frameMenu.open=false;
     });
     listen(video,'timeupdate',updateTime);
     listen(video,'loadedmetadata',()=>{updateTime();updateFrames()});
@@ -270,7 +292,6 @@
     listen(document,'pointercancel',finishChromeInteraction);
     listen(controls,'focusin',()=>showChrome(false));
     listen(controls,'focusout',()=>showChrome());
-    listen(frameSelect,'change',()=>showChrome());
     listen(window,'resize',()=>{updateFrames();showChrome()});
     listen(window,'orientationchange',()=>{requestAnimationFrame(updateFrames);showChrome()});
     // Fullscreen changes available space without a window resize on some
