@@ -34,6 +34,10 @@ with db() as c:
     CREATE TABLE IF NOT EXISTS uploads(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,filename TEXT NOT NULL,total INTEGER NOT NULL,received INTEGER NOT NULL DEFAULT 0,temp_path TEXT NOT NULL,created INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS completed_uploads(upload_id TEXT PRIMARY KEY,project_id TEXT NOT NULL,clip_id TEXT NOT NULL,size INTEGER NOT NULL,sha256 TEXT NOT NULL);''')
 
+with db() as c:
+    if not any(row['name']=='hidden' for row in c.execute('PRAGMA table_info(clips)')):
+        c.execute('ALTER TABLE clips ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
+
 # Live pre-upload manifests are ephemeral and project-scoped.
 with db() as c:
     c.execute("""CREATE TABLE IF NOT EXISTS incoming_clips (
@@ -378,6 +382,31 @@ def set_project_archive(project_id:str, body:ProjectArchiveIn, request:Request,
         c.execute('UPDATE projects SET archived=?,archived_at=? WHERE id=?',
                   (int(body.archived),int(time.time()) if body.archived else 0,project_id))
     return {'id':project_id,'archived':body.archived}
+
+class ClipVisibilityIn(BaseModel):
+    hidden: bool
+
+@app.get('/api/admin/projects/{project_id}/clips')
+def admin_project_clips(project_id:str, request:Request):
+    require_admin('',request)
+    with db() as c:
+        if not c.execute('SELECT id FROM projects WHERE id=?',(project_id,)).fetchone():
+            raise HTTPException(404,'Project not found')
+        rows=c.execute(
+            'SELECT id,filename,hidden FROM clips WHERE project_id=? AND status=? ORDER BY filename,id',
+            (project_id,'ready')).fetchall()
+    return JSONResponse([dict(row) for row in rows],headers={'Cache-Control':'no-store'})
+
+@app.patch('/api/admin/projects/{project_id}/clips/{clip_id}/visibility')
+def set_clip_visibility(project_id:str, clip_id:str, body:ClipVisibilityIn, request:Request):
+    require_admin('',request)
+    with db() as c:
+        updated=c.execute(
+            'UPDATE clips SET hidden=? WHERE id=? AND project_id=? AND status=?',
+            (int(body.hidden),clip_id,project_id,'ready'))
+        if not updated.rowcount:
+            raise HTTPException(404,'Clip not found')
+    return {'id':clip_id,'hidden':body.hidden}
 
 @app.get('/api/admin/projects/{project_id}/activity')
 def admin_project_activity(project_id:str, request:Request, x_admin_key:str=Header(default='')):
@@ -769,6 +798,10 @@ def incoming_thumbnail_review(slug:str,filename:str,authorization:str=Header(def
     filename=safe_name(filename)
     now=int(time.time())
     with db() as c:
+        if c.execute(
+            'SELECT 1 FROM clips WHERE project_id=? AND filename=? AND status=? AND hidden=1',
+            (project['id'],filename,'ready')).fetchone():
+            raise HTTPException(404,'Not incoming')
         incoming=c.execute('SELECT 1 FROM incoming_clips WHERE project_id=? AND filename=? AND updated>?',
                            (project['id'],filename,now-150)).fetchone()
         active=c.execute('SELECT 1 FROM uploads WHERE project_id=? AND filename=?',
@@ -865,7 +898,7 @@ def record_camera_metadata(clip_id:str, body:CameraMetadataIn, x_device_token:st
 @app.get('/api/review/{slug}/clips')
 def clips(slug:str, authorization:str=Header(default='')):
     token=authorization.removeprefix('Bearer ').strip(); p=review_project(slug,token)
-    with db() as c: rows=c.execute('SELECT id,filename,size,created,status FROM clips WHERE project_id=? AND status="ready" ORDER BY created DESC',(p['id'],)).fetchall()
+    with db() as c: rows=c.execute('SELECT id,filename,size,created,status FROM clips WHERE project_id=? AND status="ready" AND hidden=0 ORDER BY created DESC',(p['id'],)).fetchall()
     import json
     out=[]
     with db() as c:
@@ -877,7 +910,7 @@ def clips(slug:str, authorization:str=Header(default='')):
                              (item['id'],p['id'])).fetchone()
             item['camera_metadata']=json.loads(camera['data_json']) if camera else {}
             out.append(item)
-    return out
+    return JSONResponse(out,headers={'Cache-Control':'private, no-store'})
 
 def ensure_clip_local(clip_id):
     """Restore a missing original from R2 for authenticated review endpoints."""
@@ -895,7 +928,7 @@ def ensure_clip_local(clip_id):
 @app.get('/api/review/{slug}/clips/{clip_id}/file')
 def clip_file(slug:str,clip_id:str,request:Request,authorization:str=Header(default=''),session:str='',download:int=0):
     token=authorization.removeprefix('Bearer ').strip() or session; p=review_project(slug,token)
-    with db() as c: clip=c.execute('SELECT * FROM clips WHERE id=? AND project_id=? AND status="ready"',(clip_id,p['id'])).fetchone()
+    with db() as c: clip=c.execute('SELECT * FROM clips WHERE id=? AND project_id=? AND status="ready" AND hidden=0',(clip_id,p['id'])).fetchone()
     if not clip: raise HTTPException(404,'Clip not found')
     if download and not p['allow_downloads']:
         raise HTTPException(403,'Downloads disabled for this project')
@@ -913,7 +946,9 @@ def clip_file(slug:str,clip_id:str,request:Request,authorization:str=Header(defa
             import logging
             logging.exception('R2 playback redirect failed; falling back to local streaming')
     path=ensure_clip_local(clip_id)
-    if download: return FileResponse(path,media_type='application/octet-stream',filename=clip['filename'])
+    if download:
+        return FileResponse(path,media_type='application/octet-stream',filename=clip['filename'],
+                            headers={'Cache-Control':'private, no-store'})
     size=path.stat().st_size
     range_header=request.headers.get('range')
     headers={'Accept-Ranges':'bytes','Cache-Control':'private, no-store',
@@ -1081,7 +1116,7 @@ def generate_thumbnail(clip_id):
 def get_clip_for_review(slug,clip_id,token):
     p=review_project(slug,token)
     with db() as c:
-        clip=c.execute('SELECT * FROM clips WHERE id=? AND project_id=? AND status="ready"',(clip_id,p['id'])).fetchone()
+        clip=c.execute('SELECT * FROM clips WHERE id=? AND project_id=? AND status="ready" AND hidden=0',(clip_id,p['id'])).fetchone()
     if not clip: raise HTTPException(404,'Clip not found')
     return clip
 
@@ -1113,7 +1148,7 @@ def thumbnail(slug:str,clip_id:str,session:str=''):
         ensure_clip_local(clip_id)
         generate_thumbnail(clip_id)
     if not path.exists(): raise HTTPException(404,'Thumbnail unavailable')
-    return FileResponse(path,media_type='image/jpeg')
+    return FileResponse(path,media_type='image/jpeg',headers={'Cache-Control':'private, no-store'})
 
 @app.get('/api/review/{slug}/clips/{clip_id}/duration')
 def duration(slug:str,clip_id:str,session:str=''):
@@ -1133,7 +1168,7 @@ def download_selected(slug:str,ids:str='',session:str=''):
     wanted=list(dict.fromkeys(x for x in ids.split(',') if re.fullmatch(r'[0-9a-f]{32}',x)))
     if not wanted or len(wanted)>100: raise HTTPException(400,'Select 1-100 clips')
     with db() as c:
-        rows=c.execute('SELECT id,filename FROM clips WHERE project_id=? AND status="ready"',(p['id'],)).fetchall()
+        rows=c.execute('SELECT id,filename FROM clips WHERE project_id=? AND status="ready" AND hidden=0',(p['id'],)).fetchall()
     by_id={r['id']:r for r in rows}
     zs=zipstream.ZipStream(compress_type=zipstream.ZIP_STORED)
     used=set()
