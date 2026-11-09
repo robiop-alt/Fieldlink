@@ -104,7 +104,7 @@ async function load(){
   <summary class="clip-tool" id="clip-filter-trigger" aria-label="Filter clips" title="Filter clips">${icon('M4 5h16l-6 7v5l-4 2v-7z')}</summary>
   <label class="clip-filter-panel">Filter clips<input id="clip-filter" type="search" placeholder="Filename or camera details" aria-label="Filter clips"></label>
  </details>
- <button type="button" class="clip-tool new-clips-filter" id="new-clips-filter" aria-pressed="false" aria-label="New clips since last visit" title="New clips since last visit">${icon('M12 3v5m0 8v5M3 12h5m8 0h5M7 7l2 2m6 6 2 2M7 17l2-2m6-6 2-2')}<span id="new-clips-count" aria-hidden="true"></span></button>
+ <button type="button" class="clip-tool new-clips-filter" id="new-clips-filter" aria-pressed="false" aria-label="New clips since last visit" title="New clips since last visit"><span>New clips</span><span id="new-clips-count" aria-hidden="true"></span></button>
  <label class="clip-tool clip-sort-tool" title="Sort clips">${icon('M8 4v16m-4-4 4 4 4-4m4 4V4m-4 4 4-4 4 4')}<select id="offset-sort-clips" aria-label="Sort clips"><option value="filename">Filename</option><option value="uploaded">Last uploaded</option></select></label>`;
  $('offset-sort-clips').value=clipSort;
  $('clip-filter').value=savedSearch;
@@ -115,7 +115,7 @@ async function load(){
    el.style.display=show?'':'none';if(show)visible++;
   });
   const toggle=$('new-clips-filter');
-  $('new-clips-count').textContent=newClipIds.size?String(newClipIds.size):'';
+  $('new-clips-count').textContent=newClipIds.size?'('+newClipIds.size+')':'';
   $('clip-filter-trigger').setAttribute('data-active',String(!!q));
   toggle.setAttribute('aria-label','New clips since last visit: '+newClipIds.size);
   toggle.setAttribute('aria-pressed',String(onlyNewClips));
