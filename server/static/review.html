@@ -105,7 +105,9 @@ async function load(){
   <label class="clip-filter-panel">Filter clips<input id="clip-filter" type="search" placeholder="Filename or camera details" aria-label="Filter clips"></label>
  </details>
  <button type="button" class="clip-tool new-clips-filter" id="new-clips-filter" aria-pressed="false" aria-label="New clips since last visit" title="New clips since last visit"><span class="clip-new-badge">NEW</span></button>
- <label class="clip-tool clip-sort-tool" title="Sort clips">${icon('M8 4v16m-4-4 4 4 4-4m4 4V4m-4 4 4-4 4 4')}<select id="offset-sort-clips" aria-label="Sort clips"><option value="filename">Filename</option><option value="uploaded">Last uploaded</option></select></label>`;
+ <label class="clip-tool clip-sort-tool" title="Sort clips">${icon('M8 4v16m-4-4 4 4 4-4m4 4V4m-4 4 4-4 4 4')}<select id="offset-sort-clips" aria-label="Sort clips"><option value="filename">Filename</option><option value="uploaded">Last uploaded</option></select></label>
+ <button type="button" class="clip-tool" id="refresh-clips" aria-label="Refresh clips" title="Refresh clips">${icon('M20 4v6h-6m6 0a8 8 0 1 0 0 5')}</button>`;
+ $('refresh-clips').onclick=()=>location.reload();
  $('offset-sort-clips').value=clipSort;
  $('clip-filter').value=savedSearch;
  const renderFilter=()=>{
