@@ -1054,7 +1054,7 @@ def upload_complete(upload_id:str,x_device_token:str=Header(default=''),x_conten
         make_room(u['total'])
         tmp.replace(FILES/clip_id)
         with db() as c:
-            c.execute('INSERT INTO clips VALUES(?,?,?,?,?,?,?)',(clip_id,u['project_id'],final_name,u['total'],int(time.time()),'ready',digest))
+            c.execute('INSERT INTO clips(id,project_id,filename,size,created,status,sha256) VALUES(?,?,?,?,?,?,?)',(clip_id,u['project_id'],final_name,u['total'],int(time.time()),'ready',digest))
             c.execute('INSERT INTO completed_uploads VALUES(?,?,?,?,?)',(upload_id,u['project_id'],clip_id,u['total'],digest))
             c.execute('DELETE FROM uploads WHERE id=?',(upload_id,))
     generate_thumbnail(clip_id)

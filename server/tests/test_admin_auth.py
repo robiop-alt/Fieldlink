@@ -69,7 +69,9 @@ def test_rate_limit_rejects_repeated_bad_logins(client):
     }).status_code == 429
 
 
-def test_admin_can_hide_and_show_project_clip(client):
+def test_admin_can_hide_and_show_project_clip(client, monkeypatch):
+    import db_persistence
+    monkeypatch.setattr(db_persistence, "snapshot", lambda *args: None)
     import time
     import uuid
 
