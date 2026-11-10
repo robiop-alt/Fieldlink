@@ -110,6 +110,34 @@
       choice.append(radio,make('span',null,title));
       framePanel.append(choice);
     }
+    const frameSettings=make('div','offset-frame-settings');
+    function addFrameSetting(label, key, values, fallback, apply) {
+      const field=make('label','offset-frame-setting',label);
+      const select=make('select');
+      const storageKey=frameStorageKey+':'+key;
+      let value=fallback;
+      try { value=localStorage.getItem(storageKey)||fallback } catch (_) {}
+      for(const [optionValue,title] of values){
+        const option=make('option',null,title);
+        option.value=optionValue;
+        select.append(option);
+      }
+      select.value=values.some(([optionValue])=>optionValue===value)?value:fallback;
+      apply(select.value);
+      listen(select,'change',()=>{
+        apply(select.value);
+        try { localStorage.setItem(storageKey,select.value) } catch (_) {}
+      });
+      field.append(select);
+      frameSettings.append(field);
+    }
+    addFrameSetting('Shading','shade',
+      [['0.25','25%'],['0.5','50%'],['0.75','75%'],['1','100%']],'0.75',
+      value=>{frames.style.boxShadow='0 0 0 100vmax rgba(0,0,0,'+value+')'});
+    addFrameSetting('Outline','outline',
+      [['transparent','Off'],['white','White'],['#ff5353','Red'],['#78ca54','Green']],'transparent',
+      value=>{frames.style.outlineColor=value});
+    framePanel.append(frameSettings);
     frameMenu.append(frameTrigger,framePanel);
     controls.append(previous,toggle,clock,seek,next,frameMenu,fullscreen);
     const options=make('div','offset-player-options');
