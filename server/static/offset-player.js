@@ -171,7 +171,12 @@
         cameraFields.append(field);
       }
     };
-    player.append(head,stage,controls,options,metadata,error);
+    const closeFullscreen=button('','Exit fullscreen');
+    closeFullscreen.classList.add('offset-fullscreen-close');
+    closeFullscreen.setAttribute('aria-label','Exit fullscreen');
+    closeFullscreen.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>';
+    closeFullscreen.hidden=true;
+    player.append(head,stage,controls,options,metadata,error,closeFullscreen);
     host.append(player);
 
     let index=0, loading=false;
@@ -270,6 +275,7 @@
     };
     const updateFullscreenButton=()=>{
       const active=isFullscreen();
+      closeFullscreen.hidden=!active;
       fullscreen.innerHTML=active?fullscreenExitSvg:fullscreenEnterSvg;
       fullscreen.title=active?'Exit fullscreen':'Fullscreen with frame lines';
       fullscreen.setAttribute('aria-label',fullscreen.title);
@@ -286,9 +292,13 @@
       document.body.classList.add('offset-theater-open');
       updateFullscreenButton();
     };
+    const leaveFullscreen=async()=>{
+      if(player.classList.contains('offset-player-theater'))exitTheater();
+      else if(document.fullscreenElement===player)await document.exitFullscreen?.();
+    };
+    listen(closeFullscreen,'click',leaveFullscreen);
     listen(fullscreen,'click',async()=>{
-      if(player.classList.contains('offset-player-theater')){exitTheater();return}
-      if(document.fullscreenElement){await document.exitFullscreen?.();return}
+      if(isFullscreen()){await leaveFullscreen();return}
       // iOS can delegate video fullscreen to the native player, which
       // cannot display HTML overlays. Always use inline theater on iOS.
       const ios=/iPad|iPhone|iPod/.test(navigator.userAgent) ||

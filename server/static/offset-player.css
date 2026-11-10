@@ -292,3 +292,15 @@ body.offset-theater-open{overflow:hidden!important}
     grid-column:1/-1;grid-row:2;min-width:0;width:100%;margin-inline:0
   }
 }
+
+.offset-player .offset-fullscreen-close{
+  position:absolute;z-index:10;top:max(8px,env(safe-area-inset-top));
+  right:max(8px,env(safe-area-inset-right));display:grid;place-items:center;
+  width:36px;height:36px;min-width:0;min-height:0;padding:0!important;
+  border:1px solid #546264;border-radius:8px;background:rgba(12,17,19,.82);color:#eef4f0
+}
+.offset-player .offset-fullscreen-close[hidden]{display:none}
+.offset-fullscreen-close svg{width:18px;height:18px}
+@media(pointer:coarse){
+  .offset-player .offset-fullscreen-close{width:44px;height:44px}
+}
