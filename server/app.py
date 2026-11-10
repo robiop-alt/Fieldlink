@@ -1153,20 +1153,17 @@ def thumbnail(slug:str,clip_id:str,session:str=''):
             download_file(f'thumbnails/{clip_id}.jpg',path)
         except Exception:
             pass
-    if not path.exists():
-        ensure_clip_local(clip_id)
-        generate_thumbnail(clip_id)
     if not path.exists(): raise HTTPException(404,'Thumbnail unavailable')
     return FileResponse(path,media_type='image/jpeg',headers={'Cache-Control':'private, no-store'})
 
 @app.get('/api/review/{slug}/clips/{clip_id}/duration')
 def duration(slug:str,clip_id:str,session:str=''):
+    import json
     get_clip_for_review(slug,clip_id,session)
-    try:
-        ensure_clip_local(clip_id)
-        result=subprocess.run(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(FILES/clip_id)],capture_output=True,text=True,timeout=12,check=True)
-        return {'seconds':float(result.stdout.strip())}
-    except Exception: return {'seconds':None}
+    with db() as c:
+        row=c.execute('SELECT data_json FROM clip_metadata WHERE clip_id=?',(clip_id,)).fetchone()
+    return {'seconds':json.loads(row['data_json']).get('duration_seconds') if row else None}
+
 
 @app.get('/api/review/{slug}/download-selected')
 def download_selected(slug:str,ids:str='',session:str=''):

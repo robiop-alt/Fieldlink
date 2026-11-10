@@ -202,7 +202,6 @@ async function load(){
  if(allowDownloads) $('select-all').onclick=()=>{let all=clips.every(c=>selected.has(c.id));selected=all?new Set():new Set(clips.map(c=>c.id));document.querySelectorAll('[data-select]').forEach(el=>el.checked=selected.has(el.dataset.select));update()};
  if(allowDownloads) $('download-selected').onclick=()=>{if(!selected.size)return alert('Select at least one clip');location.href=`${base}/download-selected?${auth}&ids=${[...selected].join(',')}`};update();
  if(typeof window.initOffsetPlayer==='function') window.initOffsetPlayer(clips,base,auth,allowDownloads);
- clips.forEach(async c=>{try{let r=await fetch(`${base}/clips/${c.id}/duration?${auth}`);let d=await r.json();if(d.seconds!=null){let n=Math.floor(d.seconds);let el=document.getElementById(`dur-${c.id}`);if(el)el.textContent=`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`}}catch(e){}});
  try{const r=await fetch(`${base}/storage?${auth}`,{cache:'no-store'});if(!r.ok)throw Error('Storage information unavailable');renderStorage(await r.json())}catch(e){$('storage-status').textContent='Storage information unavailable. Please refresh.'}
 }
 

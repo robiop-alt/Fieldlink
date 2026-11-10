@@ -56,3 +56,29 @@ def test_admin_can_disable_and_restore_downloads(project):
     assert client.get(f"/api/review/{slug}/clips/{cid}/file?session={token}").status_code==200
     assert client.patch(url,headers=h,json={"allow_downloads":True}).json()["allow_downloads"] is True
     assert client.get(f"/api/review/{slug}/clips/{cid}/file?session={token}&download=1").status_code==200
+
+
+def test_review_uses_saved_duration_and_thumbnail_without_video_fetch(project, monkeypatch):
+    import json
+    client,pid,slug,cid,token=project
+
+    def unexpected_video_fetch(*args):
+        pytest.fail('Opening review must not fetch the video')
+    monkeypatch.setattr(backend,'ensure_clip_local',unexpected_video_fetch)
+    thumb=backend.THUMBS / (cid+'.jpg')
+    prefix=f'/api/review/{slug}/clips/{cid}'
+    try:
+        assert client.get(f'{prefix}/duration?session={token}').json()=={'seconds':None}
+        assert client.get(f'{prefix}/thumbnail?session={token}').status_code==404
+        with backend.db() as c:
+            c.execute('INSERT INTO clip_metadata VALUES(?,?)',
+                      (cid,json.dumps({'duration_seconds':12.5})))
+        thumb.write_bytes(b'TEST JPEG')
+        clips=client.get(f'/api/review/{slug}/clips',headers={'Authorization':'Bearer '+token}).json()
+        assert clips[0]['metadata']['duration_seconds']==12.5
+        assert client.get(f'{prefix}/duration?session={token}').json()=={'seconds':12.5}
+        assert client.get(f'{prefix}/thumbnail?session={token}').content==b'TEST JPEG'
+    finally:
+        thumb.unlink(missing_ok=True)
+        with backend.db() as c:
+            c.execute('DELETE FROM clip_metadata WHERE clip_id=?',(cid,))
