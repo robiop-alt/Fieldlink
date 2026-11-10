@@ -137,9 +137,21 @@
     addFrameSetting('Outline','outline',
       [['transparent','Off'],['white','White'],['#ff5353','Red'],['#78ca54','Green']],'transparent',
       value=>{frames.style.outlineColor=value});
-    framePanel.append(frameSettings);
+    const settingsMenu=make('details','offset-frame-menu offset-settings-menu');
+    const settingsTrigger=make('summary','offset-frame-trigger');
+    settingsTrigger.title='Settings';
+    settingsTrigger.setAttribute('aria-label','Player settings');
+    settingsTrigger.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1"/></svg>';
+    const settingsPanel=make('div','offset-frame-panel offset-settings-panel');
+    settingsPanel.setAttribute('role','group');
+    settingsPanel.setAttribute('aria-label','Player settings');
+    settingsPanel.append(make('strong','offset-settings-heading','Settings'),
+      make('span','offset-settings-section','Frame lines'),frameSettings);
+    settingsMenu.append(settingsTrigger,settingsPanel);
+    const playerMenus=[[frameMenu,frameTrigger],[settingsMenu,settingsTrigger]];
+    const menuIsOpen=()=>playerMenus.some(([menu])=>menu.open);
     frameMenu.append(frameTrigger,framePanel);
-    controls.append(previous,toggle,clock,seek,next,frameMenu,fullscreen);
+    controls.append(previous,toggle,clock,seek,next,frameMenu,settingsMenu,fullscreen);
     const options=make('div','offset-player-options');
     const download=make('a','offset-player-download','Download clip ↓');
     if(allowDownloads) options.append(download);
@@ -246,11 +258,11 @@
     const stopChromeTimer=()=>{if(chromeTimer!==null){clearTimeout(chromeTimer);chromeTimer=null}};
     const showChrome=(autoHide=true)=>{
       stopChromeTimer();player.classList.remove('offset-player-chrome-hidden');
-      if(autoHide&&compactFullscreen()&&!video.paused&&!video.ended&&!chromeInteracting&&!frameMenu.open&&!frameMenu.open){
+      if(autoHide&&compactFullscreen()&&!video.paused&&!video.ended&&!chromeInteracting&&!menuIsOpen()){
         chromeTimer=setTimeout(()=>{
           chromeTimer=null;
           const focused=document.activeElement;
-          if(compactFullscreen()&&!video.paused&&!chromeInteracting&&!frameMenu.open&&
+          if(compactFullscreen()&&!video.paused&&!chromeInteracting&&!menuIsOpen()&&
              !(focused&&player.contains(focused)&&focused.matches?.(':focus-visible')))
             player.classList.add('offset-player-chrome-hidden');
         },2500);
@@ -290,16 +302,25 @@
     listen(document,'fullscreenchange',updateFullscreenButton);
     listen(document,'webkitfullscreenchange',updateFullscreenButton);
     listen(document,'keydown',event=>{
-      if(event.key==='Escape'&&frameMenu.open){
-        frameMenu.open=false;frameTrigger.focus();event.preventDefault();return;
+      if(event.key==='Escape'){
+        const activeMenu=playerMenus.find(([menu])=>menu.open);
+        if(activeMenu){
+          const [menu,trigger]=activeMenu;
+          menu.open=false;trigger.focus();event.preventDefault();return;
+        }
       }
       if(isFullscreen())showChrome(false);
       if(event.key==='Escape' && player.classList.contains('offset-player-theater'))exitTheater();
     });
-    listen(frameMenu,'toggle',()=>showChrome());
-    listen(document,'click',event=>{
-      if(frameMenu.open&&!frameMenu.contains(event.target))frameMenu.open=false;
-    });
+    for(const [menu] of playerMenus){
+      listen(menu,'toggle',()=>{
+        if(menu.open)for(const [other] of playerMenus)if(other!==menu)other.open=false;
+        showChrome();
+      });
+      listen(document,'click',event=>{
+        if(menu.open&&!menu.contains(event.target))menu.open=false;
+      });
+    }
     listen(video,'timeupdate',updateTime);
     listen(video,'loadedmetadata',()=>{updateTime();updateFrames()});
     listen(video,'play',()=>{error.hidden=true;updateButtons()});

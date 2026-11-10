@@ -267,3 +267,10 @@ body.offset-theater-open{overflow:hidden!important}
 @media(pointer:coarse){
   .offset-frame-setting select{min-height:44px;font-size:16px}
 }
+
+.offset-frame-panel.offset-settings-panel{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:5px;padding:11px
+}
+.offset-settings-heading{color:#e9f0ef;font-size:13px}
+.offset-settings-section{color:#a9bbb3;font-size:11px}
+.offset-settings-panel .offset-frame-settings{margin:0;padding:2px 0 0;border:0}
