@@ -129,7 +129,7 @@ function clipSize(bytes){
  return new Intl.NumberFormat('en-GB',{maximumFractionDigits:2}).format(value)+' '+units[index];
 }
 async function manageStorage(project){
- const panel=drawer(project,'Clip storage','Largest clips first. Manage review visibility or delete clips to free storage.');
+ const panel=drawer(project,'Clip storage','Filename Z–A · newest reel first. Manage review visibility or delete clips to free storage.');
  const endpoint='/api/admin/projects/'+encodeURIComponent(project.id)+'/clips';
  const search=el('input');search.type='search';search.placeholder='Find a clip';
  search.setAttribute('aria-label','Find a clip');
@@ -141,7 +141,8 @@ async function manageStorage(project){
  try{
    const clips=await api(endpoint,{cache:'no-store'});
    if(!panel.isConnected)return;
-   clips.sort((a,b)=>b.size-a.size);
+   const filenames=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+   clips.sort((a,b)=>filenames.compare(b.filename,a.filename));
    const items=clips.map(clip=>{
      const item=el('div','admin-activity-item');
      const info=el('div','admin-activity-desc');
