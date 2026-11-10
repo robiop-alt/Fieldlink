@@ -274,3 +274,20 @@ body.offset-theater-open{overflow:hidden!important}
 .offset-settings-heading{color:#e9f0ef;font-size:13px}
 .offset-settings-section{color:#a9bbb3;font-size:11px}
 .offset-settings-panel .offset-frame-settings{margin:0;padding:2px 0 0;border:0}
+
+/* Reserve the second row for the timeline, even on narrow phones. */
+@media(max-width:600px){
+  .review-panel .offset-player:not(:fullscreen):not(.offset-player-theater) .offset-player-controls{
+    display:grid;grid-template-columns:repeat(2,minmax(0,36px)) max-content repeat(4,minmax(0,36px));
+    justify-content:space-between;column-gap:4px;row-gap:4px
+  }
+  .review-panel .offset-player:not(:fullscreen):not(.offset-player-theater) .offset-player-controls :is(button,.offset-frame-trigger){
+    width:100%;min-width:0;min-height:40px;padding:0!important
+  }
+  .review-panel .offset-player:not(:fullscreen):not(.offset-player-theater) .offset-player-controls .offset-player-clock{
+    font-size:10px
+  }
+  .review-panel .offset-player:not(:fullscreen):not(.offset-player-theater) .offset-player-controls .offset-player-seek{
+    grid-column:1/-1;grid-row:2;min-width:0;width:100%;margin-inline:0
+  }
+}
