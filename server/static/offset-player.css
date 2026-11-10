@@ -202,7 +202,7 @@ body.offset-theater-open{overflow:hidden!important}
   background:rgba(7,11,12,.3);
   -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
  }
- .offset-player:is(:fullscreen, :-webkit-full-screen, .offset-player-theater).offset-player-chrome-hidden :is(.offset-player-controls,.offset-player-options,.offset-player-metadata){
+ .offset-player:is(:fullscreen, :-webkit-full-screen, .offset-player-theater).offset-player-chrome-hidden :is(.offset-player-controls,.offset-player-options,.offset-player-metadata,.offset-fullscreen-close){
   opacity:0;visibility:hidden;pointer-events:none;
  }
 }
