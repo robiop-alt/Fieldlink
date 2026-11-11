@@ -150,3 +150,35 @@
  .offset-planner #cone-waypoint{min-height:44px}
  .waypoint-number{touch-action:none}
 }
+
+
+/* Plan-level road marshals / sperrevakter */
+.marshal-panel{margin:16px 0 4px;padding:12px 13px;background:#231a1c;border:1px solid #694449;border-radius:9px}
+.marshal-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.marshal-panel-head strong{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:#ffc2bd}
+.marshal-panel-head svg{color:#f05b60}
+.marshal-panel-head span{font:10px 'DM Mono',monospace;color:#e0a7a9;white-space:nowrap}
+.marshal-list{display:grid;gap:5px;margin-top:10px}
+.marshal-list-row{display:flex;align-items:center;gap:6px;border:1px solid #563b3e;border-radius:7px;padding:4px;background:#281d20}
+.offset-planner .marshal-focus{flex:1;min-width:0;padding:7px 8px;text-align:left;background:transparent;color:#f4dddd;border:0;font-size:11px;font-weight:550;min-height:31px}
+.offset-planner .marshal-remove{padding:3px 9px;font-size:20px;line-height:1;min-width:32px;min-height:31px;color:#f9b3b3;border:1px solid #6d4a4e}
+.marshal-empty{margin:0;font-size:10px;color:#ba9d9e;line-height:1.5}
+.marshal-marker-wrap{background:transparent;border:0}
+.marshal-person{display:flex;align-items:center;justify-content:center;width:30px;height:36px;filter:drop-shadow(0 1px 2px #000) drop-shadow(0 0 2px rgba(90,0,0,.8));cursor:grab}
+.marshal-person svg{width:23px;height:29px;display:block}
+.leaflet-marker-draggable .marshal-person{cursor:grab}
+.leaflet-drag-target .marshal-person{cursor:grabbing}
+.marshal-popup{font:12px 'DM Sans',sans-serif;min-width:160px;color:#202020}
+.marshal-popup strong{font-size:13px}
+.marshal-popup p{font-size:11px;margin:7px 0 10px;color:#555}
+.marshal-popup-actions{display:flex;gap:6px}
+.marshal-popup-actions button{padding:7px 9px;min-height:32px;border:1px solid #b0a3a3;border-radius:6px;background:#f1ecec;color:#332728;cursor:pointer;font-size:11px;font-weight:600}
+.marshal-popup-actions button:last-child{color:#ad222e;background:#fff2f2;border-color:#e6b1b6}
+.offset-planner .map-toolbar button[data-tool="marshal"]{color:#ff999e}
+.offset-planner .map-toolbar button[data-tool="marshal"].active{color:#24130f;background:#ff666c;border-color:#ff666c;box-shadow:inset 0 0 0 1px #ffadb1}
+@media(max-width:800px){
+ .marshal-panel{padding:11px}
+ .offset-planner .marshal-remove{min-width:42px;min-height:42px}
+ .marshal-person{width:38px;height:43px;transform:translate(-4px,-5px)}
+ .marshal-person svg{width:26px;height:34px}
+}
