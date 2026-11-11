@@ -191,3 +191,9 @@
 .planner-refresh:hover svg{opacity:1;transform:rotate(35deg)}
 .planner-refresh[aria-busy="true"]{opacity:.6;pointer-events:none}
 .planner-refresh:focus-visible{outline:2px solid #57b62f;outline-offset:5px}
+
+
+/* Camera direction adjustment handle: restrained UI, never an emoji glyph. */
+.cone-aim{width:26px;height:26px;border-radius:50%;background:#f6c889;color:#34251a;border:1.5px solid #a96e35;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(22,20,16,.32);font-size:0}
+.cone-aim svg{width:16px;height:16px;display:block;flex-shrink:0}
+@media(max-width:800px){.cone-aim{width:26px;height:26px;font-size:0}.cone-aim svg{width:16px;height:16px}}
