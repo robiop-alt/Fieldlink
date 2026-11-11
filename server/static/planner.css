@@ -257,3 +257,15 @@
 .airspace-source{display:inline-flex;align-items:center;gap:5px}
 .airspace-source svg{display:block;flex:0 0 auto;width:13px;height:13px;opacity:.75}
 .airspace-source:hover svg{opacity:1}
+
+
+/* Prevent native iOS date control from overflowing into Time of day. */
+.fields-two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.fields-two>label{min-width:0;max-width:100%}
+.fields-two>label>input,.fields-two>label>select{min-width:0;max-width:100%;box-sizing:border-box}
+@media(max-width:600px){
+ .shot-editor .fields-date-time{grid-template-columns:minmax(0,1fr);gap:5px}
+ .shot-editor .fields-date-time>label{width:100%;min-width:0}
+ .shot-editor .fields-date-time #shot-date,
+ .shot-editor .fields-date-time #shot-time{width:100%;max-width:100%;min-width:0}
+}
