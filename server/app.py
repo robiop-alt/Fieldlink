@@ -375,6 +375,28 @@ def planner_page(request: Request):
     return FileResponse('static/planner.html', media_type='text/html',
                         headers={'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'})
 
+@app.get('/api/admin/planner/{plan_id}/pdf')
+def export_drone_plan_pdf(plan_id: str, request: Request,
+                          x_admin_key: str = Header(default='')):
+    require_admin(x_admin_key, request)
+    with db() as c:
+        row=c.execute('SELECT * FROM drone_plans WHERE id=?',(plan_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, 'Planner project not found')
+    try:
+        from planner_pdf import make_planner_pdf
+        pdf=make_planner_pdf(planner_document(row))
+    except Exception:
+        import logging
+        logging.getLogger('offset.planner_pdf').exception('Planner PDF rendering failed')
+        raise HTTPException(500, 'Could not generate PDF')
+    safe=re.sub(r'[^A-Za-z0-9_-]+','-',row['name']).strip('-')[:60] or 'drone-plan'
+    return Response(pdf, media_type='application/pdf',
+                    headers={'Content-Disposition': f'inline; filename="{safe}.pdf"',
+                             'Cache-Control': 'private, no-store',
+                             'X-Content-Type-Options': 'nosniff'})
+
+
 @app.get('/api/admin/planner/zones')
 def planner_drone_geozones(request: Request, south: float, west: float, north: float, east: float,
                           x_admin_key: str = Header(default='')):
