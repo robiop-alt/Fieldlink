@@ -411,3 +411,17 @@
 @media screen and (orientation:landscape) and (min-width:650px) and (max-width:1200px){
  .offset-planner .planner-top{padding-top:8px}
 }
+
+
+/* Extra clear space ABOVE the entire top row, not inside its buttons. */
+.offset-planner .planner-shell{padding-top:30px}
+@media(max-width:800px){
+ .offset-planner .planner-shell{
+  padding-top:max(28px,calc(env(safe-area-inset-top) + 12px));
+ }
+}
+@media screen and (orientation:landscape) and (min-width:650px) and (max-width:1200px){
+ .offset-planner .planner-shell{
+  padding-top:max(20px,calc(env(safe-area-inset-top) + 8px));
+ }
+}
