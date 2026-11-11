@@ -401,3 +401,13 @@
   font-size:11px;
  }
 }
+
+
+/* Give the logo and top navigation a little more breathing room. */
+.offset-planner .planner-top{padding-top:10px}
+@media(max-width:800px){
+ .offset-planner .planner-top{padding-top:14px}
+}
+@media screen and (orientation:landscape) and (min-width:650px) and (max-width:1200px){
+ .offset-planner .planner-top{padding-top:8px}
+}
