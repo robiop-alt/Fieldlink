@@ -10,7 +10,7 @@ import urllib.request
 from urllib.parse import urljoin
 
 INDEX_URL = "https://dronesoner.no/"
-DOWNLOAD_RE = re.compile(r"(?:/)?Downloads/NOR_ED269_compliant_geozones_\\d{4}-\\d{2}-\\d{2}\\.json")
+DOWNLOAD_RE = re.compile(r"(?:/)?Downloads/NOR_ED269_compliant_geozones_\d{4}-\d{2}-\d{2}\\.json")
 _LOCK = threading.RLock()
 _CACHE = {"loaded": 0, "zones": [], "url": "", "source_date": ""}
 MAX_DOWNLOAD_BYTES = 30_000_000
@@ -49,7 +49,7 @@ def get_zones():
                 raise RuntimeError("No geozones available")
             _CACHE.update({
                 "loaded": now, "zones": valid, "url": url,
-                "source_date": re.search(r"\\d{4}-\\d{2}-\\d{2}", path).group(0),
+                "source_date": re.search(r"\d{4}-\d{2}-\d{2}", path).group(0),
             })
         except Exception:
             # Old zones must not silently masquerade as live data.
