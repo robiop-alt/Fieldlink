@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0b0e10"><title>OFFSET · Planner</title>
+<link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzxKw5ptGEOlQFHeBLf2bQVg=" crossorigin="">
+<link rel="stylesheet" href="/static/planner.css"></head>
+<body class="offset-planner"><div class="planner-shell">
+<header class="planner-top"><a class="planner-logo" href="/"><img src="/static/offset-logo.svg" alt="OFFSET." width="130"></a><div class="planner-heading"><span>PRODUCTION TOOLS</span><strong>Drone Planner</strong></div><a class="planner-back" href="/">← Admin</a></header>
+<div id="auth-warning" class="planner-warning" hidden>Sign in to OFFSET admin to use Planner. <a href="/">Go to admin →</a></div>
+<main id="planner-app" hidden>
+<div class="planner-bar"><label class="field">Plan <select id="plan-select" aria-label="Select plan"></select></label><button id="new-plan">+ New plan</button><button id="rename-plan" class="secondary">Rename</button><button id="delete-plan" class="secondary danger">Delete</button><span id="save-state" role="status">Saved</span><button class="secondary" id="export-plan">Export JSON</button><button class="secondary" id="print-plan">Print / PDF</button></div>
+<div class="planner-workspace"><aside class="planner-sidebar"><div class="sidebar-title"><div><span class="kicker">SHOT LIST</span><h2>Camera moves</h2></div><button id="add-shot" title="Add shot">+ Shot</button></div><div id="shot-list" class="shot-list"></div><div class="shot-editor">
+<label>Shot name<input id="shot-name" maxlength="100" placeholder="Opening shot"></label>
+<label>Shot description<textarea id="shot-description" rows="3" maxlength="1500" placeholder="Flight, camera movement, action…"></textarea></label>
+<div class="fields-two"><label>Drone<input id="shot-drone" placeholder="Inspire 3" maxlength="80"></label><label>Lens<input id="shot-lens" placeholder="24 mm" maxlength="80"></label></div>
+<div class="fields-two"><label>Date<input id="shot-date" type="date"></label><label>Time of day<select id="shot-time"><option value="">Not set</option><option>Sunrise</option><option>Morning</option><option>Midday</option><option>Afternoon</option><option>Golden hour</option><option>Sunset</option><option>Night</option></select></label></div>
+<div class="fields-two"><label>Altitude (m AGL)<input id="shot-altitude" type="number" min="0" max="10000" step="1"></label><label>Speed (m/s)<input id="shot-speed" type="number" min="0" max="100" step=".1"></label></div>
+<div class="editor-actions"><button id="clear-shot" class="secondary">Clear route</button><button id="remove-shot" class="secondary danger">Delete shot</button></div>
+</div></aside>
+<section class="map-panel"><div class="map-toolbar"><button data-tool="move" class="active">Pan map</button><button data-tool="route">Draw flight path</button><button data-tool="camera">Camera target</button><button id="undo-point" class="secondary">Undo point</button><button id="fit-route" class="secondary">Fit route</button></div><div id="planner-map" aria-label="Interactive flight planning map"></div><div class="map-footer"><span id="map-help">Select Draw flight path, then click the map to add waypoints.</span><span id="route-stats">0 waypoints</span></div></section></div>
+<div class="planner-note">Planning reference only — not a flight authorization, obstacle assessment or validated autonomous flight route. Verify airspace, terrain and local rules before flying.</div>
+<section id="print-summary" aria-label="Print shot plan"></section>
+</main></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script><script src="/static/planner.js?v=1" defer></script></body></html>
