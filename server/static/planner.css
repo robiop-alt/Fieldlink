@@ -344,3 +344,60 @@
  .planner-workspace{display:block!important}
  .map-toolbar{display:none!important}
 }
+
+/* Match the Drone Planner refresh action to the adjacent Admin navigation. */
+.offset-planner .planner-top button.planner-refresh {
+ display:inline-flex;
+ flex-direction:row;
+ align-items:center;
+ justify-content:center;
+ flex:0 0 auto;
+ gap:0;
+ min-height:0;
+ padding:9px 12px;
+ border:1px solid #395044;
+ border-radius:7px;
+ background:transparent;
+ color:#cce6be;
+ box-shadow:none;
+ white-space:nowrap;
+}
+.offset-planner .planner-top button.planner-refresh strong {
+ display:inline-flex;
+ align-items:center;
+ gap:7px;
+ color:inherit;
+ font:600 12px 'DM Sans',sans-serif;
+}
+.offset-planner .planner-top button.planner-refresh svg {
+ width:14px;
+ height:14px;
+ opacity:.82;
+ color:inherit;
+}
+.offset-planner .planner-top button.planner-refresh:hover {
+ background:#202e2b;
+ border-color:#557360;
+}
+.offset-planner .planner-top button.planner-refresh:active {
+ background:#2b4035;
+}
+@media(max-width:800px) {
+ .offset-planner .planner-top button.planner-refresh{
+  padding:9px 8px;
+  min-height:0;
+ }
+ .offset-planner .planner-top button.planner-refresh strong {
+  font-size:11px;
+  gap:5px;
+ }
+}
+@media screen and (orientation:landscape) and (min-width:650px) and (max-width:1200px) {
+ .offset-planner .planner-top button.planner-refresh {
+  padding:7px 9px;
+  min-height:0;
+ }
+ .offset-planner .planner-top button.planner-refresh strong {
+  font-size:11px;
+ }
+}
