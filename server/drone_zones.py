@@ -3,6 +3,7 @@ Source: Luftfartstilsynet / dronesoner.no (NLOD 2.0).
 Planning reference only. NOTAM may be stale; do not use for flight authorization.
 """
 import json
+import logging
 import re
 import threading
 import time
@@ -10,6 +11,8 @@ import urllib.request
 from urllib.parse import urljoin
 
 INDEX_URL = "https://dronesoner.no/"
+MIRROR_URL = "https://raw.githubusercontent.com/mradeck/skycheck-project/master/data/uas-zones-no.json"
+_LOG = logging.getLogger("offset.drone_zones")
 DOWNLOAD_RE = re.compile(r"(?:/)?Downloads/NOR_ED269_compliant_geozones_\d{4}-\d{2}-\d{2}\.json")
 _LOCK = threading.RLock()
 _CACHE = {"loaded": 0, "zones": [], "url": "", "source_date": ""}
@@ -29,36 +32,66 @@ def _download(url, max_size):
     return raw
 
 
+def _validate_zones(data):
+    # Dronesoner ED-269 is normally an array. Some third-party snapshots
+    # wrap the array in an object; never accept a format we cannot interpret.
+    if isinstance(data, dict):
+        data = data.get("zones") or data.get("uasZones") or data.get("data") or data.get("features")
+    if not isinstance(data, list):
+        raise RuntimeError("Unsupported ED-269 dataset format")
+    valid = [z for z in data if isinstance(z, dict) and isinstance(z.get("geometry"), list)]
+    if not valid:
+        raise RuntimeError("Downloaded file contains no usable ED-269 geometry")
+    return valid
+
+
 def get_zones():
     now = time.time()
     with _LOCK:
         if _CACHE["zones"] and now - _CACHE["loaded"] < CACHE_SECONDS:
             return _CACHE.copy()
+        errors = []
         try:
             html = _download(INDEX_URL, 2_000_000).decode("utf-8")
             matches = sorted(set(DOWNLOAD_RE.findall(html)))
             if not matches:
-                raise RuntimeError("No current ED-269 download found")
+                raise RuntimeError("No ED-269 download link found on source page")
             path = matches[-1]
             url = urljoin(INDEX_URL, path.lstrip("/"))
-            data = json.loads(_download(url, MAX_DOWNLOAD_BYTES))
-            if not isinstance(data, list):
-                raise RuntimeError("Unexpected ED-269 format")
-            valid = [z for z in data if isinstance(z, dict) and isinstance(z.get("geometry"), list)]
-            if not valid:
-                raise RuntimeError("No geozones available")
+            zones = _validate_zones(json.loads(_download(url, MAX_DOWNLOAD_BYTES)))
+            date = re.search(r"\d{4}-\d{2}-\d{2}", path).group(0)
             _CACHE.update({
-                "loaded": now, "zones": valid, "url": url,
-                "source_date": re.search(r"\d{4}-\d{2}-\d{2}", path).group(0),
+                "loaded": now, "zones": zones, "url": url,
+                "source_date": date, "stale": False,
+                "origin": "official",
             })
-        except Exception:
-            # Old zones must not silently masquerade as live data.
-            if not _CACHE["zones"]:
-                raise
+            return _CACHE.copy()
+        except Exception as exc:
+            errors.append("Official source: " + repr(exc))
+            _LOG.warning("Drone zones: official download failed: %s", exc)
+
+        # Independently maintained weekly ED-269 snapshot sourced from
+        # Luftfartstilsynet, not a real-time replacement for active NOTAM.
+        try:
+            zones = _validate_zones(json.loads(_download(MIRROR_URL, MAX_DOWNLOAD_BYTES)))
+            _CACHE.update({
+                "loaded": now, "zones": zones, "url": MIRROR_URL,
+                "source_date": "weekly snapshot (date unverified)",
+                "stale": True, "origin": "community mirror",
+            })
+            _LOG.warning("Drone zones: using weekly snapshot; not live official data")
+            return _CACHE.copy()
+        except Exception as exc:
+            errors.append("Backup source: " + repr(exc))
+            _LOG.error("Drone zones: backup download failed: %s", exc)
+
+        # If an earlier successful dataset exists, display it with a conspicuous
+        # staleness warning rather than claiming the airspace is clear.
+        if _CACHE["zones"]:
             _CACHE["stale"] = True
-        else:
-            _CACHE["stale"] = False
-        return _CACHE.copy()
+            _CACHE["loaded"] = now
+            return _CACHE.copy()
+        raise RuntimeError("Failed to load geozone data: " + " | ".join(errors))
 
 
 def _flatten_coordinates(value):
@@ -120,6 +153,7 @@ def _result(features, data, truncated):
     return {
         "type": "FeatureCollection", "features": features,
         "source": "Luftfartstilsynet / dronesoner.no",
+        "origin": data.get("origin", "unknown"),
         "source_date": data["source_date"],
         "stale": bool(data.get("stale")),
         "truncated": truncated,
