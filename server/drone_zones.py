@@ -115,22 +115,50 @@ def _touches_bbox(coords, bbox):
     return south_bound <= north and north_bound >= south and west_bound <= east and east_bound >= west
 
 
+def _as_geojson(projection):
+    """Convert both ED-269 polygons and circles into Leaflet-compatible GeoJSON."""
+    if not isinstance(projection, dict):
+        return None
+    shape = projection.get("type")
+    coords = projection.get("coordinates")
+    if shape in ("Polygon", "MultiPolygon") and isinstance(coords, list):
+        return {"type": shape, "coordinates": coords}
+    if shape == "Circle":
+        import math
+        center = projection.get("center")
+        radius = projection.get("radius")
+        if (not isinstance(center, list) or len(center) != 2 or
+                not all(isinstance(v, (float, int)) for v in center) or
+                not isinstance(radius, (float, int)) or radius <= 0):
+            return None
+        lon, lat = center
+        lat1, lon1 = math.radians(lat), math.radians(lon)
+        delta = radius / 6371008.8
+        ring = []
+        for idx in range(49):
+            bearing = idx * 2 * math.pi / 48
+            lat2 = math.asin(math.sin(lat1) * math.cos(delta)
+                             + math.cos(lat1) * math.sin(delta) * math.cos(bearing))
+            lon2 = lon1 + math.atan2(math.sin(bearing) * math.sin(delta) * math.cos(lat1),
+                                    math.cos(delta) - math.sin(lat1) * math.sin(lat2))
+            ring.append([((math.degrees(lon2) + 540) % 360) - 180, math.degrees(lat2)])
+        return {"type": "Polygon", "coordinates": [ring]}
+    return None
+
+
 def features_in_bbox(bbox, max_features=350):
     data = get_zones()
     features = []
     for z in data["zones"]:
         for geometry in z.get("geometry", []):
             projection = geometry.get("horizontalProjection") or {}
-            shape = projection.get("type")
-            coords = projection.get("coordinates")
-            if shape not in ("Polygon", "MultiPolygon") or not coords:
-                continue
-            if not _touches_bbox(coords, bbox):
+            normalized = _as_geojson(projection)
+            if not normalized or not _touches_bbox(normalized["coordinates"], bbox):
                 continue
             restriction = str(z.get("restriction") or "UNKNOWN")
             feature = {
                 "type": "Feature",
-                "geometry": {"type": shape, "coordinates": coords},
+                "geometry": normalized,
                 "properties": {
                     "identifier": str(z.get("identifier") or "")[:100],
                     "name": str(z.get("name") or "Unnamed zone")[:200],
