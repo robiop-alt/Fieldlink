@@ -93,3 +93,23 @@
  .map-search-results{max-height:40vh}
 }
 @media print{.map-top-controls,.map-location-status{display:none!important}}
+
+
+/* Camera cone can be placed without a target, or optionally follow one. */
+.cone-settings{margin:18px 0 5px;padding:13px;border:1px solid #425048;background:#192422;border-radius:9px}
+.cone-settings-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.cone-settings-head strong{color:#e8f0e8;font-size:13px}
+.offset-planner .cone-settings label{margin:10px 0 0;font-size:11px}
+.offset-planner .cone-settings .cone-visible{display:flex;gap:7px;align-items:center;margin:0;white-space:nowrap}
+.offset-planner #cone-visible{width:17px;height:17px;min-height:17px;margin:0;accent-color:#57b62f}
+.cone-tip{font-size:10px;color:#a7b7a9;line-height:1.5;margin:8px 0}
+.offset-planner #cone-reset-origin{margin:11px 0 0;font-size:10px;min-height:33px}
+.cone-apex,.cone-aim{width:26px;height:26px;border-radius:50%;border:2px solid #f2aa63;background:#272522;color:#ffd09c;display:flex;align-items:center;justify-content:center;font:700 15px 'DM Sans',sans-serif;box-shadow:0 2px 9px #0009}
+.cone-aim{background:#f2aa63;color:#302010;border-color:#ffdc9e}
+@media(max-width:800px){
+ .cone-settings{padding:12px}
+ .cone-apex,.cone-aim{width:30px;height:30px;font-size:17px}
+ .offset-planner #cone-reset-origin{min-height:40px}
+ .map-toolbar button[data-tool="cone"]{color:#f5c798}
+ .map-toolbar button[data-tool="cone"].active{color:#17230f}
+}
