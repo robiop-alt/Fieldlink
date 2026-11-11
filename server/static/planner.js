@@ -90,10 +90,10 @@ function renderCones(shot){
   const coneShape=[origin,...edge,origin];
   // Single crisp outline; restrained translucent coverage, no heavy dark border.
   coneLayers.push(L.polygon(coneShape,{
-   color:selected?'#e69c47':'#d9a467',
+   color:selected?'#2aab58':'#4bbd75',
    weight:selected?1.5:1,
    opacity:selected?.95:.82,
-   fillColor:'#e9a85d',
+   fillColor:'#44bd70',
    fillOpacity:selected?.29:.18,
    interactive:false,
    lineCap:'round',
