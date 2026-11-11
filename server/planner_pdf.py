@@ -1,9 +1,12 @@
 """Reliable downloadable OFFSET Drone Planner PDF export.
 All rendering runs server-side, so Safari and iPhone need no print support.
-Includes vector shot overview (not a licensed street-map reproduction).
+Includes real street basemap tiles with OpenStreetMap attribution when available.
 """
 import io
 import math
+import logging
+import urllib.request
+import concurrent.futures
 import textwrap
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape
@@ -13,6 +16,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import simpleSplit
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+from PIL import Image, ImageOps
 
 INK=colors.HexColor("#15231d")
 MUTED=colors.HexColor("#69766e")
@@ -68,33 +73,120 @@ def _page(c, title, heading):
     return PH-136
 
 
+
+# Tiles are requested on-demand only for PDF exports, never for prefetching.
+# © OpenStreetMap contributors (ODbL). OSM maps are not flight clearance.
+_TILE_SIZE=256
+_TILE_CACHE={}
+_TILE_LOCK=__import__("threading").Lock()
+_LOG=logging.getLogger("offset.planner_pdf")
+
+
+def _mercator(p, zoom):
+    lat=math.radians(max(-85.05112878,min(85.05112878,p[0])))
+    scale=_TILE_SIZE*(2**zoom)
+    return ((p[1]+180)/360*scale,
+            (1-math.asinh(math.tan(lat))/math.pi)/2*scale)
+
+
+def _fit_map(points, pixel_width, pixel_height):
+    valid=[p for p in points if _coord(p)]
+    if not valid:return None
+    for zoom in range(18,6,-1):
+        projected=[_mercator(p,zoom) for p in valid]
+        xs=[p[0] for p in projected];ys=[p[1] for p in projected]
+        if max(xs)-min(xs)<=pixel_width*.72 and max(ys)-min(ys)<=pixel_height*.66:
+            return zoom,(max(xs)+min(xs))/2,(max(ys)+min(ys))/2
+    projected=[_mercator(p,7) for p in valid]
+    return 7,(max(p[0] for p in projected)+min(p[0] for p in projected))/2,(max(p[1] for p in projected)+min(p[1] for p in projected))/2
+
+
+def _get_tile(zoom, tx, ty):
+    if not(0<=tx<2**zoom and 0<=ty<2**zoom):
+        return None
+    key=(zoom,tx,ty)
+    with _TILE_LOCK:
+        cached=_TILE_CACHE.get(key)
+        if cached is not None:
+            return cached.copy()
+    url=f"https://tile.openstreetmap.org/{zoom}/{tx}/{ty}.png"
+    request=urllib.request.Request(url,headers={
+        "User-Agent":"OFFSET-Planner/1.0 (small user-initiated PDF map export; contact via service site)",
+        "Accept":"image/png",
+    })
+    try:
+        with urllib.request.urlopen(request,timeout=5) as response:
+            content=response.read(350_000)
+        tile=Image.open(io.BytesIO(content)).convert("RGB")
+        if tile.size!=(_TILE_SIZE,_TILE_SIZE):
+            return None
+        with _TILE_LOCK:
+            if len(_TILE_CACHE)>120:
+                _TILE_CACHE.clear()
+            _TILE_CACHE[key]=tile.copy()
+        return tile
+    except Exception as exc:
+        _LOG.warning("PDF map tile unavailable z=%d x=%d y=%d: %s",zoom,tx,ty,exc)
+        return None
+
+
+def _basemap(zoom,cx,cy,width,height):
+    image=Image.new("RGB",(width,height),(239,242,239))
+    left=cx-width/2;top=cy-height/2
+    x_start=math.floor(left/_TILE_SIZE);x_end=math.floor((left+width-1)/_TILE_SIZE)
+    y_start=math.floor(top/_TILE_SIZE);y_end=math.floor((top+height-1)/_TILE_SIZE)
+    locations=[(xx,yy) for xx in range(x_start,x_end+1) for yy in range(y_start,y_end+1)]
+    if len(locations)>20:return None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+        results=list(executor.map(lambda q:_get_tile(zoom,*q),locations))
+    present=sum(tile is not None for tile in results)
+    if not present:return None
+    for (tx,ty),tile in zip(locations,results):
+        if tile is None:continue
+        image.paste(tile,(round(tx*_TILE_SIZE-left),round(ty*_TILE_SIZE-top)))
+    # The PDF map matches the Planner's calmer monochrome styling.
+    gray=ImageOps.grayscale(image).convert("RGB")
+    return Image.blend(image,gray,.88)
+
+
 def _map(c, route, target, cones, marshals, x, top, w, h):
-    """Draw a lightweight route diagram with waypoint cameras and marshals."""
+    """Render a real street basemap, then precisely aligned vector map annotations."""
+    valid=[p for p in route if _coord(p)]
+    pts=valid+([target] if _coord(target) else [])+[
+        m["position"] for m in marshals
+        if isinstance(m,dict) and _coord(m.get("position"))
+    ]
     c.setFillColor(colors.HexColor("#f5f7f5"))
     c.setStrokeColor(colors.HexColor("#d6e2d9"))
     c.roundRect(x,top-h,w,h,7,stroke=1,fill=1)
-    valid=[p for p in route if _coord(p)]
-    pts=valid+([target] if _coord(target) else [])+[m["position"] for m in marshals if isinstance(m,dict) and _coord(m.get("position"))]
     if not pts:
         _line(c,"No mapped positions in this shot",x+12,top-24,9,MUTED)
         return
-    lat=[p[0] for p in pts];lon=[p[1] for p in pts]
-    midlat=(min(lat)+max(lat))/2
-    mx=max(0.12,math.cos(math.radians(midlat)))
-    scaled=[((p[1]-min(lon))*mx,p[0]-min(lat)) for p in pts]
-    extx=max(0.00015,max(a for a,b in scaled))
-    exty=max(0.00015,max(b for a,b in scaled))
-    margin=26
-    sf=min((w-2*margin)/extx,(h-2*margin)/exty)
-    dx=(w-extx*sf)/2
-    dy=(h-exty*sf)/2
-    def project(p):
-        return x+dx+(p[1]-min(lon))*mx*sf,top-h+dy+(p[0]-min(lat))*sf
-    c.setStrokeColor(colors.HexColor("#e2e8e2"))
-    c.setLineWidth(.45)
-    for i in range(1,5):
-        c.line(x+i*w/5,top-h,x+i*w/5,top)
-        c.line(x,top-i*h/5,x+w,top-i*h/5)
+    # Render 1.6 pixels per PDF point for legible map labels.
+    width=round(w*1.6);height=round(h*1.6)
+    chosen=_fit_map(pts,width,height)
+    zoom,cx,cy=chosen
+    scale=w/width
+    def project(point):
+        xp,yp=_mercator(point,zoom)
+        return x+w/2+(xp-cx)*scale,top-h/2-(yp-cy)*scale
+
+    backdrop=_basemap(zoom,cx,cy,width,height)
+    if backdrop is not None:
+        c.saveState()
+        clip=c.beginPath()
+        clip.roundRect(x,top-h,w,h,7)
+        c.clipPath(clip,stroke=0,fill=0)
+        c.drawImage(ImageReader(backdrop),x,top-h,w,h,mask="auto")
+        c.restoreState()
+    else:
+        # The actual route remains usable even when map tile service is unavailable.
+        c.setStrokeColor(colors.HexColor("#e2e8e2"))
+        c.setLineWidth(.45)
+        for i in range(1,5):
+            c.line(x+i*w/5,top-h,x+i*w/5,top)
+            c.line(x,top-i*h/5,x+w,top-i*h/5)
+
     if len(valid)>1:
         c.setStrokeColor(GREEN);c.setLineWidth(2.5)
         points=[project(p) for p in valid]
@@ -106,19 +198,25 @@ def _map(c, route, target, cones, marshals, x, top, w, h):
         if i<len(cones):
             cone=cones[i] if isinstance(cones[i],dict) else {}
             if cone.get("visible",True):
-                bearing=float(cone.get("bearing",0) or 0)
-                if cone.get("mode")=="target" and _coord(target):
-                    latD=(target[0]-p[0])
-                    lonD=(target[1]-p[1])*mx
-                    bearing=math.degrees(math.atan2(lonD,latD))
-                angle=math.radians(bearing)
-                fov=math.radians(min(170,max(5,float(cone.get("fov",50) or 50))))
-                reach=19
-                q1=(xp+reach*math.sin(angle-fov/2),yp+reach*math.cos(angle-fov/2))
-                q2=(xp+reach*math.sin(angle+fov/2),yp+reach*math.cos(angle+fov/2))
-                c.setFillColor(LIGHT_GREEN);c.setStrokeColor(GREEN);c.setLineWidth(.6)
-                path=c.beginPath();path.moveTo(xp,yp);path.lineTo(*q1);path.lineTo(*q2);path.close()
-                c.drawPath(path,fill=1,stroke=1)
+                try:
+                    bearing=float(cone.get("bearing",0) or 0)
+                    if cone.get("mode")=="target" and _coord(target):
+                        latD=target[0]-p[0]
+                        lonD=(target[1]-p[1])*math.cos(math.radians(p[0]))
+                        bearing=math.degrees(math.atan2(lonD,latD))
+                    fov=math.radians(min(170,max(5,float(cone.get("fov",50) or 50))))
+                    rng=max(1,min(10000,float(cone.get("range",30) or 30)))
+                    angle=math.radians(bearing)
+                    def endpoint(theta):
+                        lat=p[0]+rng*math.cos(theta)/111_320
+                        lon=p[1]+rng*math.sin(theta)/(111_320*max(.05,math.cos(math.radians(p[0]))))
+                        return project([lat,lon])
+                    q1=endpoint(angle-fov/2);q2=endpoint(angle+fov/2)
+                    c.setFillColor(LIGHT_GREEN);c.setStrokeColor(GREEN);c.setLineWidth(.6)
+                    path=c.beginPath();path.moveTo(xp,yp);path.lineTo(*q1);path.lineTo(*q2);path.close()
+                    c.drawPath(path,fill=1,stroke=1)
+                except (ValueError,TypeError,OverflowError):
+                    pass
         c.setFillColor(colors.white);c.setStrokeColor(GREEN)
         c.setLineWidth(1.5);c.circle(xp,yp,7,stroke=1,fill=1)
         c.setFillColor(INK);c.setFont("Helvetica-Bold",8);c.drawCentredString(xp,yp-2.5,str(i+1))
@@ -132,9 +230,13 @@ def _map(c, route, target, cones, marshals, x, top, w, h):
         c.setStrokeColor(RED);c.setLineWidth(1.5)
         c.line(xp,yp+1,xp,yp-6);c.line(xp-3,yp-2,xp+3,yp-2)
         c.line(xp,yp-6,xp-3,yp-10);c.line(xp,yp-6,xp+3,yp-10)
-    c.setFillColor(MUTED);c.setFont("Helvetica",7)
-    c.drawString(x+10,top-h+8,"Schematic only · not a navigational basemap")
-
+    c.setFillColor(colors.HexColor("#33443b"))
+    c.setFont("Helvetica",7)
+    note="Map: © OpenStreetMap contributors · Not for navigation" if backdrop is not None else "Basemap unavailable · schematic only"
+    c.setFillColor(colors.white)
+    c.roundRect(x+7,top-h+5,max(193,stringWidth(note,"Helvetica",7)+12),14,3,stroke=0,fill=1)
+    c.setFillColor(MUTED)
+    c.drawString(x+13,top-h+9,note)
 
 def make_planner_pdf(plan):
     buffer=io.BytesIO()
@@ -149,7 +251,7 @@ def make_planner_pdf(plan):
     y-=12
     y=_line(c,f"{len(shots)} shots  |  {len(marshals)} road marshals",M,y,11,GREEN,True)
     y-=8
-    y=_line(c,"Map diagrams show relative positions, not streets or flight clearance.",M,y,9,MUTED,width=PW-2*M)
+    y=_line(c,"Street map © OpenStreetMap contributors. Planning reference only; not flight clearance.",M,y,9,MUTED,width=PW-2*M)
     c.showPage()
     for index,shot in enumerate(shots):
         if not isinstance(shot,dict):continue
