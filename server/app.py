@@ -339,6 +339,90 @@ def offset_pwa_worker():
     return FileResponse('static/offset-sw.js',media_type='application/javascript',
         headers={'Service-Worker-Allowed':'/','Cache-Control':'no-cache'})
 
+
+# Standalone drone planner: private, persistent planning documents.
+def ensure_planner_schema():
+    with db() as c:
+        c.execute("""CREATE TABLE IF NOT EXISTS drone_plans (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL,
+            data_json TEXT NOT NULL, updated INTEGER NOT NULL)""")
+ensure_planner_schema()
+
+class DronePlanCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+class DronePlanSave(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    shots: list = Field(default_factory=list, max_length=200)
+    center: dict | None = None
+    zoom: int | None = Field(default=None, ge=0, le=22)
+
+def planner_document(row):
+    import json
+    try: contents=json.loads(row['data_json'])
+    except (ValueError, TypeError): contents={}
+    return {'id':row['id'],'name':row['name'],
+            'shots':contents.get('shots',[]),
+            'center':contents.get('center'),
+            'zoom':contents.get('zoom'),
+            'updated':row['updated']}
+
+@app.get('/planner', include_in_schema=False)
+def planner_page(request: Request):
+    require_admin('', request)
+    return FileResponse('static/planner.html', media_type='text/html',
+                        headers={'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'})
+
+@app.get('/api/admin/planner')
+def list_drone_plans(request: Request, x_admin_key: str = Header(default='')):
+    require_admin(x_admin_key,request)
+    with db() as c:
+        rows=c.execute('SELECT * FROM drone_plans ORDER BY updated DESC').fetchall()
+    return {'plans':[planner_document(row) for row in rows]}
+
+@app.post('/api/admin/planner')
+def create_drone_plan(body: DronePlanCreate, request: Request, x_admin_key: str = Header(default='')):
+    require_admin(x_admin_key,request)
+    import json
+    plan_id=uuid.uuid4().hex
+    updated=int(time.time())
+    contents={'shots':[], 'center':None, 'zoom':None}
+    with db() as c:
+        c.execute('INSERT INTO drone_plans(id,name,data_json,updated) VALUES(?,?,?,?)',
+                  (plan_id,body.name.strip(),json.dumps(contents),updated))
+    return {'id':plan_id,'name':body.name.strip(),'shots':[],'updated':updated}
+
+@app.put('/api/admin/planner/{plan_id}')
+def save_drone_plan(plan_id: str, body: DronePlanSave, request: Request, x_admin_key: str = Header(default='')):
+    require_admin(x_admin_key,request)
+    import json
+    # Refuse malformed paths before storing them; this is a storyboard, not an autopilot command.
+    for shot in body.shots:
+        if not isinstance(shot,dict): raise HTTPException(422,'Invalid shot')
+        route=shot.get('route',[])
+        if not isinstance(route,list) or len(route)>500: raise HTTPException(422,'Too many waypoints')
+        for point in route + ([shot['target']] if shot.get('target') is not None else []):
+            if (not isinstance(point,list) or len(point)!=2 or
+                not all(isinstance(v,(int,float)) and -180<=v<=180 for v in point) or
+                not -90<=point[0]<=90):
+                raise HTTPException(422,'Invalid map coordinate')
+    payload=json.dumps({'shots':body.shots,'center':body.center,'zoom':body.zoom})
+    if len(payload)>1_000_000: raise HTTPException(413,'Plan is too large')
+    updated=int(time.time())
+    with db() as c:
+        cursor=c.execute('UPDATE drone_plans SET name=?,data_json=?,updated=? WHERE id=?',
+                         (body.name.strip(),payload,updated,plan_id))
+        if not cursor.rowcount: raise HTTPException(404,'Plan not found')
+    return {'ok':True,'updated':updated}
+
+@app.delete('/api/admin/planner/{plan_id}')
+def delete_drone_plan(plan_id: str, request: Request, x_admin_key: str = Header(default='')):
+    require_admin(x_admin_key,request)
+    with db() as c:
+        cursor=c.execute('DELETE FROM drone_plans WHERE id=?',(plan_id,))
+        if not cursor.rowcount: raise HTTPException(404,'Plan not found')
+    return {'ok':True}
+
 @app.get('/health')
 def health(): return {'ok':True,'product':'OFFSET','version':'1.0.0'}
 
