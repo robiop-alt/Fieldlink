@@ -15,7 +15,7 @@ function selectPlan(id){if(saveTimer){clearTimeout(saveTimer);saveTimer=null;con
 function render(){const select=$('plan-select');select.replaceChildren(...plans.map(p=>{const el=document.createElement('option');el.value=p.id;el.textContent=p.name;return el}));select.value=current?.id||'';const mobile=$('mobile-shot');mobile.replaceChildren(...(current?.shots||[]).map((shot,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=(i+1)+'. '+(shot.name||'Untitled shot');return option}));mobile.value=String(activeShot);const list=$('shot-list');list.replaceChildren();current?.shots.forEach((shot,i)=>{const item=document.createElement('div');item.className='shot-item'+(i===activeShot?' active':'');const count=document.createElement('span');count.className='shot-count';count.textContent=shot.route.length+' pts';const n=document.createElement('span');n.className='shot-number';n.textContent=String(i+1).padStart(2,'0');const b=document.createElement('button');b.textContent=shot.name||'Untitled shot';b.onclick=()=>{readFields();activeShot=i;activeWaypoint=0;render();renderMap()};item.append(n,b,count);list.append(item)});const shot=getShot();loading=true;for(const key of ['name','description','drone','lens','date','time'])$('shot-'+key).value=shot?.[key]??'';loading=false;updateConeControls();updateStats()}
 function readFields(){const shot=getShot();if(!shot||loading)return;for(const key of ['name','description','drone','lens','date','time'])shot[key]=$('shot-'+key).value;const active=$('shot-list').querySelector('.active button');if(active)active.textContent=shot.name||'Untitled shot';const selected=$('mobile-shot').options[activeShot];if(selected)selected.textContent=(activeShot+1)+'. '+(shot.name||'Untitled shot');scheduleSave()}
 function scheduleSave(){if(!current)return;state('Unsaved…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveTimer=null;saveNow(current)},650)}
-async function saveNow(plan){if(!plan)return;const epoch=++saveEpoch;state('Saving…');try{const res=await api('/api/admin/planner/'+encodeURIComponent(plan.id),{method:'PUT',body:JSON.stringify({name:plan.name,shots:clone(plan.shots),marshals:clone(plan.marshals||[]),center:map?map.getCenter():plan.center,zoom:map?map.getZoom():plan.zoom})});if(epoch===saveEpoch)state('Saved');plan.updated=res.updated}catch(e){if(epoch===saveEpoch)state('Save failed');console.error(e)}}
+async function saveNow(plan){if(!plan)return false;const epoch=++saveEpoch;state('Saving…');try{const res=await api('/api/admin/planner/'+encodeURIComponent(plan.id),{method:'PUT',body:JSON.stringify({name:plan.name,shots:clone(plan.shots),marshals:clone(plan.marshals||[]),center:map?map.getCenter():plan.center,zoom:map?map.getZoom():plan.zoom})});if(epoch===saveEpoch)state('Saved');plan.updated=res.updated;return true}catch(e){if(epoch===saveEpoch)state('Save failed');console.error(e);return false}}
 
 
 function defaultCone(bearing=0){return {visible:true,mode:'manual',bearing,fov:50,range:30}}
@@ -338,6 +338,24 @@ $('cone-waypoint').onchange=e=>selectWaypoint(Number(e.target.value)||0);
 document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
 document.querySelectorAll('.shot-editor input,.shot-editor textarea,.shot-editor select').forEach(el=>el.addEventListener('input',readFields));
 $('export-plan').onclick=()=>{if(!current)return;const blob=new Blob([JSON.stringify({format:'OFFSET Planner v1',name:current.name,shots:current.shots},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(current.name.replace(/[^a-z0-9_-]+/gi,'-')||'offset-plan')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
-$('print-plan').onclick=()=>{if(!current)return;readFields();buildPrint();window.print()};
+$('print-plan').onclick=async()=>{
+ if(!current)return;
+ const button=$('print-plan');
+ if(button.disabled)return;
+ readFields();
+ clearTimeout(saveTimer);saveTimer=null;
+ button.disabled=true;
+ const label=button.textContent;
+ button.textContent='Preparing PDF…';
+ try{
+  const plan=current;
+  const saved=await saveNow(plan);
+  if(!saved){alert('Could not save the plan. PDF export cancelled to avoid missing edits.');return}
+  // Same-tab PDF navigation works in iOS Safari, unlike window.print() or
+  // an asynchronously opened popup, which may be blocked.
+  window.location.assign('/api/admin/planner/'+encodeURIComponent(plan.id)+'/pdf');
+ }catch(error){alert('PDF export failed: '+(error.message||'Please try again'))}
+ finally{button.disabled=false;button.textContent=label}
+};
 window.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&saveTimer){clearTimeout(saveTimer);saveTimer=null;saveNow(current)}});start();
 })();
