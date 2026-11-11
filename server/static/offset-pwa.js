@@ -36,7 +36,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
     const blocked = target => {
       if (document.fullscreenElement || document.webkitFullscreenElement || document.querySelector('dialog[open]')) return true;
       if (!(target instanceof Element)) return true;
-      if (target.closest('video,audio,input,textarea,select,button,a,[contenteditable]:not([contenteditable="false"]),[role="slider"],[role="dialog"],.offset-player')) return true;
+      if (target.closest('video,audio,input,textarea,select,button,a,[contenteditable]:not([contenteditable="false"]),[role="slider"],[role="dialog"],.offset-player,.leaflet-container')) return true;
       for (let el = target; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
         if (el.scrollHeight > el.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowY)) return true;
       }
@@ -70,7 +70,15 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
         refreshing = true;
         hint.textContent = 'Refreshing…';
         hint.classList.add('visible');
-        requestAnimationFrame(() => requestAnimationFrame(() => window.location.reload()));
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const plannerRefresh = document.getElementById('planner-refresh');
+          if (plannerRefresh) {
+            // Reuse Planner's save-before-refresh flow.
+            plannerRefresh.click();
+            refreshing = false;
+            reset();
+          } else window.location.reload();
+        }));
       } else reset();
     }, {passive:true});
     document.addEventListener('touchcancel', reset, {passive:true});
