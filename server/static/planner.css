@@ -113,3 +113,31 @@
  .map-toolbar button[data-tool="cone"]{color:#f5c798}
  .map-toolbar button[data-tool="cone"].active{color:#17230f}
 }
+
+
+/* Norwegian official-source drone zone overlay */
+.airspace-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#151f20;border-bottom:1px solid #314143;padding:9px 12px;font-size:11px;color:#b9c9bd}
+.airspace-toggle{display:inline-flex!important;align-items:center;gap:7px!important;margin:0!important;color:#e2f0e1!important;white-space:nowrap;font-weight:700!important}
+.offset-planner #airspace-toggle{display:inline-block;width:17px;height:17px;min-height:17px;margin:0;accent-color:#57b62f}
+.airspace-legend{display:flex;align-items:center;flex-wrap:wrap;gap:11px;font-size:10px}
+.airspace-legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.airspace-dot{display:block;width:9px;height:9px;border-radius:50%}
+.airspace-dot.red{background:#e45e63}
+.airspace-dot.yellow{background:#e5bc53}
+.airspace-dot.blue{background:#5a9dde}
+.airspace-source{margin-left:auto;color:#a9cd96;text-decoration:none;font-size:10px;white-space:nowrap}
+.airspace-status{margin:0;padding:7px 12px;background:#192821;color:#abc6a8;font-size:10px;line-height:1.5;border-bottom:1px solid #314143}
+.airspace-status[data-state="error"]{background:#302023;color:#ffd0c5}
+.airspace-status[data-state="notice"]{background:#28271c;color:#decf9d}
+.airspace-popup{font:12px/1.4 'DM Sans',sans-serif;color:#182019;min-width:180px}
+.airspace-popup strong{font-size:13px}
+.airspace-popup p{margin:5px 0;overflow-wrap:anywhere}
+.airspace-popup small{display:block;margin-top:10px;color:#675c52;font-size:10px}
+@media(max-width:800px){
+ .airspace-controls{padding:8px;gap:7px 9px}
+ .airspace-legend{order:2;flex:1 1 100%;gap:12px;font-size:10px}
+ .airspace-source{margin-left:auto}
+ .airspace-status{padding:7px 9px}
+ .offset-planner #airspace-toggle{width:19px;height:19px;min-height:19px}
+}
+@media print{.airspace-controls,.airspace-status{display:none!important}}
