@@ -271,7 +271,6 @@
  .shot-editor .fields-date-time #shot-time{display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box}
  .shot-editor .fields-date-time #shot-date{
   padding-inline:5px;font-size:14px;letter-spacing:-.025em;
-  -webkit-appearance:none;appearance:none;
  }
  .shot-editor .fields-date-time #shot-date::-webkit-date-and-time-value{
   min-width:0;text-align:center;
