@@ -39,7 +39,7 @@
  .mobile-edit-shot{border:1px solid #3c5050;border-radius:6px;padding:11px 9px;text-decoration:none;font-size:11px;color:#cfe3d0;white-space:nowrap}
  .map-toolbar{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;padding:7px;gap:5px}
  .map-toolbar button{flex:0 0 auto;white-space:nowrap;min-height:41px;padding:9px 11px;font-size:12px}
- #planner-map{height:min(57dvh,610px);min-height:340px;flex:none;touch-action:pan-x pan-y}
+ #planner-map{height:min(57dvh,610px);min-height:340px;flex:none;touch-action:none}
  .map-footer{font-size:11px;padding:9px;gap:4px}
  .map-footer span:first-child{flex:1 1 100%}
  .map-footer span:last-child{color:#b3d99c}
