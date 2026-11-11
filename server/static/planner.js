@@ -1,21 +1,21 @@
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
 const clone=x=>JSON.parse(JSON.stringify(x));
-let plans=[],current=null,activeShot=0,activeWaypoint=0,map,routeLine,aimLine,markers=[],sketchLayers=[],targetMarker,coneLayers=[],coneHeadingMarker,searchPin,locationPin,tool='move',saveTimer=null,saveEpoch=0,loading=false;
+let plans=[],current=null,activeShot=0,activeWaypoint=0,map,routeLine,aimLine,markers=[],marshalMarkers=[],sketchLayers=[],targetMarker,coneLayers=[],coneHeadingMarker,searchPin,locationPin,tool='move',saveTimer=null,saveEpoch=0,loading=false;
 const coordsOk=p=>Array.isArray(p)&&p.length===2&&p.every(v=>typeof v==='number'&&Number.isFinite(v)&&Math.abs(v)<=180)&&Math.abs(p[0])<=90;
 const blankShot=(name='New shot')=>({id:crypto.randomUUID(),name,description:'',drone:'',lens:'',date:'',time:'',altitude:'',speed:'',route:[],sketches:[],target:null,waypointCones:[]});
 const api=async(path,opt={})=>{const r=await fetch(path,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...opt});if(!r.ok){let message='Request failed ('+r.status+')';try{const d=await r.json();message=typeof d.detail==='string'?d.detail:message}catch{}throw Error(message)}return r.json()};
 function state(message){$('save-state').textContent=message}
 function getShot(){return current?.shots?.[activeShot]}
 function sketches(shot){if(!Array.isArray(shot.sketches))shot.sketches=[];return shot.sketches}
-function normalized(data){return {...data,shots:Array.isArray(data.shots)?data.shots:[]}}
+function normalized(data){return {...data,shots:Array.isArray(data.shots)?data.shots:[],marshals:Array.isArray(data.marshals)?data.marshals:[]}}
 async function load(){try{const data=await api('/api/admin/planner');plans=data.plans.map(normalized);current=plans[0]||null;if(!current){await createPlan('Untitled plan');return}selectPlan(current.id)}catch(e){state('Load error');alert(e.message)}}
 async function createPlan(name){try{const result=await api('/api/admin/planner',{method:'POST',body:JSON.stringify({name})});plans.unshift(normalized(result));selectPlan(result.id);state('Saved')}catch(e){alert(e.message)}}
 function selectPlan(id){if(saveTimer){clearTimeout(saveTimer);saveTimer=null;const pending=current;saveNow(pending)}current=plans.find(p=>p.id===id);activeShot=0;activeWaypoint=0;if(map&&current?.center&&Number.isFinite(current.center.lat)&&Number.isFinite(current.center.lng)){map.setView([current.center.lat,current.center.lng],current.zoom||12)}if(current&&!current.shots.length){current.shots.push(blankShot('Opening shot'));scheduleSave()}render();renderMap()}
 function render(){const select=$('plan-select');select.replaceChildren(...plans.map(p=>{const el=document.createElement('option');el.value=p.id;el.textContent=p.name;return el}));select.value=current?.id||'';const mobile=$('mobile-shot');mobile.replaceChildren(...(current?.shots||[]).map((shot,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=(i+1)+'. '+(shot.name||'Untitled shot');return option}));mobile.value=String(activeShot);const list=$('shot-list');list.replaceChildren();current?.shots.forEach((shot,i)=>{const item=document.createElement('div');item.className='shot-item'+(i===activeShot?' active':'');const count=document.createElement('span');count.className='shot-count';count.textContent=shot.route.length+' pts';const n=document.createElement('span');n.className='shot-number';n.textContent=String(i+1).padStart(2,'0');const b=document.createElement('button');b.textContent=shot.name||'Untitled shot';b.onclick=()=>{readFields();activeShot=i;activeWaypoint=0;render();renderMap()};item.append(n,b,count);list.append(item)});const shot=getShot();loading=true;for(const key of ['name','description','drone','lens','date','time','altitude','speed'])$('shot-'+key).value=shot?.[key]??'';loading=false;updateConeControls();updateStats()}
 function readFields(){const shot=getShot();if(!shot||loading)return;for(const key of ['name','description','drone','lens','date','time','altitude','speed'])shot[key]=$('shot-'+key).value;const active=$('shot-list').querySelector('.active button');if(active)active.textContent=shot.name||'Untitled shot';const selected=$('mobile-shot').options[activeShot];if(selected)selected.textContent=(activeShot+1)+'. '+(shot.name||'Untitled shot');scheduleSave()}
 function scheduleSave(){if(!current)return;state('Unsaved…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveTimer=null;saveNow(current)},650)}
-async function saveNow(plan){if(!plan)return;const epoch=++saveEpoch;state('Saving…');try{const res=await api('/api/admin/planner/'+encodeURIComponent(plan.id),{method:'PUT',body:JSON.stringify({name:plan.name,shots:clone(plan.shots),center:map?map.getCenter():plan.center,zoom:map?map.getZoom():plan.zoom})});if(epoch===saveEpoch)state('Saved');plan.updated=res.updated}catch(e){if(epoch===saveEpoch)state('Save failed');console.error(e)}}
+async function saveNow(plan){if(!plan)return;const epoch=++saveEpoch;state('Saving…');try{const res=await api('/api/admin/planner/'+encodeURIComponent(plan.id),{method:'PUT',body:JSON.stringify({name:plan.name,shots:clone(plan.shots),marshals:clone(plan.marshals||[]),center:map?map.getCenter():plan.center,zoom:map?map.getZoom():plan.zoom})});if(epoch===saveEpoch)state('Saved');plan.updated=res.updated}catch(e){if(epoch===saveEpoch)state('Save failed');console.error(e)}}
 
 
 function defaultCone(bearing=0){return {visible:true,mode:'manual',bearing,fov:50,range:30}}
@@ -103,11 +103,80 @@ function renderCones(shot){
   });
  });
 }
+
+function roadMarshals(){return Array.isArray(current?.marshals)?current.marshals:[]}
+function marshalIcon(){
+ return L.divIcon({
+  className:'marshal-marker-wrap',
+  iconSize:[30,36],iconAnchor:[15,32],
+  html:'<span class="marshal-person" aria-hidden="true"><svg viewBox="0 0 24 30" width="23" height="29" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="4.5" r="3.4" fill="#ff4148" stroke="#fff" stroke-width="1.2"/><path d="M12 9 L12 19 M12 11 L5 15 M12 11 L19 15 M12 19 L6.5 27 M12 19 L17.5 27" fill="none" stroke="#ff4148" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 9 L12 19 M12 11 L5 15 M12 11 L19 15 M12 19 L6.5 27 M12 19 L17.5 27" fill="none" stroke="#fff" stroke-opacity=".72" stroke-width=".65" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
+ });
+}
+function removeMarshal(id){
+ if(!current)return;
+ const index=roadMarshals().findIndex(item=>item.id===id);
+ if(index<0)return;
+ current.marshals.splice(index,1);
+ renderMarshals();scheduleSave();
+}
+function editMarshal(item){
+ const next=prompt('Sperrevakt / road marshal label',item.label||'Road marshal');
+ if(next===null)return;
+ item.label=next.trim().slice(0,100);
+ renderMarshals();scheduleSave();
+}
+function renderMarshals(){
+ marshalMarkers.forEach(marker=>marker.remove());marshalMarkers=[];
+ if(!current||!map)return;
+ const guards=roadMarshals();
+ const list=$('marshal-list');
+ list.replaceChildren();
+ $('marshal-count').textContent=guards.length+' placed';
+ if(!guards.length){
+  const empty=document.createElement('p');empty.className='marshal-empty';
+  empty.textContent='Select Guard above the map and tap a street to place a road marshal.';
+  list.append(empty);
+ }
+ guards.forEach((item,i)=>{
+  if(!coordsOk(item.position))return;
+  const marker=L.marker(item.position,{draggable:true,icon:marshalIcon(),zIndexOffset:1100}).addTo(map);
+  marker.bindTooltip(item.label||'Road marshal '+(i+1),{direction:'top',offset:[0,-20]});
+  marker.on('dragend',()=>{
+   const p=marker.getLatLng();item.position=[p.lat,p.lng];
+   renderMarshals();scheduleSave();
+  });
+  marker.on('click',()=>{
+   const popup=document.createElement('div');popup.className='marshal-popup';
+   const heading=document.createElement('strong');heading.textContent=item.label||'Road marshal '+(i+1);
+   const note=document.createElement('p');note.textContent='Planned road-closure position';
+   const buttons=document.createElement('div');buttons.className='marshal-popup-actions';
+   const edit=document.createElement('button');edit.type='button';edit.textContent='Rename';edit.addEventListener('click',()=>{map.closePopup();editMarshal(item)});
+   const remove=document.createElement('button');remove.type='button';remove.textContent='Remove';remove.addEventListener('click',()=>{map.closePopup();removeMarshal(item.id)});
+   buttons.append(edit,remove);popup.append(heading,note,buttons);
+   marker.bindPopup(popup,{maxWidth:250}).openPopup();
+  });
+  marshalMarkers.push(marker);
+  const row=document.createElement('div');row.className='marshal-list-row';
+  const button=document.createElement('button');button.type='button';button.className='marshal-focus';
+  button.textContent=(i+1)+'. '+(item.label||'Road marshal');
+  button.onclick=()=>{map.setView(item.position,Math.max(map.getZoom(),15));marker.fire('click')};
+  const del=document.createElement('button');del.type='button';del.className='secondary marshal-remove';del.textContent='×';del.setAttribute('aria-label','Remove road marshal '+(i+1));del.onclick=()=>removeMarshal(item.id);
+  row.append(button,del);list.append(row);
+ });
+}
+function addMarshal(position){
+ if(!current||!coordsOk(position))return;
+ if(!Array.isArray(current.marshals))current.marshals=[];
+ if(current.marshals.length>=200){alert('Maximum 200 road marshals per plan.');return}
+ current.marshals.push({id:crypto.randomUUID(),position,label:'Road marshal '+(current.marshals.length+1)});
+ renderMarshals();scheduleSave();
+}
+
 function pointIcon(i){return L.divIcon({className:'',html:'<div class="waypoint-number" data-active="'+(i===activeWaypoint)+'">'+(i+1)+'</div>',iconSize:[28,28],iconAnchor:[14,14]})}
-function updateStats(){const shot=getShot();const n=shot?.route.length||0;let distance=0;if(map&&shot)for(let i=1;i<n;i++)distance+=map.distance(shot.route[i-1],shot.route[i]);$('route-stats').textContent=n+' waypoint'+(n===1?'':'s')+' · '+(distance>=1000?(distance/1000).toFixed(2)+' km':Math.round(distance)+' m');$('map-help').textContent=tool==='route'?'Tap the map to add points. Drag a point to adjust it.':tool==='camera'?'Tap where the camera should point.':tool==='cone'?'Tap to add a waypoint with its attached camera cone.':tool==='sketch'?'Drag a finger or mouse to draw freely.':'Pan and zoom the map, or choose a drawing tool.'}
-function renderMap(){if(!map||!current)return;if(routeLine)routeLine.remove();if(aimLine)aimLine.remove();sketchLayers.forEach(layer=>layer.remove());sketchLayers=[];markers.forEach(x=>x.remove());markers=[];if(targetMarker)targetMarker.remove();targetMarker=null;const shot=getShot();if(!shot)return;sketches(shot).forEach(points=>{if(Array.isArray(points)&&points.length>1&&points.every(coordsOk))sketchLayers.push(L.polyline(points,{color:'#efaf67',weight:3,opacity:.95}).addTo(map))});routeLine=L.polyline(shot.route,{color:'#2fb474',weight:4,opacity:.95}).addTo(map);shot.route.forEach((p,i)=>{if(!coordsOk(p))return;const m=L.marker(p,{draggable:true,icon:pointIcon(i)}).addTo(map);m.bindTooltip('Waypoint '+(i+1));m.on('click',()=>selectWaypoint(i));m.on('dragend',()=>{shot.route[i]=[m.getLatLng().lat,m.getLatLng().lng];renderMap();scheduleSave()});markers.push(m)});if(coordsOk(shot.target)){targetMarker=L.marker(shot.target,{draggable:true,icon:L.divIcon({className:'',html:'<div class="camera-target">⌖</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);targetMarker.bindTooltip('Camera target');targetMarker.on('dragend',()=>{shot.target=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];renderMap();scheduleSave()});if(shot.route.length)aimLine=L.polyline([shot.route[shot.route.length-1],shot.target],{color:'#df956d',weight:2,dashArray:'6,7',opacity:.85}).addTo(map)}renderCones(shot);updateConeControls();updateStats()}
+function updateStats(){const shot=getShot();const n=shot?.route.length||0;let distance=0;if(map&&shot)for(let i=1;i<n;i++)distance+=map.distance(shot.route[i-1],shot.route[i]);$('route-stats').textContent=n+' waypoint'+(n===1?'':'s')+' · '+(distance>=1000?(distance/1000).toFixed(2)+' km':Math.round(distance)+' m');$('map-help').textContent=tool==='route'?'Tap the map to add points. Drag a point to adjust it.':tool==='camera'?'Tap where the camera should point.':tool==='cone'?'Tap to add a waypoint with its attached camera cone.':tool==='marshal'?'Tap a street to place a red road marshal. Drag to move; tap to edit or remove.':tool==='sketch'?'Drag a finger or mouse to draw freely.':'Pan and zoom the map, or choose a drawing tool.'}
+function renderMap(){if(!map||!current)return;if(routeLine)routeLine.remove();if(aimLine)aimLine.remove();sketchLayers.forEach(layer=>layer.remove());sketchLayers=[];markers.forEach(x=>x.remove());markers=[];if(targetMarker)targetMarker.remove();targetMarker=null;const shot=getShot();if(!shot)return;sketches(shot).forEach(points=>{if(Array.isArray(points)&&points.length>1&&points.every(coordsOk))sketchLayers.push(L.polyline(points,{color:'#efaf67',weight:3,opacity:.95}).addTo(map))});routeLine=L.polyline(shot.route,{color:'#2fb474',weight:4,opacity:.95}).addTo(map);shot.route.forEach((p,i)=>{if(!coordsOk(p))return;const m=L.marker(p,{draggable:true,icon:pointIcon(i)}).addTo(map);m.bindTooltip('Waypoint '+(i+1));m.on('click',()=>selectWaypoint(i));m.on('dragend',()=>{shot.route[i]=[m.getLatLng().lat,m.getLatLng().lng];renderMap();scheduleSave()});markers.push(m)});if(coordsOk(shot.target)){targetMarker=L.marker(shot.target,{draggable:true,icon:L.divIcon({className:'',html:'<div class="camera-target">⌖</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);targetMarker.bindTooltip('Camera target');targetMarker.on('dragend',()=>{shot.target=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];renderMap();scheduleSave()});if(shot.route.length)aimLine=L.polyline([shot.route[shot.route.length-1],shot.target],{color:'#df956d',weight:2,dashArray:'6,7',opacity:.85}).addTo(map)}renderCones(shot);renderMarshals();updateConeControls();updateStats()}
 function setTool(next){tool=next;if(map){if(window.matchMedia('(pointer: coarse)').matches&&next!=='move')map.dragging.disable();else map.dragging.enable();map.touchZoom[ next==='sketch'?'disable':'enable' ]();}document.querySelectorAll('[data-tool]').forEach(b=>{const active=b.dataset.tool===tool;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});if(map){map.getContainer().style.cursor=tool==='move'?'grab':'crosshair';map.doubleClickZoom[tool==='move'?'enable':'disable']()};updateStats()}
-function initMap(){if(!window.L){$('map-help').textContent='Map library unavailable. Check internet connection.';return}map=L.map('planner-map',{zoomControl:true}).setView([59.9139,10.7522],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);map.on('click',e=>{const shot=getShot();if(!shot)return;const p=[e.latlng.lat,e.latlng.lng];if(tool==='route'){shot.route.push(p);activeWaypoint=shot.route.length-1;cones(shot);renderMap();scheduleSave()}else if(tool==='camera'){shot.target=p;renderMap();scheduleSave()}else if(tool==='cone'){shot.route.push(p);activeWaypoint=shot.route.length-1;cones(shot);renderMap();scheduleSave()}});setupSketchEvents();document.dispatchEvent(new CustomEvent('offset:planner-map-ready',{detail:{map}}));map.on('moveend',()=>{if(current&&!loading)scheduleSave()});window.addEventListener('orientationchange',()=>setTimeout(()=>map.invalidateSize(),350));window.addEventListener('resize',()=>map.invalidateSize());}
+function initMap(){if(!window.L){$('map-help').textContent='Map library unavailable. Check internet connection.';return}map=L.map('planner-map',{zoomControl:true}).setView([59.9139,10.7522],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);map.on('click',e=>{const shot=getShot();if(!shot)return;const p=[e.latlng.lat,e.latlng.lng];if(tool==='route'){shot.route.push(p);activeWaypoint=shot.route.length-1;cones(shot);renderMap();scheduleSave()}else if(tool==='camera'){shot.target=p;renderMap();scheduleSave()}else if(tool==='cone'){shot.route.push(p);activeWaypoint=shot.route.length-1;cones(shot);renderMap();scheduleSave()}else if(tool==='marshal'){addMarshal(p)}});setupSketchEvents();document.dispatchEvent(new CustomEvent('offset:planner-map-ready',{detail:{map}}));map.on('moveend',()=>{if(current&&!loading)scheduleSave()});window.addEventListener('orientationchange',()=>setTimeout(()=>map.invalidateSize(),350));window.addEventListener('resize',()=>map.invalidateSize());}
 
 function setupSketchEvents(){
   if(!map)return;
@@ -208,7 +277,7 @@ function setupLocationTools(){
   });
 }
 
-function buildPrint(){const root=$('print-summary');root.replaceChildren();const h=document.createElement('h1');h.textContent='OFFSET · '+current.name;root.append(h);const sub=document.createElement('p');sub.textContent='Drone shot plan · '+new Date().toLocaleDateString('en-GB');root.append(sub);current.shots.forEach((s,i)=>{const article=document.createElement('article');const heading=document.createElement('h2');heading.textContent=(i+1)+'. '+s.name;article.append(heading);const meta=document.createElement('p');meta.textContent=[s.drone,s.lens,s.date,s.time,s.altitude&&s.altitude+' m AGL',s.speed&&s.speed+' m/s'].filter(Boolean).join(' · ');article.append(meta);const desc=document.createElement('p');desc.textContent=s.description;article.append(desc);const pt=document.createElement('p');pt.textContent='Flight path (latitude, longitude):';article.append(pt);const ol=document.createElement('ol');s.route.forEach(c=>{const li=document.createElement('li');li.textContent=c.map(v=>v.toFixed(6)).join(', ');ol.append(li)});article.append(ol);if(s.target){const tar=document.createElement('p');tar.textContent='Camera target: '+s.target.map(v=>v.toFixed(6)).join(', ');article.append(tar)}cones(s).forEach((c,i)=>{if(!c.visible)return;const p=document.createElement('p');p.textContent='Waypoint '+(i+1)+' camera cone: '+c.mode+' · '+Math.round(effectiveBearing(s,i))+'° · FOV '+c.fov+'° · '+c.range+' m';article.append(p)});root.append(article)})}
+function buildPrint(){const root=$('print-summary');root.replaceChildren();const h=document.createElement('h1');h.textContent='OFFSET · '+current.name;root.append(h);const sub=document.createElement('p');sub.textContent='Drone shot plan · '+new Date().toLocaleDateString('en-GB');root.append(sub);current.shots.forEach((s,i)=>{const article=document.createElement('article');const heading=document.createElement('h2');heading.textContent=(i+1)+'. '+s.name;article.append(heading);const meta=document.createElement('p');meta.textContent=[s.drone,s.lens,s.date,s.time,s.altitude&&s.altitude+' m AGL',s.speed&&s.speed+' m/s'].filter(Boolean).join(' · ');article.append(meta);const desc=document.createElement('p');desc.textContent=s.description;article.append(desc);const pt=document.createElement('p');pt.textContent='Flight path (latitude, longitude):';article.append(pt);const ol=document.createElement('ol');s.route.forEach(c=>{const li=document.createElement('li');li.textContent=c.map(v=>v.toFixed(6)).join(', ');ol.append(li)});article.append(ol);if(s.target){const tar=document.createElement('p');tar.textContent='Camera target: '+s.target.map(v=>v.toFixed(6)).join(', ');article.append(tar)}cones(s).forEach((c,i)=>{if(!c.visible)return;const p=document.createElement('p');p.textContent='Waypoint '+(i+1)+' camera cone: '+c.mode+' · '+Math.round(effectiveBearing(s,i))+'° · FOV '+c.fov+'° · '+c.range+' m';article.append(p)});root.append(article)});if(roadMarshals().length){const h=document.createElement('h2');h.textContent='Road marshals / Sperrevakter';root.append(h);const ol=document.createElement('ol');roadMarshals().forEach((guard,i)=>{const li=document.createElement('li');li.textContent=(guard.label||'Road marshal '+(i+1))+' — '+guard.position.map(v=>Number(v).toFixed(6)).join(', ');ol.append(li)});root.append(ol)}}
 async function start(){try{await api('/api/admin/me')}catch{$('auth-warning').hidden=false;return}$('planner-app').hidden=false;for(let tries=0;!window.L&&tries<40;tries++)await new Promise(resolve=>setTimeout(resolve,150));initMap();setupLocationTools();await load();setTool('move');setTimeout(()=>map?.invalidateSize(),150)}
 $('plan-select').onchange=e=>selectPlan(e.target.value);
 $('mobile-shot').onchange=e=>{readFields();activeShot=Number(e.target.value)||0;activeWaypoint=0;render();renderMap()};
@@ -220,8 +289,8 @@ $('add-shot').onclick=()=>{if(!current)return;readFields();current.shots.push(bl
 $('remove-shot').onclick=()=>{if(!current||!confirm('Delete this shot?'))return;current.shots.splice(activeShot,1);if(!current.shots.length)current.shots.push(blankShot('Opening shot'));activeShot=Math.min(activeShot,current.shots.length-1);render();renderMap();scheduleSave()};
 $('clear-shot').onclick=()=>{$('erase-drawing').click()};
 $('erase-drawing').onclick=()=>{const shot=getShot();if(!shot||!confirm('Clear flight path, sketches and camera target?'))return;shot.route=[];shot.waypointCones=[];activeWaypoint=0;shot.target=null;shot.sketches=[];renderMap();scheduleSave()};
-$('undo-point').onclick=()=>{const shot=getShot();if(!shot)return;if(tool==='sketch'&&sketches(shot).length)shot.sketches.pop();else if(tool==='camera'&&shot.target)shot.target=null;else if(shot.route.length){shot.route.pop();cones(shot);activeWaypoint=Math.min(activeWaypoint,Math.max(0,shot.route.length-1));}else if(sketches(shot).length)shot.sketches.pop();else if(shot.target)shot.target=null;else return;renderMap();scheduleSave()};
-$('fit-route').onclick=()=>{const shot=getShot();if(!map||!shot)return;const points=[...shot.route,...sketches(shot).flat(),...(shot.target?[shot.target]:[]),];if(points.length)map.fitBounds(L.latLngBounds(points).pad(.25),{maxZoom:16})};
+$('undo-point').onclick=()=>{const shot=getShot();if(!shot)return;if(tool==='marshal'&&roadMarshals().length){current.marshals.pop();renderMarshals();scheduleSave();return;}if(tool==='sketch'&&sketches(shot).length)shot.sketches.pop();else if(tool==='camera'&&shot.target)shot.target=null;else if(shot.route.length){shot.route.pop();cones(shot);activeWaypoint=Math.min(activeWaypoint,Math.max(0,shot.route.length-1));}else if(sketches(shot).length)shot.sketches.pop();else if(shot.target)shot.target=null;else return;renderMap();scheduleSave()};
+$('fit-route').onclick=()=>{const shot=getShot();if(!map||!shot)return;const points=[...shot.route,...sketches(shot).flat(),...(shot.target?[shot.target]:[]),...roadMarshals().map(x=>x.position).filter(coordsOk)];if(points.length)map.fitBounds(L.latLngBounds(points).pad(.25),{maxZoom:16})};
 
 $('cone-visible').addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s);if(!c)return;c.visible=e.target.checked;renderMap();scheduleSave()});
 $('cone-mode').addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s);if(!c)return;if(c.mode==='target'&&e.target.value==='manual')c.bearing=effectiveBearing(s);c.mode=e.target.value;renderMap();scheduleSave()});
