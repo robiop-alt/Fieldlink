@@ -438,3 +438,86 @@
  .offset-planner .planner-top button.planner-refresh svg{width:12px;height:12px}
  .offset-planner .planner-top .planner-back{padding:8px 6px;font-size:10px}
 }
+
+
+/* Date/time controls: a stable, clipped date face with the real native picker
+   positioned on top. Prevents WebKit's intrinsic date width spilling into Time. */
+.offset-planner .shot-editor .fields-date-time{
+ display:grid;
+ grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:10px;
+ width:100%;
+ min-width:0;
+}
+.offset-planner .shot-editor .fields-date-time>label{
+ display:block;
+ min-width:0;
+ max-width:100%;
+ width:100%;
+ overflow:visible;
+}
+.offset-planner .shot-editor .date-control{
+ display:block;
+ position:relative;
+ min-width:0;
+ max-width:100%;
+ width:100%;
+ height:37px;
+ margin-top:5px;
+ overflow:hidden;
+ border:1px solid #364746;
+ border-radius:6px;
+ background:#11191b;
+}
+.offset-planner .shot-editor .date-control-display{
+ display:flex;
+ align-items:center;
+ min-width:0;
+ height:100%;
+ width:100%;
+ padding:0 9px;
+ color:#e9f0eb;
+ font:13px 'DM Sans',sans-serif;
+ white-space:nowrap;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ pointer-events:none;
+}
+.offset-planner .shot-editor .date-control-display.is-empty{color:#95a49d}
+.offset-planner .shot-editor .date-control #shot-date{
+ position:absolute;
+ inset:0;
+ display:block;
+ box-sizing:border-box;
+ width:100%;
+ max-width:none;
+ min-width:0;
+ height:100%;
+ min-height:0;
+ margin:0;
+ padding:0;
+ border:0;
+ border-radius:0;
+ opacity:0;
+ cursor:pointer;
+ font-size:16px;
+}
+.offset-planner .shot-editor .date-control:focus-within{
+ outline:2px solid #57b62f;
+ outline-offset:2px;
+}
+.offset-planner .shot-editor .fields-date-time #shot-time{
+ display:block;
+ width:100%;
+ min-width:0;
+ max-width:100%;
+ height:37px;
+ min-height:37px;
+ margin-top:5px;
+ padding:6px 22px 6px 8px;
+ font-size:13px;
+ box-sizing:border-box;
+}
+@media(max-width:600px){
+ .offset-planner .shot-editor .fields-date-time{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+}
