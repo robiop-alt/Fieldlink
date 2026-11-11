@@ -264,8 +264,20 @@
 .fields-two>label{min-width:0;max-width:100%}
 .fields-two>label>input,.fields-two>label>select{min-width:0;max-width:100%;box-sizing:border-box}
 @media(max-width:600px){
- .shot-editor .fields-date-time{grid-template-columns:minmax(0,1fr);gap:5px}
- .shot-editor .fields-date-time>label{width:100%;min-width:0}
+ /* Keep both controls side by side while containing iOS native date widths. */
+ .shot-editor .fields-date-time{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+ .shot-editor .fields-date-time>label{width:auto;min-width:0;max-width:100%;overflow:hidden}
  .shot-editor .fields-date-time #shot-date,
- .shot-editor .fields-date-time #shot-time{width:100%;max-width:100%;min-width:0}
+ .shot-editor .fields-date-time #shot-time{display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box}
+ .shot-editor .fields-date-time #shot-date{
+  padding-inline:5px;font-size:14px;letter-spacing:-.025em;
+  -webkit-appearance:none;appearance:none;
+ }
+ .shot-editor .fields-date-time #shot-date::-webkit-date-and-time-value{
+  min-width:0;text-align:center;
+ }
+ .shot-editor .fields-date-time #shot-date::-webkit-datetime-edit{
+  padding:0;min-width:0;
+ }
+ .shot-editor .fields-date-time #shot-time{padding-inline:8px}
 }
