@@ -141,3 +141,12 @@
  .offset-planner #airspace-toggle{width:19px;height:19px;min-height:19px}
 }
 @media print{.airspace-controls,.airspace-status{display:none!important}}
+
+
+/* Camera cones are physically attached to flight waypoints. */
+.waypoint-number[data-active="true"]{background:#e8a25d;color:#22190d;border-color:#ffdb96;box-shadow:0 0 0 4px rgba(232,162,93,.22)}
+.offset-planner #cone-waypoint{min-height:38px}
+@media(max-width:800px){
+ .offset-planner #cone-waypoint{min-height:44px}
+ .waypoint-number{touch-action:none}
+}
