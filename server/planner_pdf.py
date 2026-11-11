@@ -212,9 +212,20 @@ def _map(c, route, target, cones, marshals, x, top, w, h):
                         lon=p[1]+rng*math.sin(theta)/(111_320*max(.05,math.cos(math.radians(p[0]))))
                         return project([lat,lon])
                     q1=endpoint(angle-fov/2);q2=endpoint(angle+fov/2)
-                    c.setFillColor(LIGHT_GREEN);c.setStrokeColor(GREEN);c.setLineWidth(.6)
+                    # True PDF transparency: street tiles remain visible beneath camera coverage.
+                    # Apply alpha only to this cone so waypoints and labels stay opaque.
                     path=c.beginPath();path.moveTo(xp,yp);path.lineTo(*q1);path.lineTo(*q2);path.close()
-                    c.drawPath(path,fill=1,stroke=1)
+                    c.saveState()
+                    c.setFillColor(colors.HexColor("#44bd70"))
+                    c.setFillAlpha(.20)
+                    c.drawPath(path,fill=1,stroke=0)
+                    c.restoreState()
+                    c.saveState()
+                    c.setStrokeColor(colors.HexColor("#2aab58"))
+                    c.setLineWidth(.75)
+                    c.setStrokeAlpha(.9)
+                    c.drawPath(path,fill=0,stroke=1)
+                    c.restoreState()
                 except (ValueError,TypeError,OverflowError):
                     pass
         c.setFillColor(colors.white);c.setStrokeColor(GREEN)
