@@ -18,7 +18,7 @@ function scheduleSave(){if(!current)return;state('Unsaved…');clearTimeout(save
 async function saveNow(plan){if(!plan)return;const epoch=++saveEpoch;state('Saving…');try{const res=await api('/api/admin/planner/'+encodeURIComponent(plan.id),{method:'PUT',body:JSON.stringify({name:plan.name,shots:clone(plan.shots),center:map?map.getCenter():plan.center,zoom:map?map.getZoom():plan.zoom})});if(epoch===saveEpoch)state('Saved');plan.updated=res.updated}catch(e){if(epoch===saveEpoch)state('Save failed');console.error(e)}}
 
 
-function defaultCone(bearing=0){return {visible:true,mode:'manual',bearing,fov:50,range:150}}
+function defaultCone(bearing=0){return {visible:true,mode:'manual',bearing,fov:50,range:30}}
 function cones(shot){
  if(!Array.isArray(shot.waypointCones))shot.waypointCones=[];
  if(shot.cone&&shot.route.length){
@@ -38,7 +38,7 @@ function cones(shot){
   c.visible=c.visible!==false;c.mode=c.mode==='target'?'target':'manual';
   c.bearing=Number.isFinite(Number(c.bearing))?((Number(c.bearing)%360)+360)%360:0;
   c.fov=Math.min(170,Math.max(5,Number(c.fov)||50));
-  c.range=Math.min(10000,Math.max(1,Number(c.range)||150));
+  c.range=Math.min(10000,Math.max(1,Number(c.range)||30));
   shot.waypointCones[i]=c;
  }
  return shot.waypointCones;
