@@ -286,6 +286,27 @@ function setupLocationTools(){
 
 function buildPrint(){const root=$('print-summary');root.replaceChildren();const h=document.createElement('h1');h.textContent='OFFSET · '+current.name;root.append(h);const sub=document.createElement('p');sub.textContent='Drone shot plan · '+new Date().toLocaleDateString('en-GB');root.append(sub);current.shots.forEach((s,i)=>{const article=document.createElement('article');const heading=document.createElement('h2');heading.textContent=(i+1)+'. '+s.name;article.append(heading);const meta=document.createElement('p');meta.textContent=[s.drone,s.lens,s.date,s.time,s.altitude&&s.altitude+' m AGL',s.speed&&s.speed+' m/s'].filter(Boolean).join(' · ');article.append(meta);const desc=document.createElement('p');desc.textContent=s.description;article.append(desc);const pt=document.createElement('p');pt.textContent='Flight path (latitude, longitude):';article.append(pt);const ol=document.createElement('ol');s.route.forEach(c=>{const li=document.createElement('li');li.textContent=c.map(v=>v.toFixed(6)).join(', ');ol.append(li)});article.append(ol);if(s.target){const tar=document.createElement('p');tar.textContent='Camera target: '+s.target.map(v=>v.toFixed(6)).join(', ');article.append(tar)}cones(s).forEach((c,i)=>{if(!c.visible)return;const p=document.createElement('p');p.textContent='Waypoint '+(i+1)+' camera cone: '+c.mode+' · '+Math.round(effectiveBearing(s,i))+'° · FOV '+c.fov+'° · '+c.range+' m';article.append(p)});root.append(article)});if(roadMarshals().length){const h=document.createElement('h2');h.textContent='Road marshals / Sperrevakter';root.append(h);const ol=document.createElement('ol');roadMarshals().forEach((guard,i)=>{const li=document.createElement('li');li.textContent=(guard.label||'Road marshal '+(i+1))+' — '+guard.position.map(v=>Number(v).toFixed(6)).join(', ');ol.append(li)});root.append(ol)}}
 async function start(){try{await api('/api/admin/me')}catch{$('auth-warning').hidden=false;return}$('planner-app').hidden=false;for(let tries=0;!window.L&&tries<40;tries++)await new Promise(resolve=>setTimeout(resolve,150));initMap();setupLocationTools();await load();setTool('move');setTimeout(()=>map?.invalidateSize(),150)}
+$('planner-refresh').addEventListener('click',async event=>{
+ event.preventDefault();
+ const link=$('planner-refresh');
+ if(link.dataset.refreshing)return;
+ link.dataset.refreshing='true';
+ link.setAttribute('aria-busy','true');
+ try{
+  if(saveTimer){
+   clearTimeout(saveTimer);saveTimer=null;
+   if(current)await saveNow(current);
+   if($('save-state').textContent==='Save failed'){
+    alert('Could not save the latest changes. Refresh cancelled to avoid losing edits.');
+    return;
+   }
+  }
+  window.location.reload();
+ }finally{
+  delete link.dataset.refreshing;
+  link.removeAttribute('aria-busy');
+ }
+});
 $('plan-select').onchange=e=>selectPlan(e.target.value);
 $('mobile-shot').onchange=e=>{readFields();activeShot=Number(e.target.value)||0;activeWaypoint=0;render();renderMap()};
 $('mobile-add-shot').onclick=()=>$('add-shot').click();
