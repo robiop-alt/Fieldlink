@@ -228,3 +228,24 @@
  .offset-planner .planner-top button.planner-refresh{padding:9px 8px}
  .offset-planner .planner-top button.planner-refresh span{display:none}
 }
+
+
+/* Minimal monochrome map: quiet street context, strong flight annotations. */
+#planner-map.basemap-minimal .leaflet-tile-pane{
+ filter:grayscale(1) saturate(0) brightness(1.075) contrast(.84);
+}
+#planner-map.basemap-minimal{background:#e3e6e3}
+.basemap-switch{display:flex;align-items:center;gap:7px;flex:0 0 auto;color:#9bb0a6;font:10px 'DM Mono',monospace;white-space:nowrap}
+.offset-planner .basemap-switch select{
+ background:#202b2c;color:#e0ebe2;border:1px solid #415453;
+ min-height:39px;width:99px;padding:6px 8px;margin:0;
+ font:11px 'DM Sans',sans-serif;border-radius:7px;
+}
+#planner-map .waypoint-number{box-shadow:0 1px 3px rgba(0,0,0,.5)}
+@media(max-width:800px){
+ .map-top-controls{flex-wrap:wrap}
+ .basemap-switch{gap:4px}
+ .basemap-switch span{display:none}
+ .offset-planner .basemap-switch select{min-height:40px;width:90px;padding:5px 6px;font-size:11px}
+ .map-top-controls #map-search-form{flex:1 1 180px}
+}
