@@ -197,3 +197,34 @@
 .cone-aim{width:26px;height:26px;border-radius:50%;background:#f6c889;color:#34251a;border:1.5px solid #a96e35;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(22,20,16,.32);font-size:0}
 .cone-aim svg{width:16px;height:16px;display:block;flex-shrink:0}
 @media(max-width:800px){.cone-aim{width:26px;height:26px;font-size:0}.cone-aim svg{width:16px;height:16px}}
+
+
+/* Deliberate tactile header refresh button, not a plain text link. */
+.offset-planner .planner-top button.planner-refresh{
+ display:flex;flex-direction:column;align-items:flex-start;justify-content:center;
+ flex:0 1 auto;min-width:0;gap:3px;padding:9px 14px;
+ background:#202e29;border:1px solid #486b4c;border-radius:9px;
+ color:#e8f2e8;box-shadow:inset 0 1px 0 rgba(255,255,255,.045);
+ text-align:left;cursor:pointer;transition:background .15s ease,border-color .15s ease;
+}
+.offset-planner .planner-top button.planner-refresh strong{
+ display:flex;align-items:center;gap:9px;color:#e8f2e8;
+ font:600 16px 'Space Grotesk',sans-serif;white-space:nowrap;
+}
+.offset-planner .planner-top button.planner-refresh span{
+ color:#a9bea9;font:9px 'DM Mono',monospace;letter-spacing:.11em;
+}
+.planner-refresh svg{opacity:.85;color:#a5d888;flex-shrink:0}
+.offset-planner .planner-top button.planner-refresh:hover{background:#283a2e;border-color:#73b564}
+.offset-planner .planner-top button.planner-refresh:active{background:#314832}
+.offset-planner .planner-top button.planner-refresh[aria-busy="true"]{opacity:.6;pointer-events:none}
+@media(max-width:800px){
+ .offset-planner .planner-top button.planner-refresh{padding:9px 10px;min-height:44px;gap:2px}
+ .offset-planner .planner-top button.planner-refresh strong{font-size:13px;gap:6px}
+ .offset-planner .planner-top button.planner-refresh span{font-size:8px;letter-spacing:.06em}
+ .planner-refresh svg{width:14px;height:14px}
+}
+@media(max-width:380px){
+ .offset-planner .planner-top button.planner-refresh{padding:9px 8px}
+ .offset-planner .planner-top button.planner-refresh span{display:none}
+}
