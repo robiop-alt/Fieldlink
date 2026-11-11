@@ -425,3 +425,16 @@
   padding-top:max(20px,calc(env(safe-area-inset-top) + 8px));
  }
 }
+
+
+/* Group Planner refresh with Admin at the far right of the top bar. */
+.offset-planner .planner-top{column-gap:8px}
+.offset-planner .planner-top button.planner-refresh{margin-left:auto}
+.offset-planner .planner-top .planner-back{margin-left:0;white-space:nowrap}
+@media(max-width:380px){
+ .offset-planner .planner-top{column-gap:5px}
+ .offset-planner .planner-top button.planner-refresh{padding:8px 6px}
+ .offset-planner .planner-top button.planner-refresh strong{font-size:10px;gap:3px}
+ .offset-planner .planner-top button.planner-refresh svg{width:12px;height:12px}
+ .offset-planner .planner-top .planner-back{padding:8px 6px;font-size:10px}
+}
