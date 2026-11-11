@@ -354,6 +354,7 @@ class DronePlanCreate(BaseModel):
 class DronePlanSave(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     shots: list = Field(default_factory=list, max_length=200)
+    marshals: list = Field(default_factory=list, max_length=200)
     center: dict | None = None
     zoom: int | None = Field(default=None, ge=0, le=22)
 
@@ -363,6 +364,7 @@ def planner_document(row):
     except (ValueError, TypeError): contents={}
     return {'id':row['id'],'name':row['name'],
             'shots':contents.get('shots',[]),
+            'marshals':contents.get('marshals',[]),
             'center':contents.get('center'),
             'zoom':contents.get('zoom'),
             'updated':row['updated']}
@@ -401,11 +403,11 @@ def create_drone_plan(body: DronePlanCreate, request: Request, x_admin_key: str 
     import json
     plan_id=uuid.uuid4().hex
     updated=int(time.time())
-    contents={'shots':[], 'center':None, 'zoom':None}
+    contents={'shots':[], 'marshals':[], 'center':None, 'zoom':None}
     with db() as c:
         c.execute('INSERT INTO drone_plans(id,name,data_json,updated) VALUES(?,?,?,?)',
                   (plan_id,body.name.strip(),json.dumps(contents),updated))
-    return {'id':plan_id,'name':body.name.strip(),'shots':[],'updated':updated}
+    return {'id':plan_id,'name':body.name.strip(),'shots':[],'marshals':[],'updated':updated}
 
 @app.put('/api/admin/planner/{plan_id}')
 def save_drone_plan(plan_id: str, body: DronePlanSave, request: Request, x_admin_key: str = Header(default='')):
@@ -421,7 +423,20 @@ def save_drone_plan(plan_id: str, body: DronePlanSave, request: Request, x_admin
                 not all(isinstance(v,(int,float)) and -180<=v<=180 for v in point) or
                 not -90<=point[0]<=90):
                 raise HTTPException(422,'Invalid map coordinate')
-    payload=json.dumps({'shots':body.shots,'center':body.center,'zoom':body.zoom})
+    # Road marshals belong to the plan (not an individual shot).
+    # Their positions are planning annotations, not traffic closure permissions.
+    for guard in body.marshals:
+        if not isinstance(guard,dict): raise HTTPException(422,'Invalid road marshal')
+        point=guard.get('position')
+        if (not isinstance(point,list) or len(point)!=2 or
+            not all(isinstance(v,(int,float)) and not isinstance(v,bool) for v in point) or
+            not -90 <= point[0] <= 90 or not -180 <= point[1] <= 180):
+            raise HTTPException(422,'Invalid road marshal coordinates')
+        if not isinstance(guard.get('id'),str) or len(guard['id'])>100:
+            raise HTTPException(422,'Invalid road marshal ID')
+        if not isinstance(guard.get('label',''),str) or len(guard.get('label',''))>100:
+            raise HTTPException(422,'Invalid road marshal label')
+    payload=json.dumps({'shots':body.shots,'marshals':body.marshals,'center':body.center,'zoom':body.zoom})
     if len(payload)>1_000_000: raise HTTPException(413,'Plan is too large')
     updated=int(time.time())
     with db() as c:
