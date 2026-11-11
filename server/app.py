@@ -438,6 +438,21 @@ def delete_drone_plan(plan_id: str, request: Request, x_admin_key: str = Header(
         if not cursor.rowcount: raise HTTPException(404,'Plan not found')
     return {'ok':True}
 
+@app.get('/health/drone-zones', include_in_schema=False)
+def drone_zones_health():
+    # Minimal public source-health check. Never exposes restricted admin data.
+    try:
+        from drone_zones import get_zones
+        snapshot = get_zones()
+        return {'available': True, 'source': snapshot.get('origin'),
+                'source_date': snapshot.get('source_date'),
+                'stale': bool(snapshot.get('stale')),
+                'count': len(snapshot['zones'])}
+    except Exception:
+        return JSONResponse({'available': False,
+                             'message': 'Norwegian drone-zone data unavailable'},
+                            status_code=503, headers={'Cache-Control': 'no-store'})
+
 @app.get('/health')
 def health(): return {'ok':True,'product':'OFFSET','version':'1.0.0'}
 
