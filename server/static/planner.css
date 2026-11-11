@@ -182,3 +182,12 @@
  .marshal-person{width:38px;height:43px;transform:translate(-4px,-5px)}
  .marshal-person svg{width:26px;height:34px}
 }
+
+/* Clickable Drone Planner title refreshes the current page. */
+.planner-refresh{color:inherit;text-decoration:none;cursor:pointer;border-radius:5px}
+.planner-refresh strong{display:flex;align-items:center;gap:7px}
+.planner-refresh svg{opacity:.48;transition:opacity .15s ease,transform .2s ease}
+.planner-refresh:hover strong{color:#d4f5bf}
+.planner-refresh:hover svg{opacity:1;transform:rotate(35deg)}
+.planner-refresh[aria-busy="true"]{opacity:.6;pointer-events:none}
+.planner-refresh:focus-visible{outline:2px solid #57b62f;outline-offset:5px}
