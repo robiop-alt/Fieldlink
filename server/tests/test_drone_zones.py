@@ -38,6 +38,16 @@ class DroneZoneTests(unittest.TestCase):
         self.assertEqual(len(outside['features']), 0)
         self.assertEqual(inside['source_date'], '2026-11-10')
 
+    def test_ed269_circle_geometry_is_renderable(self):
+        circle = drone_zones._as_geojson({
+            'type': 'Circle', 'center': [10.75, 59.91], 'radius': 5000
+        })
+        self.assertEqual(circle['type'], 'Polygon')
+        self.assertEqual(len(circle['coordinates'][0]), 49)
+        self.assertTrue(drone_zones._touches_bbox(
+            circle['coordinates'], (59.89, 10.72, 59.93, 10.78)
+        ))
+
     def test_cache_discovery_and_source_date(self):
         import json
         page = b'<a href="/Downloads/NOR_ED269_compliant_geozones_2026-11-10.json">Data</a>'
