@@ -239,58 +239,71 @@ def _map(c, route, target, cones, marshals, x, top, w, h):
     c.drawString(x+13,top-h+9,note)
 
 def make_planner_pdf(plan):
+    """One complete A4 page per shot (plus no cover or separate guard page)."""
     buffer=io.BytesIO()
     c=canvas.Canvas(buffer,pagesize=A4,pageCompression=1)
     c.setTitle("OFFSET Drone Planner - "+_safe(plan.get("name"),100))
     c.setAuthor("OFFSET")
     name=_safe(plan.get("name"),90) or "Untitled plan"
-    shots=plan.get("shots") or []
-    marshals=plan.get("marshals") or []
-    y=_page(c,name,"DRONE SHOT PLAN")
-    y=_line(c,"Generated "+datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC"),M,y,9,MUTED)
-    y-=12
-    y=_line(c,f"{len(shots)} shots  |  {len(marshals)} road marshals",M,y,11,GREEN,True)
-    y-=8
-    y=_line(c,"Street map © OpenStreetMap contributors. Planning reference only; not flight clearance.",M,y,9,MUTED,width=PW-2*M)
-    c.showPage()
+    shots=[shot for shot in (plan.get("shots") or []) if isinstance(shot,dict)]
+    marshals=[g for g in (plan.get("marshals") or [])
+              if isinstance(g,dict) and _coord(g.get("position"))]
+    if not shots:
+        y=_page(c,name,"DRONE SHOT PLAN")
+        _line(c,"No shots in this plan yet.",M,y,11,MUTED)
+        c.showPage()
     for index,shot in enumerate(shots):
-        if not isinstance(shot,dict):continue
         y=_page(c,name,f"SHOT {index+1:02d} / {len(shots):02d}")
         y=_line(c,_safe(shot.get("name"),100) or f"Shot {index+1}",M,y,14,INK,True)
-        y-=5
         details=[_safe(shot.get(k),60) for k in ("drone","lens","date","time")]
         details=[p for p in details if p]
         if details:
+            y-=3
             y=_line(c,"  |  ".join(details),M,y,9,MUTED,width=PW-2*M)
-        description=_safe(shot.get("description"),1200)
+        description=_safe(shot.get("description"),1500)
         if description:
-            y-=6
-            y=_line(c,description,M,y,10,INK,width=PW-2*M)
-        y-=12
+            y-=5
+            desc_lines=simpleSplit(description,"Helvetica",9,PW-2*M)
+            # Keep the map and all essential shot details together.
+            for part in desc_lines[:5]:
+                y=_line(c,part,M,y,9,INK)
+            if len(desc_lines)>5:
+                y=_line(c,"Description continues in the Planner.",M,y,8,MUTED)
+        y-=8
         route=shot.get("route") if isinstance(shot.get("route"),list) else []
         cones=shot.get("waypointCones") if isinstance(shot.get("waypointCones"),list) else []
-        _map(c,route,shot.get("target"),cones,marshals,M,y,PW-2*M,245)
-        y-=265
-        y=_line(c,"WAYPOINTS",M,y,10,GREEN,True)
-        for i,p in enumerate(route[:14]):
+        # Tall street map is the primary part of the shot page.
+        map_height=290 if y>=580 else 245
+        _map(c,route,shot.get("target"),cones,marshals,M,y,PW-2*M,map_height)
+        y-=map_height+16
+
+        col_width=(PW-2*M-16)/2
+        left_x=M
+        right_x=M+col_width+16
+        bottom=56
+        y_left=_line(c,"WAYPOINTS",left_x,y,10,GREEN,True)
+        for i,p in enumerate(route):
             if not _coord(p):continue
+            if y_left<bottom+15:
+                y_left=_line(c,f"+ {len(route)-i} more waypoints in Planner",left_x,y_left,8,MUTED)
+                break
             data=cones[i] if i<len(cones) and isinstance(cones[i],dict) else {}
-            label=f"{i+1:02d}   {p[0]:.6f}, {p[1]:.6f}    "
+            y_left=_line(c,f"{i+1:02d}  {p[0]:.5f}, {p[1]:.5f}",left_x,y_left,8,INK)
             if data.get("visible",True):
-                label+=f"Camera: {data.get('mode','manual')}, FOV {data.get('fov',50)} deg"
-            y=_line(c,label,M,y,8,INK)
-        if len(route)>14:y=_line(c,f"+ {len(route)-14} more waypoints",M,y,8,MUTED)
-        c.showPage()
-    if marshals:
-        y=_page(c,name,"ROAD MARSHALS / SPERREVAKTER")
-        y=_line(c,"Planned positions only; road closure permission must be arranged separately.",M,y,9,MUTED,width=PW-2*M)
-        y-=12
+                y_left=_line(c,f"     {data.get('mode','manual')} camera · FOV {data.get('fov',50)} deg",left_x,y_left,7,MUTED)
+
+        y_right=_line(c,f"ROAD MARSHALS ({len(marshals)})",right_x,y,10,RED,True)
+        if not marshals:
+            _line(c,"None placed",right_x,y_right,8,MUTED)
         for i,g in enumerate(marshals):
-            if not isinstance(g,dict):continue
-            if y<70:c.showPage();y=_page(c,name,"ROAD MARSHALS (CONTINUED)")
-            p=g.get("position")
-            if not _coord(p):continue
-            y=_line(c,f"{i+1:02d}   {_safe(g.get('label'),70) or 'Road marshal'}  -  {p[0]:.6f}, {p[1]:.6f}",M,y,9,INK)
+            if y_right<bottom+17:
+                y_right=_line(c,f"+ {len(marshals)-i} more in Planner",right_x,y_right,8,MUTED)
+                break
+            label=_safe(g.get("label"),38) or f"Road marshal {i+1}"
+            y_right=_line(c,f"{i+1:02d}  {label}",right_x,y_right,8,INK)
+            p=g["position"]
+            y_right=_line(c,f"     {p[0]:.5f}, {p[1]:.5f}",right_x,y_right,7,MUTED)
+
         c.showPage()
     c.save()
     buffer.seek(0)
