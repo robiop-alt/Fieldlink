@@ -101,7 +101,7 @@ function renderCones(shot){
   }).addTo(map));
   if(!selected)return;
   const follow=c.mode==='target'&&coordsOk(shot.target);
-  coneHeadingMarker=L.marker(destination(origin,bearing,c.range),{draggable:!follow,icon:L.divIcon({className:'',html:'<div class="cone-aim">↗</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map);
+  coneHeadingMarker=L.marker(destination(origin,bearing,c.range),{draggable:!follow,icon:L.divIcon({className:'',html:'<div class="cone-aim" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></div>',iconSize:[26,26],iconAnchor:[13,13]})}).addTo(map);
   coneHeadingMarker.bindTooltip(follow?'Following camera target':'Drag to aim waypoint '+(i+1));
   if(!follow)coneHeadingMarker.on('dragend',()=>{
    const p=coneHeadingMarker.getLatLng(),aim=[p.lat,p.lng];
