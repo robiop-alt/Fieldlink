@@ -7,3 +7,4 @@ zipstream-ng>=1.8,<2
 boto3>=1.35,<2
 Pillow>=11.3,<13
 qrcode>=8.0,<9
+reportlab>=4.2,<5
