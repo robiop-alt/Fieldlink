@@ -87,7 +87,11 @@ function renderCones(shot){
   const bearing=effectiveBearing(shot,i),edge=[];
   for(let k=0;k<=24;k++)edge.push(destination(origin,bearing-c.fov/2+c.fov*k/24,c.range));
   const selected=i===activeWaypoint;
-  coneLayers.push(L.polygon([origin,...edge,origin],{color:'#efa86a',weight:selected?2.5:1.4,opacity:selected?1:.65,fillColor:'#f2aa63',fillOpacity:selected?.25:.12,interactive:false}).addTo(map));
+  const coneShape=[origin,...edge,origin];
+  // Dark outer stroke separates the camera coverage from light map tiles,
+  // while the strong amber inner stroke remains readable on dark backgrounds.
+  coneLayers.push(L.polygon(coneShape,{color:'#352318',weight:selected?6:4,opacity:.85,fill:false,interactive:false}).addTo(map));
+  coneLayers.push(L.polygon(coneShape,{color:selected?'#ffb84d':'#ffcf77',weight:selected?3.5:2.5,opacity:1,fillColor:selected?'#ffac36':'#ffc368',fillOpacity:selected?.43:.27,interactive:false}).addTo(map));
   if(!selected)return;
   const follow=c.mode==='target'&&coordsOk(shot.target);
   coneHeadingMarker=L.marker(destination(origin,bearing,c.range),{draggable:!follow,icon:L.divIcon({className:'',html:'<div class="cone-aim">↗</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map);
