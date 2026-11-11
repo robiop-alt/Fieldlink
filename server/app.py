@@ -373,6 +373,21 @@ def planner_page(request: Request):
     return FileResponse('static/planner.html', media_type='text/html',
                         headers={'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'})
 
+@app.get('/api/admin/planner/zones')
+def planner_drone_geozones(request: Request, south: float, west: float, north: float, east: float,
+                          x_admin_key: str = Header(default='')):
+    require_admin(x_admin_key, request)
+    if not (-90 <= south < north <= 90 and -180 <= west < east <= 180):
+        raise HTTPException(422, 'Invalid geographic bounds')
+    if north - south > 8 or east - west > 12:
+        raise HTTPException(422, 'Zoom closer to view drone zones')
+    try:
+        from drone_zones import features_in_bbox
+        result = features_in_bbox((south, west, north, east))
+    except Exception:
+        raise HTTPException(503, 'Official drone zone data temporarily unavailable')
+    return JSONResponse(result, headers={'Cache-Control':'private, max-age=300'})
+
 @app.get('/api/admin/planner')
 def list_drone_plans(request: Request, x_admin_key: str = Header(default='')):
     require_admin(x_admin_key,request)
