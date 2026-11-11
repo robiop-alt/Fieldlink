@@ -252,3 +252,8 @@
 
 /* Camera direction handle follows the green camera-cone palette. */
 .offset-planner .cone-aim{background:#c5f0cf;color:#19452b;border:1.5px solid #3ba969;box-shadow:0 1px 4px rgba(14,39,24,.26)}
+
+/* Professional monochrome external link indicator for the drone-zone source. */
+.airspace-source{display:inline-flex;align-items:center;gap:5px}
+.airspace-source svg{display:block;flex:0 0 auto;width:13px;height:13px;opacity:.75}
+.airspace-source:hover svg{opacity:1}
