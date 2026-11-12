@@ -255,6 +255,17 @@ function switch3dSource(){
  }
  loadBuildings(at,epoch,true);
 }
+function configureSky(google){
+ if(!viewer||viewer.isDestroyed())return;
+ const C=window.Cesium,scene=viewer.scene;
+ // Photogrammetry replaces the globe, so Cesium's normal Earth atmosphere
+ // may not render. A non-black sky background remains visible above the mesh.
+ scene.backgroundColor=C.Color.fromCssColorString('#a8cfe5');
+ if(scene.skyBox)scene.skyBox.show=false;
+ if(scene.skyAtmosphere)scene.skyAtmosphere.show=!google;
+ if(scene.sun)scene.sun.show=false;
+ if(scene.moon)scene.moon.show=false;
+}
 function buildingStatus(message){
  const node=$('sim-building-status');if(node)node.textContent=message;
 }
@@ -304,6 +315,7 @@ async function loadBuildings(point,run,force=false){
    viewer.scene.globe.show=true;
    configureBuildings();
   }
+  configureSky(google);
   buildingStatus(google?'Google 3D connected · streaming photo tiles…':'Re:Earth connected · loading buildings…');
   tileset.tileVisible.addEventListener(()=>{
    if(request!==buildingEpoch||!enabled)return;
@@ -323,6 +335,7 @@ async function loadBuildings(point,run,force=false){
   buildingStatus(google?'Google 3D unavailable · check token and asset':'Re:Earth buildings unavailable · Reload');
   if(google){
    viewer.scene.globe.show=true;
+   configureSky(false);
    $('sim-3d-source').value='reearth';
    showGoogleControls();
    loadBuildings(point,run,true);
@@ -501,6 +514,7 @@ async function initialise(run){
  });
  currentImageryLayer=layer;
  showGoogleControls();
+ configureSky(false);
  viewer.scene.globe.depthTestAgainstTerrain=false;
  // This is a shot-planning preview, not an astronomical lighting simulation.
  // Prevent night-time globe darkness and harsh sun-dependent building shadows.
