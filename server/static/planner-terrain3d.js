@@ -146,6 +146,42 @@ function drawBuildings(elements){
  return count;
 }
 function buildingStatus(message){const node=$('sim-building-status');if(node)node.textContent=message}
+function normaliseOSM(elements){
+ return elements.filter(obj=>Array.isArray(obj.geometry)&&obj.geometry.length>=3)
+  .map(obj=>({geometry:obj.geometry,tags:obj.tags||{}})).slice(0,900);
+}
+async function browserBuildings(point,controller){
+ // Render may not have outbound network access, so query from the client.
+ // Overpass allows small on-demand bounding-radius lookups; no background scraping.
+ const query='[out:json][timeout:16];(way["building"](around:600,'+
+  point[0].toFixed(6)+','+point[1].toFixed(6)+');way["building:part"](around:600,'+
+  point[0].toFixed(6)+','+point[1].toFixed(6)+'););out geom;';
+ const providers=[
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.nchc.org.tw/api/interpreter'
+ ];
+ const errors=[];
+ for(const endpoint of providers){
+  if(controller.signal.aborted)throw Error('Building request cancelled');
+  try{
+   const response=await fetch(endpoint+'?data='+encodeURIComponent(query),{
+    method:'GET',mode:'cors',signal:controller.signal,
+    headers:{'Accept':'application/json'}
+   });
+   if(!response.ok)throw Error('HTTP '+response.status);
+   const data=await response.json();
+   if(!Array.isArray(data.elements))throw Error('Invalid OSM geometry response');
+   return normaliseOSM(data.elements);
+  }catch(error){
+   errors.push(error?.message||'Network error');
+   if(controller.signal.aborted)throw error;
+  }
+ }
+ throw Error('Browser building providers unavailable ('+errors.join(', ').slice(0,140)+')');
+}
+
 async function loadBuildings(point,run,force=false){
  if(!point||!viewer||!buildings)return;
  const key=point.map(n=>(Math.round(n*1000)/1000).toFixed(3)).join(',');
@@ -167,23 +203,32 @@ async function loadBuildings(point,run,force=false){
   const params=new URLSearchParams({
    lat:point[0].toFixed(6),lon:point[1].toFixed(6),radius:'600'
   });
-  const res=await fetch('/api/admin/planner/buildings?'+params.toString(),{
-   credentials:'same-origin',signal:controller.signal,
-   headers:{'Accept':'application/json'}
-  });
-  if(!res.ok)throw Error('Building API '+res.status);
-  const body=await res.json();
+  let elements=null,origin='OFFSET server';
+  try{
+   const response=await fetch('/api/admin/planner/buildings?'+params.toString(),{
+    credentials:'same-origin',signal:controller.signal,
+    headers:{'Accept':'application/json'}
+   });
+   if(!response.ok)throw Error('Building API '+response.status);
+   const body=await response.json();
+   if(!Array.isArray(body.elements))throw Error('Missing building geometry');
+   elements=body.elements;
+  }catch(serverError){
+   if(controller.signal.aborted)throw serverError;
+   buildingStatus('Server unavailable · trying browser connection…');
+   elements=await browserBuildings(point,controller);
+   origin='browser';
+  }
   if(!enabled||request!==buildingEpoch||run!==epoch)return;
-  const elements=Array.isArray(body.elements)?body.elements:[];
   buildingCache.set(key,elements);
   if(buildingCache.size>6)buildingCache.delete(buildingCache.keys().next().value);
   const count=drawBuildings(elements);
-  buildingStatus(count?count+' 3D buildings shown':'No mapped buildings in this area');
+  buildingStatus(count?count+' 3D buildings shown · '+origin:'No mapped buildings in this area');
   if(!count)status('No OSM footprints here. Try an urban shot or move the waypoint.');
  }catch(error){
   if(!enabled||run!==epoch||request!==buildingEpoch)return;
   buildingKey=''; // Do not lock out retries after a transient failure.
-  buildingStatus('Building load failed · tap Reload buildings');
+  buildingStatus('Network or data source unavailable · Reload buildings');
   console.warn('OFFSET 3D building data:',error);
  }finally{
   clearTimeout(timeout);
