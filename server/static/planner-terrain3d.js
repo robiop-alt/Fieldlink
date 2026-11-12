@@ -51,7 +51,12 @@ function altitude(s,i){
  const n=Number(s?.waypointCones?.[i]?.altitudeAGL);
  return Number.isFinite(n)&&n>=2?Math.max(2,Math.min(500,n)):30;
 }
-function pitch(s){const n=Number(s?.simPitch);return Number.isFinite(n)?Math.max(-85,Math.min(35,n)):-10}
+function pitch(s,i=core()?.getActiveWaypoint()){
+ const wp=s?.waypointCones?.[i]?.tilt;
+ const raw=wp===undefined||wp===null||wp===''?s?.simPitch:wp;
+ const n=Number(raw);
+ return Number.isFinite(n)?Math.max(-85,Math.min(35,n)):-10;
+}
 function fov(s,index=core()?.getActiveWaypoint()){
  const cone=s?.waypointCones?.[index];
  const lens=Number(core()?.lensFov(s));
@@ -166,8 +171,12 @@ function showCamera(){
    destination:C.Cartesian3.fromDegrees(point[1],point[0],heightAboveEllipsoid(s,point,i)+115),
    orientation:{heading:core().getBearing()*rad,pitch:-58*rad,roll:0}
   });
- }else cameraAt(point,heightAboveEllipsoid(s,point,i),cameraDirection(s,i),pitch(s),cameraFov(s,i));
- $('preview-pitch-value').textContent='Tilt '+Math.round(pitch(s))+'°';
+ }else cameraAt(point,heightAboveEllipsoid(s,point,i),cameraDirection(s,i),pitch(s,i),cameraFov(s,i));
+ $('preview-pitch-value').textContent='Tilt '+Math.round(pitch(s,i))+'°';
+ if($('sim-waypoint-tilt')){
+  $('sim-waypoint-tilt').value=String(Math.round(pitch(s,i)));
+  $('sim-waypoint-tilt-label').textContent=Math.round(pitch(s,i))+'°';
+ }
 }
 function resetCamera(){stop();showCamera();status(overview?'Orbit overview. Drag to inspect the buildings.':'Drone camera at selected waypoint.')}
 function markerLabel(index){return 'WP '+(index+1)}
@@ -388,6 +397,7 @@ function play(){
  const heights=points.map((p,i)=>altitude(s,i));
  const groundHeights=points.map((p,i)=>groundAt(p,i));
  const fovs=points.map((p,i)=>fov(s,i));
+ const tilts=points.map((p,i)=>pitch(s,i));
  let elapsed=playElapsed;
  playing=true;$play.textContent='Ⅱ Pause';
  function frame(now){
@@ -414,7 +424,8 @@ function play(){
    :smoothSegment(headings,legs,index,t,smooth);
   const horizontalFov=Math.max(5,Math.min(150,
    smoothSegment(fovs,legs,index,t,smooth)));
-  cameraAt(here,ground+h,heading,pitch(s),horizontalFov);
+  cameraAt(here,ground+h,heading,
+   smoothSegment(tilts,legs,index,t,smooth),horizontalFov);
   const pct=Math.min(100,Math.round(elapsed/total*100));
   status('Playing shot · '+pct+'% · '+Math.round(h)+' m AGL · '+(smooth?'Smooth camera':'Direct camera'));
   if(elapsed>=total){stop();status('Shot playback complete.');return}
@@ -423,12 +434,23 @@ function play(){
  raf=requestAnimationFrame(frame);
 }
 
-function movePitch(delta){
+function setWaypointPitch(value){
  const s=core()?.getShot();if(!s)return;
- s.simPitch=Math.max(-85,Math.min(35,Math.round(pitch(s)+delta)));
+ const i=core()?.getActiveWaypoint(),n=Number(value);
+ if(!Number.isInteger(i)||!Number.isFinite(n))return;
+ if(!Array.isArray(s.waypointCones))s.waypointCones=[];
+ if(!s.waypointCones[i])s.waypointCones[i]={};
+ s.waypointCones[i].tilt=Math.max(-85,Math.min(35,Math.round(n)));
+ const v=s.waypointCones[i].tilt;
+ $('preview-pitch-value').textContent='Tilt '+v+'°';
+ $('sim-waypoint-tilt-label').textContent=v+'°';
+ $('sim-waypoint-tilt').value=String(v);
+ if($('cone-tilt'))$('cone-tilt').value=String(v);
  core().save();
- $('preview-pitch-value').textContent='Tilt '+s.simPitch+'°';
  if(viewer&&!playing&&!overview)showCamera();
+}
+function movePitch(delta){
+ setWaypointPitch(pitch(core()?.getShot())+delta);
 }
 function installEditing(){
  if(!viewer)return;
@@ -674,6 +696,7 @@ function refresh(){
 $('preview-3d-toggle').addEventListener('click',()=>setMode(!enabled));
 $('preview-pitch-up').addEventListener('click',()=>movePitch(5));
 $('preview-pitch-down').addEventListener('click',()=>movePitch(-5));
+$('sim-waypoint-tilt').addEventListener('input',event=>setWaypointPitch(event.target.value));
 $play.addEventListener('click',play);
 $('sim-reset').addEventListener('click',resetCamera);
 $('sim-view').addEventListener('change',event=>{
