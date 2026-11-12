@@ -563,3 +563,5 @@
 }
 .offset-planner .shot-editor .lens-auto-row input{flex:0 0 17px;width:17px;height:17px;min-height:17px;margin:0;accent-color:#57b62f}
 .sun-map-ray{pointer-events:none}
+
+.sun-events{font:10px/1.55 'DM Sans',sans-serif;color:#c9b488;margin-top:8px}
