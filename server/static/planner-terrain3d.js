@@ -607,12 +607,24 @@ function setExpanded(on){
  const panel=document.querySelector('.shot-preview-panel');
  if(!panel)return;
  panel.classList.toggle('sim-expanded',on);
+ panel.classList.remove('sim-expanded-settings');
  document.body.classList.toggle('simulator-expanded',on);
  $('sim-expand').textContent=on?'Close':'Expand';
+ $('sim-landscape-settings').hidden=!on;
+ $('sim-landscape-settings').textContent='Settings';
+ $('sim-landscape-settings').setAttribute('aria-expanded','false');
  requestAnimationFrame(()=>requestAnimationFrame(()=>{
   if(enabled&&viewer){viewer.resize();if(!playing&&!overview)showCamera()}
  }));
 }
+$('sim-landscape-settings').addEventListener('click',()=>{
+ const panel=document.querySelector('.shot-preview-panel');
+ if(!panel?.classList.contains('sim-expanded'))return;
+ const open=panel.classList.toggle('sim-expanded-settings');
+ $('sim-landscape-settings').textContent=open?'Hide settings':'Settings';
+ $('sim-landscape-settings').setAttribute('aria-expanded',String(open));
+ requestAnimationFrame(()=>{if(viewer&&!viewer.isDestroyed())viewer.resize()});
+});
 $('sim-expand').addEventListener('click',()=>{
  const panel=document.querySelector('.shot-preview-panel');
  setExpanded(!panel?.classList.contains('sim-expanded'));
