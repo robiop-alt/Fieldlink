@@ -1080,3 +1080,54 @@
  .shot-preview-view.terrain-enabled{min-height:250px;max-width:100%}
  .offset-planner .shot-simulator-main>label select{width:112px}
 }
+
+
+/* Expanded cinematic preview is especially important in landscape mobile. */
+.offset-planner .shot-preview-panel #sim-expand{
+ min-height:31px;padding:6px 8px;font-size:10px;
+ background:#26382e;border:1px solid #47705a;color:#d6f0dc;
+}
+.offset-planner .shot-preview-panel #sim-expand[hidden]{display:none!important}
+.offset-planner .shot-preview-panel.sim-expanded{
+ position:fixed!important;inset:0!important;z-index:10000!important;
+ display:flex;flex-direction:column;gap:5px;
+ width:100vw;max-width:none;height:100dvh;max-height:100dvh;
+ overflow-y:auto!important;
+ margin:0!important;
+ padding:max(7px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(7px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))!important;
+ border:0!important;border-radius:0!important;background:#101a18!important;
+}
+body.offset-planner.simulator-expanded{overflow:hidden!important}
+.offset-planner .shot-preview-panel.sim-expanded .shot-preview-view{
+ flex:1 1 0;min-height:175px;height:auto;max-height:none;
+ width:100%;max-width:none;margin:2px 0 0;
+ aspect-ratio:auto!important;
+}
+.offset-planner .shot-preview-panel.sim-expanded .preview-altitude{
+ flex:0 0 auto;margin:2px 0 0;
+ grid-template-columns:minmax(0,1fr) 68px;
+}
+.offset-planner .shot-preview-panel.sim-expanded .preview-data,
+.offset-planner .shot-preview-panel.sim-expanded>.preview-note,
+.offset-planner .shot-preview-panel.sim-expanded>.preview-terrain-credit{display:none!important}
+.offset-planner .shot-preview-panel.sim-expanded .shot-simulator-controls{
+ flex:0 0 auto;gap:5px;padding:5px 0 0;
+}
+.offset-planner .shot-preview-panel.sim-expanded .shot-simulator-speed{gap:2px}
+.offset-planner .shot-preview-panel.sim-expanded .sim-status{line-height:1.2;font-size:9px}
+@media screen and (orientation:landscape) and (max-height:530px){
+ .offset-planner .shot-preview-panel.sim-expanded .planner-extra-heading{min-height:27px}
+ .offset-planner .shot-preview-panel.sim-expanded .preview-altitude{grid-template-columns:minmax(0,1fr) 60px}
+ .offset-planner .shot-preview-panel.sim-expanded .preview-altitude label{display:none}
+ .offset-planner .shot-preview-panel.sim-expanded #preview-height{height:23px;min-height:23px}
+ .offset-planner .shot-preview-panel.sim-expanded #preview-height-number{height:27px;min-height:27px}
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-controls{
+  display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-speed{
+  flex:1 1 110px;max-width:190px;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .sim-status{
+  flex:1 1 100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ }
+}
