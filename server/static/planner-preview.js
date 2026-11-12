@@ -40,11 +40,11 @@ function display(){
  empty.hidden=hasWp;
  targetNode.hidden=true;
  if(!hasWp){
-  note.textContent='Add a waypoint to preview its horizontal camera field of view.';
+  note.textContent='2D map: add a waypoint to place and adjust the planned camera position.';
   return;
  }
  if(!valid(shot.target)){
-  note.textContent='Aim follows the selected waypoint. Add a camera target to check whether it falls inside the horizontal frame.';
+  note.textContent='2D map: drag green waypoint markers or add an orange camera target. Height is set independently for each waypoint.';
   return;
  }
  const delta=signedAngle(bearing(waypoint,shot.target),angle);
@@ -60,9 +60,9 @@ function display(){
   $('preview-target-ring').setAttribute('cx',String(x));
   $('preview-target-dot').setAttribute('cx',String(x));
   targetNode.hidden=false;
-  note.textContent='Target '+distText+' away · '+amount+'° '+relative+' of center. Horizontal placement only; height and tilt are not modeled.';
+  note.textContent='Target '+distText+' away · '+amount+'° '+relative+' of center. 2D map shows the route and camera direction, not an optical preview.';
  }else{
-  note.textContent='Target '+distText+' away · '+(behind?'behind camera':amount+'° '+relative+' (outside horizontal frame)')+'. Aim the cone or use a wider lens to include it.';
+  note.textContent='Target '+distText+' away · '+(behind?'behind camera':amount+'° '+relative+' (outside horizontal frame)')+'. Move the target or adjust the camera cone.';
  }
 }
 $('preview-aspect').addEventListener('change',event=>{
