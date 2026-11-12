@@ -115,6 +115,33 @@ function cameraFov(s,index,t=0){
  if(index>=route(s).length-1)return fov(s,index);
  return fov(s,index)+(fov(s,index+1)-fov(s,index))*t;
 }
+// Distance-parameterized cubic Hermite curves keep both the position and
+// first derivative continuous at waypoints. Every saved waypoint remains fixed.
+function smoothSegment(values,legs,index,t,amount){
+ const a=Number(values[index]),b=Number(values[index+1]);
+ if(amount<=0||!Number.isFinite(a)||!Number.isFinite(b))return a+(b-a)*t;
+ const length=Math.max(.001,legs[index]||0);
+ const previous=index>0?Math.max(.001,legs[index-1]):length;
+ const next=index+1<legs.length?Math.max(.001,legs[index+1]):length;
+ const incoming=index>0?(b-values[index-1])/(previous+length):(b-a)/length;
+ const outgoing=index+2<values.length?(values[index+2]-a)/(length+next):(b-a)/length;
+ const m0=incoming*length*amount,m1=outgoing*length*amount;
+ const t2=t*t,t3=t2*t;
+ return (2*t3-3*t2+1)*a+(t3-2*t2+t)*m0+
+  (-2*t3+3*t2)*b+(t3-t2)*m1;
+}
+function smoothHeadings(s,points){
+ const headings=points.map((p,i)=>coneBearing(s,i,p));
+ for(let i=1;i<headings.length;i++){
+  const delta=((headings[i]-headings[i-1]+540)%360)-180;
+  headings[i]=headings[i-1]+delta;
+ }
+ return headings;
+}
+function flightSmoothing(){
+ return $('sim-smoothing')?.value==='direct'?0:
+  $('sim-smoothing')?.value==='smooth'?.7:1;
+}
 function cameraAt(position,height,heading,tilt,horizontalFov){
  if(!viewer||!position)return;
  const C=window.Cesium,canvas=viewer.scene.canvas;
@@ -356,28 +383,46 @@ function play(){
  const legs=points.slice(1).map((p,i)=>distance(points[i],p));
  const total=legs.reduce((sum,l)=>sum+l,0);
  if(total<.01){status('Waypoints must be in different positions.');return}
- const speed=Number($('sim-speed').value)||3;
+ const headings=smoothHeadings(s,points);
+ const lats=points.map(p=>p[0]),lons=points.map(p=>p[1]);
+ const heights=points.map((p,i)=>altitude(s,i));
+ const groundHeights=points.map((p,i)=>groundAt(p,i));
+ const fovs=points.map((p,i)=>fov(s,i));
  let elapsed=playElapsed;
  playing=true;$play.textContent='Ⅱ Pause';
  function frame(now){
   if(!playing||!enabled)return;
+  // Speed can be adjusted during playback without restarting the shot.
+  const speed=Number($('sim-speed').value)||3;
   if(lastTime)elapsed+=Math.min((now-lastTime)/1000,.1)*speed;
   lastTime=now;playElapsed=elapsed;
   let remaining=Math.min(elapsed,total),index=0;
   while(index<legs.length-1&&remaining>legs[index])remaining-=legs[index++];
   const t=legs[index]>0?Math.max(0,Math.min(1,remaining/legs[index])):1;
+  const smooth=flightSmoothing();
   const a=points[index],b=points[index+1];
-  const here=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];
-  const h=altitude(s,index)+(altitude(s,index+1)-altitude(s,index))*t;
-  const ground=groundAt(a,index)+(groundAt(b,index+1)-groundAt(a,index))*t;
-  cameraAt(here,ground+h,cameraDirection(s,index,t,here),pitch(s),cameraFov(s,index,t));
+  const here=[
+   smoothSegment(lats,legs,index,t,smooth),
+   smoothSegment(lons,legs,index,t,smooth)
+  ];
+  const h=smoothSegment(heights,legs,index,t,smooth);
+  const ground=smoothSegment(groundHeights,legs,index,t,smooth);
+  const current=s?.waypointCones?.[index];
+  const next=s?.waypointCones?.[index+1];
+  const heading=current?.mode==='target'&&next?.mode==='target'&&valid(s.target)
+   ?bearing(here,s.target)
+   :smoothSegment(headings,legs,index,t,smooth);
+  const horizontalFov=Math.max(5,Math.min(150,
+   smoothSegment(fovs,legs,index,t,smooth)));
+  cameraAt(here,ground+h,heading,pitch(s),horizontalFov);
   const pct=Math.min(100,Math.round(elapsed/total*100));
-  status('Playing shot · '+pct+'% · '+Math.round(h)+' m planned height');
+  status('Playing shot · '+pct+'% · '+Math.round(h)+' m AGL · '+(smooth?'Smooth camera':'Direct camera'));
   if(elapsed>=total){stop();status('Shot playback complete.');return}
   raf=requestAnimationFrame(frame);
  }
  raf=requestAnimationFrame(frame);
 }
+
 function movePitch(delta){
  const s=core()?.getShot();if(!s)return;
  s.simPitch=Math.max(-85,Math.min(35,Math.round(pitch(s)+delta)));
