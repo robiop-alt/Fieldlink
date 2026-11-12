@@ -44,8 +44,11 @@ function altitude(s,i){
  return Number.isFinite(n)&&n>=2?Math.max(2,Math.min(500,n)):30;
 }
 function pitch(s){const n=Number(s?.simPitch);return Number.isFinite(n)?Math.max(-85,Math.min(35,n)):-10}
-function fov(s){
- const n=Number(core()?.lensFov(s))||Number(s?.waypointCones?.[core()?.getActiveWaypoint()]?.fov)||50;
+function fov(s,index=core()?.getActiveWaypoint()){
+ const cone=s?.waypointCones?.[index];
+ const lens=Number(core()?.lensFov(s));
+ const selected=cone?.lensAuto&&Number.isFinite(lens)&&lens>0?lens:Number(cone?.fov);
+ const n=Number.isFinite(selected)&&selected>0?selected:(lens||50);
  return Math.max(5,Math.min(150,n));
 }
 function route(s){return (s?.route||[]).filter(valid)}
@@ -79,16 +82,37 @@ async function sampleRouteTerrain(run){
   status('Terrain heights unavailable. Drone altitude is approximate.');
  }
 }
-function orient(s,position,next=null){
- if(valid(s.target)&&s?.waypointCones?.[core().getActiveWaypoint()]?.mode==='target')return bearing(position,s.target);
- return next&&valid(next)?bearing(position,next):core().getBearing();
+function coneBearing(s,index,position=null){
+ const points=route(s),p=position||points[index],cone=s?.waypointCones?.[index];
+ if(cone?.mode==='target'&&valid(s?.target)&&valid(p))return bearing(p,s.target);
+ const manual=Number(cone?.bearing);
+ if(Number.isFinite(manual))return ((manual%360)+360)%360;
+ return valid(p)&&valid(points[index+1])?bearing(p,points[index+1]):0;
 }
-function cameraAt(position,height,heading,tilt){
+function interpolateBearing(a,b,t){
+ const delta=((b-a+540)%360)-180;
+ return (a+delta*t+360)%360;
+}
+function cameraDirection(s,index,t=0,position=null){
+ const points=route(s),a=coneBearing(s,index,position||points[index]);
+ if(index>=points.length-1)return a;
+ // A target-following cone should keep looking at the target as the drone moves.
+ const next=s?.waypointCones?.[index+1];
+ const current=s?.waypointCones?.[index];
+ if(current?.mode==='target'&&next?.mode==='target'&&valid(s.target)&&valid(position))
+  return bearing(position,s.target);
+ return interpolateBearing(a,coneBearing(s,index+1),t);
+}
+function cameraFov(s,index,t=0){
+ if(index>=route(s).length-1)return fov(s,index);
+ return fov(s,index)+(fov(s,index+1)-fov(s,index))*t;
+}
+function cameraAt(position,height,heading,tilt,horizontalFov){
  if(!viewer||!position)return;
  const C=window.Cesium,canvas=viewer.scene.canvas;
  const width=Math.max(1,canvas.clientWidth),high=Math.max(1,canvas.clientHeight);
  const aspect=width/high;
- const horizontal=fov(core()?.getShot());
+ const horizontal=Number.isFinite(horizontalFov)?horizontalFov:fov(core()?.getShot());
  const chosen=aspect>=1?horizontal:2*Math.atan(Math.tan(horizontal*rad/2)/aspect)*deg;
  viewer.camera.frustum=new C.PerspectiveFrustum({
   fov:Math.min(Math.PI-.02,chosen*rad),aspectRatio:aspect,near:.2,far:200000
@@ -107,7 +131,7 @@ function showCamera(){
    destination:C.Cartesian3.fromDegrees(point[1],point[0],heightAboveEllipsoid(s,point,i)+115),
    orientation:{heading:core().getBearing()*rad,pitch:-58*rad,roll:0}
   });
- }else cameraAt(point,heightAboveEllipsoid(s,point,i),orient(s,point,points[i+1]),pitch(s));
+ }else cameraAt(point,heightAboveEllipsoid(s,point,i),cameraDirection(s,i),pitch(s),cameraFov(s,i));
  $('preview-pitch-value').textContent='Tilt '+Math.round(pitch(s))+'°';
 }
 function resetCamera(){stop();showCamera();status(overview?'Orbit overview. Drag to inspect the buildings.':'Drone camera at selected waypoint.')}
@@ -228,7 +252,7 @@ function play(){
   const here=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];
   const h=altitude(s,index)+(altitude(s,index+1)-altitude(s,index))*t;
   const ground=groundAt(a,index)+(groundAt(b,index+1)-groundAt(a,index))*t;
-  cameraAt(here,ground+h,orient(s,here,b),pitch(s));
+  cameraAt(here,ground+h,cameraDirection(s,index,t,here),pitch(s),cameraFov(s,index,t));
   const pct=Math.min(100,Math.round(elapsed/total*100));
   status('Playing shot · '+pct+'% · '+Math.round(h)+' m planned height');
   if(elapsed>=total){stop();status('Shot playback complete.');return}
@@ -309,7 +333,7 @@ async function initialise(run){
  overlay('');
  renderRoute();showCamera();
  sampleRouteTerrain(run);
- status('Matching terrain loaded · sampling waypoint heights.');
+ status('3D camera follows each waypoint camera cone · sampling terrain heights.');
  loadBuildings(route(core()?.getShot())[core()?.getActiveWaypoint()]||route(core()?.getShot())[0],run);
 }
 function destroy(){
