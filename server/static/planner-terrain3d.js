@@ -119,7 +119,9 @@ function setMode(on){
  $('preview-terrain-credit').hidden=!enabled;
  if(!enabled){
   setStatus('');
-  core()?.renderMap&&document.dispatchEvent(new Event('offset:map-rendered'));
+  // Release the WebGL context when returning to 2D on iPhone.
+  if(viewer){viewer.remove();viewer=null;initialized=false}
+  document.dispatchEvent(new Event('offset:map-rendered'));
   return;
  }
  setStatus('Loading 3D terrain…');
@@ -138,4 +140,5 @@ $('preview-3d-toggle').addEventListener('click',()=>{
 document.addEventListener('offset:map-rendered',refresh);
 document.addEventListener('offset:shot-rendered',refresh);
 window.addEventListener('resize',()=>{if(enabled&&viewer)viewer.resize()});
+$('preview-aspect').addEventListener('change',()=>{if(enabled&&viewer)requestAnimationFrame(()=>viewer.resize())});
 })();
