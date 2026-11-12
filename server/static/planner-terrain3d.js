@@ -343,41 +343,108 @@ function installEditing(){
  const C=window.Cesium,scene=viewer.scene,handler=new C.ScreenSpaceEventHandler(scene.canvas);
  dragHandler=handler;
  const controller=scene.screenSpaceCameraController;
+ const canvas=scene.canvas;
  function pick(position){
+  if(!position)return null;
   const ray=viewer.camera.getPickRay(position);
-  const intersect=scene.globe.pick(ray,scene);
-  const cart=intersect||viewer.camera.pickEllipsoid(position,scene.globe.ellipsoid);
+  if(!ray)return null;
+  const globe=scene.globe.pick(ray,scene);
+  const cart=globe||viewer.camera.pickEllipsoid(position,scene.globe.ellipsoid);
   if(!cart)return null;
   const p=C.Cartographic.fromCartesian(cart);
   return [p.latitude*deg,p.longitude*deg];
  }
- handler.setInputAction(event=>{
-  const selected=scene.pick(event.position);
-  const entity=selected?.id;
-  if(entity&&Number.isInteger(entity._offsetWaypoint)){
-   core().setActiveWaypoint(entity._offsetWaypoint);
-   if($('sim-edit').checked){
-    activeDrag={index:entity._offsetWaypoint};
-    controller.enableInputs=false;
-   }else{
+ function markerAt(position){
+  const hits=scene.drillPick(position,12);
+  for(const hit of hits){
+   const entity=hit?.id;
+   if(entity?._offsetTarget)return {target:true,entity};
+   if(Number.isInteger(entity?._offsetWaypoint))
+    return {index:entity._offsetWaypoint,entity};
+  }
+  // Finger taps need a wider target than the tiny rendered 12px waypoint dot.
+  // Screen-space nearest-marker fallback also works when a 3D tile occludes a dot.
+  const points=route(core()?.getShot());
+  let best=null,bestDistance=28;
+  for(let i=0;i<points.length;i++){
+   const p=points[i],screen=C.SceneTransforms.worldToWindowCoordinates(
+    scene,C.Cartesian3.fromDegrees(p[1],p[0],heightAboveEllipsoid(core()?.getShot(),p,i))
+   );
+   if(!screen)continue;
+   const d=Math.hypot(screen.x-position.x,screen.y-position.y);
+   if(d<bestDistance){bestDistance=d;best={index:i}}
+  }
+  const target=core()?.getShot()?.target;
+  if(valid(target)){
+   const screen=C.SceneTransforms.worldToWindowCoordinates(
+    scene,C.Cartesian3.fromDegrees(target[1],target[0],groundAt(target,null)+3)
+   );
+   if(screen&&Math.hypot(screen.x-position.x,screen.y-position.y)<bestDistance)
+    best={target:true};
+  }
+  return best;
+ }
+ function begin(event){
+  const hit=markerAt(event.position);
+  if(!hit)return;
+  if(!$('sim-edit').checked){
+   if(Number.isInteger(hit.index)){
+    core().setActiveWaypoint(hit.index);
     renderRoute();showCamera();
    }
-  }else if(entity?._offsetTarget&&$('sim-edit').checked){
-   activeDrag={target:true};controller.enableInputs=false;
+   return;
   }
- },C.ScreenSpaceEventType.LEFT_DOWN);
- handler.setInputAction(event=>{
+  stop();
+  const s=core()?.getShot(),points=route(s);
+  activeDrag={
+   ...hit,
+   original:hit.target?s.target:points[hit.index],
+   position:null
+  };
+  controller.enableInputs=false;
+  canvas.style.touchAction='none';
+  status('Move point · drag to a new location, then release to save');
+ }
+ function move(event){
   if(!activeDrag)return;
-  const p=pick(event.endPosition);if(!p)return;
+  const p=pick(event.endPosition);
+  if(!valid(p))return;
   activeDrag.position=p;
- },C.ScreenSpaceEventType.MOUSE_MOVE);
- handler.setInputAction(event=>{
-  const drag=activeDrag;activeDrag=null;controller.enableInputs=true;
-  if(!drag?.position)return;
-  if(drag.target)core().moveTarget(drag.position);
-  else core().moveWaypoint(drag.index,drag.position);
- },C.ScreenSpaceEventType.LEFT_UP);
+  const s=core()?.getShot();
+  if(activeDrag.target){
+   const ent=viewer.entities.values.find(e=>e._offsetTarget);
+   if(ent)ent.position=C.Cartesian3.fromDegrees(p[1],p[0],groundAt(p,null)+3);
+  }else{
+   const ent=viewer.entities.values.find(e=>e._offsetWaypoint===activeDrag.index);
+   if(ent)ent.position=C.Cartesian3.fromDegrees(
+    p[1],p[0],heightAboveEllipsoid(s,p,activeDrag.index));
+  }
+ }
+ function finish(event){
+  if(!activeDrag)return;
+  const drag=activeDrag;
+  // A quick touch may end without a MOVE event; release is not a mutation then.
+  const finalPoint=drag.position||(event?.position&&pick(event.position));
+  activeDrag=null;
+  controller.enableInputs=true;
+  if(!drag.position||!valid(finalPoint)){
+   status('Point unchanged · drag a marker to reposition it');
+   return;
+  }
+  if(drag.target)core().moveTarget(finalPoint);
+  else core().moveWaypoint(drag.index,finalPoint);
+  status('Point moved · saved to 2D map');
+ }
+ handler.setInputAction(begin,C.ScreenSpaceEventType.LEFT_DOWN);
+ handler.setInputAction(move,C.ScreenSpaceEventType.MOUSE_MOVE);
+ handler.setInputAction(finish,C.ScreenSpaceEventType.LEFT_UP);
+ // When a touch is cancelled or the finger leaves the canvas, never leave
+ // Cesium's normal navigation disabled.
+ canvas.addEventListener('touchcancel',()=>{
+  activeDrag=null;controller.enableInputs=true;
+ },{passive:true});
 }
+
 async function initialise(run){
  const C=await loadSDK();
  if(!enabled||run!==epoch)return;
@@ -506,6 +573,20 @@ $('sim-reset').addEventListener('click',resetCamera);
 $('sim-view').addEventListener('change',event=>{
  stop();overview=event.target.value==='overview';showCamera();
  status(overview?'Orbit overview: drag the city to inspect the route.':'Drone camera: view from the selected waypoint.');
+});
+$('sim-edit').addEventListener('change',event=>{
+ if(!viewer)return;
+ stop();
+ if(event.target.checked){
+  overview=true;
+  $('sim-view').value='overview';
+  showCamera();
+  status('Move points in 3D · drag a numbered waypoint or target');
+ }else{
+  activeDrag=null;
+  viewer.scene.screenSpaceCameraController.enableInputs=true;
+  status('3D point editing off');
+ }
 });
 $('sim-reload-buildings').addEventListener('click',()=>{
  const points=route(core()?.getShot()),at=points[core()?.getActiveWaypoint()]||points[0];
