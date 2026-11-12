@@ -394,7 +394,15 @@ async function initialise(run){
  });
  currentImageryLayer=layer;
  viewer.scene.globe.depthTestAgainstTerrain=false;
- viewer.scene.globe.enableLighting=true;
+ // This is a shot-planning preview, not an astronomical lighting simulation.
+ // Prevent night-time globe darkness and harsh sun-dependent building shadows.
+ viewer.scene.globe.enableLighting=false;
+ viewer.shadows=false;
+ viewer.scene.shadowMap.enabled=false;
+ viewer.scene.light=new C.DirectionalLight({
+  direction:C.Cartesian3.normalize(new C.Cartesian3(.25,.45,-.86),new C.Cartesian3()),
+  intensity:1.7
+ });
  viewer.scene.fog.enabled=false;
  if(!enabled||run!==epoch)return;
  installEditing();
