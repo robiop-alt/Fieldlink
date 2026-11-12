@@ -9,6 +9,10 @@ let viewer=null,buildingTileset=null,enabled=false,loadingSdk=null,epoch=0;
 let terrainProvider=null,terrainHeights=[],terrainSignature='',terrainEpoch=0,terrainReady=false;
 let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=null;
 let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
+let currentImageryLayer=null;
+const imageryKeyStore='offset-planner-maptiler-key-v1';
+let maptilerKey='';
+try{maptilerKey=localStorage.getItem(imageryKeyStore)||''}catch{}
 const $status=$('sim-status'),$overlay=$('shot-preview-terrain-loading'),$play=$('sim-play');
 const rad=Math.PI/180,deg=180/Math.PI;
 const valid=p=>core()?.coordsOk(p);
@@ -174,6 +178,66 @@ function renderRoute(){
    Cesium. The former Overpass proxy failed because Render lacked outbound
    network access and browsers encountered CORS failures. */
 const BUILDING_TILESET_URL='https://buildings.reearth.land/tileset.json';
+function configureBuildings(){
+ if(!buildingTileset||!window.Cesium)return;
+ const C=window.Cesium,choice=$('sim-building-style').value;
+ // Style the existing model's surfaces. Building façades are NOT photo-textured;
+ // materials are illustrative, not a surveyed account of actual appearance.
+ if(choice==='original'){
+  buildingTileset.style=new C.Cesium3DTileStyle({color:"color('white')"});
+ }else if(choice==='natural'){
+  buildingTileset.style=new C.Cesium3DTileStyle({
+   color:{conditions:[
+    ["${height} >= 55","color('#bbcac7')"],
+    ["${height} >= 18","color('#d6c5ae')"],
+    ["true","color('#d3c9b8')"]
+   ]}
+  });
+ }else{
+  buildingTileset.style=new C.Cesium3DTileStyle({
+   color:{conditions:[
+    ["${height} >= 55","color('#7f969e')"],
+    ["${height} >= 18","color('#a6b0b2')"],
+    ["true","color('#b7b4aa')"]
+   ]}
+  });
+ }
+}
+function satelliteLayer(C){
+ return new C.ImageryLayer(new C.UrlTemplateImageryProvider({
+  url:'https://api.maptiler.com/maps/satellite-v4/{z}/{x}/{y}.jpg?key='+encodeURIComponent(maptilerKey),
+  minimumLevel:0,maximumLevel:20,tileWidth:512,tileHeight:512,
+  credit:new C.Credit('Satellite imagery © MapTiler; imagery providers')
+ }));
+}
+function streetLayer(C){
+ return new C.ImageryLayer(new C.OpenStreetMapImageryProvider({
+  url:'https://tile.openstreetmap.org/',
+  credit:'© OpenStreetMap contributors'
+ }));
+}
+function setImageryMode(){
+ const keyrow=$('sim-imagery-key-row');
+ const satellite=$('sim-imagery').value==='satellite';
+ keyrow.hidden=!satellite;
+ if(!viewer)return;
+ if(satellite&&!maptilerKey.trim()){
+  buildingStatus('Satellite requires your MapTiler API key');
+  return;
+ }
+ const C=window.Cesium;
+ try{
+  const next=satellite?satelliteLayer(C):streetLayer(C);
+  const layers=viewer.imageryLayers;
+  layers.add(next,0);
+  if(currentImageryLayer&&layers.contains(currentImageryLayer))layers.remove(currentImageryLayer,true);
+  currentImageryLayer=next;
+  $('sim-imagery-hint').textContent=satellite?'Satellite images provided by MapTiler.':'Street map selected.';
+ }catch(error){
+  console.warn('OFFSET imagery:',error);
+  $('sim-imagery-hint').textContent='Could not switch imagery: '+(error?.message||'error');
+ }
+}
 function buildingStatus(message){
  const node=$('sim-building-status');if(node)node.textContent=message;
 }
@@ -206,6 +270,7 @@ async function loadBuildings(point,run,force=false){
   }
   buildingTileset=tileset;
   viewer.scene.primitives.add(tileset);
+  configureBuildings();
   buildingStatus('3D source connected · loading nearby tiles…');
   tileset.tileVisible.addEventListener(()=>{
    if(request!==buildingEpoch||!enabled)return;
@@ -319,7 +384,7 @@ async function initialise(run){
  );
  if(!enabled||run!==epoch)return;
  terrainReady=true;
- const layer=new C.ImageryLayer(new C.OpenStreetMapImageryProvider({url:'https://tile.openstreetmap.org/'}));
+ const layer=$('sim-imagery').value==='satellite'&&maptilerKey?satelliteLayer(C):streetLayer(C);
  viewer=new C.Viewer('shot-preview-terrain',{
   baseLayerPicker:false,baseLayer:layer,terrainProvider:terrainProvider,
   animation:false,timeline:false,homeButton:false,fullscreenButton:false,
@@ -327,7 +392,10 @@ async function initialise(run){
   navigationHelpButton:false,vrButton:false,shouldAnimate:false,
   scene3DOnly:true,requestRenderMode:false
  });
+ currentImageryLayer=layer;
  viewer.scene.globe.depthTestAgainstTerrain=false;
+ viewer.scene.globe.enableLighting=true;
+ viewer.scene.fog.enabled=false;
  if(!enabled||run!==epoch)return;
  installEditing();
  overlay('');
@@ -342,6 +410,7 @@ function destroy(){
  terrainEpoch++;terrainHeights=[];terrainSignature='';terrainProvider=null;terrainReady=false;
  if(dragHandler){dragHandler.destroy();dragHandler=null}
  if(viewer){viewer.destroy();viewer=null}
+ currentImageryLayer=null;
  activeDrag=null;
 }
 function setExpanded(on){
@@ -413,6 +482,15 @@ $('sim-reload-buildings').addEventListener('click',()=>{
  const points=route(core()?.getShot()),at=points[core()?.getActiveWaypoint()]||points[0];
  if(!at){buildingStatus('Add a waypoint first');return}
  loadBuildings(at,epoch,true);
+});
+$('sim-imagery').addEventListener('change',setImageryMode);
+$('sim-building-style').addEventListener('change',configureBuildings);
+$('sim-maptiler-key').value=maptilerKey;
+$('sim-imagery-apply').addEventListener('click',()=>{
+ maptilerKey=$('sim-maptiler-key').value.trim();
+ try{if(maptilerKey)localStorage.setItem(imageryKeyStore,maptilerKey);else localStorage.removeItem(imageryKeyStore)}catch{}
+ if(!maptilerKey){$('sim-imagery-hint').textContent='Enter a MapTiler key to use satellite imagery.';return}
+ setImageryMode();
 });
 $('sim-speed').addEventListener('input',event=>{
  $('sim-speed-value').textContent=event.target.value+' m/s';
