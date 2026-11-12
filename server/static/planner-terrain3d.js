@@ -12,6 +12,10 @@ let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
 let currentImageryLayer=null;
 const imageryKeyStore='offset-planner-maptiler-key-v1';
 let maptilerKey='';
+const ionKeyStore='offset-planner-cesium-ion-read-token-v1';
+const GOOGLE_ASSET_ID=2275207;
+let ionReadToken='';
+try{ionReadToken=localStorage.getItem(ionKeyStore)||''}catch{}
 try{maptilerKey=localStorage.getItem(imageryKeyStore)||''}catch{}
 const $status=$('sim-status'),$overlay=$('shot-preview-terrain-loading'),$play=$('sim-play');
 const rad=Math.PI/180,deg=180/Math.PI;
@@ -179,7 +183,7 @@ function renderRoute(){
    network access and browsers encountered CORS failures. */
 const BUILDING_TILESET_URL='https://buildings.reearth.land/tileset.json';
 function configureBuildings(){
- if(!buildingTileset||!window.Cesium)return;
+ if(!buildingTileset||!window.Cesium||$('sim-3d-source').value==='google')return;
  const C=window.Cesium,choice=$('sim-building-style').value;
  // Add ambient sky illumination to dark façades. This is diffuse fill,
  // separate from the main directional source; do not flatten all shading.
@@ -215,8 +219,8 @@ function streetLayer(C){
 function setImageryMode(){
  const keyrow=$('sim-imagery-key-row');
  const satellite=$('sim-imagery').value==='satellite';
- keyrow.hidden=!satellite;
- if(!viewer)return;
+ keyrow.hidden=!satellite||$('sim-3d-source').value==='google';
+ if(!viewer||$('sim-3d-source').value==='google')return;
  if(satellite&&!maptilerKey.trim()){
   buildingStatus('Satellite requires your MapTiler API key');
   return;
@@ -234,6 +238,23 @@ function setImageryMode(){
   $('sim-imagery-hint').textContent='Could not switch imagery: '+(error?.message||'error');
  }
 }
+function showGoogleControls(){
+ const google=$('sim-3d-source').value==='google';
+ $('sim-cesium-key-row').hidden=!google;
+ $('sim-imagery').disabled=google;
+ $('sim-building-style').disabled=google;
+ $('sim-imagery-key-row').hidden=google||$('sim-imagery').value!=='satellite';
+}
+function switch3dSource(){
+ showGoogleControls();
+ if(!viewer||!enabled)return;
+ const points=route(core()?.getShot()),at=points[core()?.getActiveWaypoint()]||points[0];
+ if(!at)return;
+ if($('sim-3d-source').value==='google'&&!ionReadToken.trim()){
+  buildingStatus('Enter your Cesium ion token and press Apply');return;
+ }
+ loadBuildings(at,epoch,true);
+}
 function buildingStatus(message){
  const node=$('sim-building-status');if(node)node.textContent=message;
 }
@@ -250,39 +271,62 @@ function discardBuildingTileset(){
 }
 async function loadBuildings(point,run,force=false){
  if(!point||!viewer||!enabled)return;
+ const google=$('sim-3d-source').value==='google';
+ if(google&&!ionReadToken.trim()){
+  buildingStatus('Paste a Cesium ion assets:read token, then Apply');return;
+ }
  if(buildingTileset&&!force)return;
  if(force)discardBuildingTileset();
  const request=++buildingEpoch;
- buildingStatus('Connecting 3D building tiles…');
+ viewer.scene.globe.show=true;
+ buildingStatus(google?'Connecting Google Photorealistic 3D Tiles…':'Connecting Re:Earth buildings…');
  try{
   const C=window.Cesium;
-  const tileset=await C.Cesium3DTileset.fromUrl(BUILDING_TILESET_URL,{
-   maximumScreenSpaceError:12,
-   cacheBytes:96*1024*1024,
-   maximumCacheOverflowBytes:32*1024*1024
-  });
+  const tileset=google
+   ?await C.Cesium3DTileset.fromUrl(
+     await C.IonResource.fromAssetId(GOOGLE_ASSET_ID,{accessToken:ionReadToken}),
+     {maximumScreenSpaceError:16,cacheBytes:96*1024*1024,
+      maximumCacheOverflowBytes:32*1024*1024,showCreditsOnScreen:true}
+    )
+   :await C.Cesium3DTileset.fromUrl(BUILDING_TILESET_URL,{
+     maximumScreenSpaceError:12,cacheBytes:96*1024*1024,
+     maximumCacheOverflowBytes:32*1024*1024
+    });
   if(!enabled||!viewer||run!==epoch||request!==buildingEpoch){
    if(!tileset.isDestroyed())tileset.destroy();return;
   }
   buildingTileset=tileset;
   viewer.scene.primitives.add(tileset);
-  configureBuildings();
-  buildingStatus('3D source connected · loading nearby tiles…');
+  if(google){
+   // The Google mesh contains its own terrain and textures.
+   viewer.scene.globe.show=false;
+  }else{
+   viewer.scene.globe.show=true;
+   configureBuildings();
+  }
+  buildingStatus(google?'Google 3D connected · streaming photo tiles…':'Re:Earth connected · loading buildings…');
   tileset.tileVisible.addEventListener(()=>{
    if(request!==buildingEpoch||!enabled)return;
    if(visibleBuildingTiles++===0)
-    buildingStatus('3D building tiles visible · Re:Earth / Overture');
+    buildingStatus(google?'Google photorealistic tiles visible':'Re:Earth building tiles visible');
   });
   tileset.tileFailed.addEventListener(error=>{
    if(!enabled||request!==buildingEpoch)return;
-   console.warn('OFFSET building tile:',error);
+   console.warn('OFFSET 3D tile:',error);
    if(visibleBuildingTiles===0)
-    buildingStatus('3D tile download failed · tap Reload buildings');
+    buildingStatus(google?'Google 3D tile denied/unavailable · check ion access':'3D tile download failed · Reload buildings');
   });
  }catch(error){
   if(!enabled||run!==epoch||request!==buildingEpoch)return;
-  console.warn('OFFSET 3D Tiles loading:',error);
-  buildingStatus('Could not connect to 3D buildings · Reload buildings');
+  const message=String(error?.message||'');
+  console.warn('OFFSET 3D source failed',google?'Google':'Re:Earth',message.slice(0,100).replaceAll(ionReadToken||'__never__','[token]'));
+  buildingStatus(google?'Google 3D unavailable · check token and asset':'Re:Earth buildings unavailable · Reload');
+  if(google){
+   viewer.scene.globe.show=true;
+   $('sim-3d-source').value='reearth';
+   showGoogleControls();
+   loadBuildings(point,run,true);
+  }
  }
 }
 
@@ -456,6 +500,7 @@ async function initialise(run){
   scene3DOnly:true,requestRenderMode:false
  });
  currentImageryLayer=layer;
+ showGoogleControls();
  viewer.scene.globe.depthTestAgainstTerrain=false;
  // This is a shot-planning preview, not an astronomical lighting simulation.
  // Prevent night-time globe darkness and harsh sun-dependent building shadows.
@@ -582,6 +627,20 @@ $('sim-reload-buildings').addEventListener('click',()=>{
  const points=route(core()?.getShot()),at=points[core()?.getActiveWaypoint()]||points[0];
  if(!at){buildingStatus('Add a waypoint first');return}
  loadBuildings(at,epoch,true);
+});
+$('sim-3d-source').addEventListener('change',switch3dSource);
+$('sim-cesium-key').value=ionReadToken;
+$('sim-cesium-apply').addEventListener('click',()=>{
+ ionReadToken=$('sim-cesium-key').value.trim();
+ try{
+  if(ionReadToken)localStorage.setItem(ionKeyStore,ionReadToken);
+  else localStorage.removeItem(ionKeyStore);
+ }catch{}
+ if(!ionReadToken){
+  $('sim-cesium-hint').textContent='Enter an assets:read token from ion.cesium.com';return;
+ }
+ $('sim-cesium-hint').textContent='Token set on this device. Connecting to Google 3D…';
+ switch3dSource();
 });
 $('sim-imagery').addEventListener('change',setImageryMode);
 $('sim-building-style').addEventListener('change',configureBuildings);
