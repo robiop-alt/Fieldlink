@@ -145,48 +145,52 @@ function drawBuildings(elements){
  }
  return count;
 }
-async function loadBuildings(point,run){
- if(!point)return;
- const key=point.map(n=>(Math.round(n*250)/250).toFixed(3)).join(',');
- if(buildingKey===key)return;
- buildingKey=key;
+function buildingStatus(message){const node=$('sim-building-status');if(node)node.textContent=message}
+async function loadBuildings(point,run,force=false){
+ if(!point||!viewer||!buildings)return;
+ const key=point.map(n=>(Math.round(n*1000)/1000).toFixed(3)).join(',');
+ if(!force&&buildingKey===key)return;
  if(buildingAbort)buildingAbort.abort();
  const request=++buildingEpoch;
+ const controller=new AbortController();
+ buildingAbort=controller;
+ buildingKey=key;
+ if(force)buildingCache.delete(key);
  if(buildingCache.has(key)){
   const count=drawBuildings(buildingCache.get(key));
-  status(count+' approximate OSM buildings · not a collision model');
+  buildingStatus(count+' buildings shown (cached)');
   return;
  }
- status('Loading OpenStreetMap building outlines…');
- const query='[out:json][timeout:20];way["building"](around:350,'+point[0].toFixed(6)+','+point[1].toFixed(6)+');out geom;';
- const controller=new AbortController();buildingAbort=controller;
- const timeout=setTimeout(()=>controller.abort(),18000);
+ buildingStatus('Loading 3D buildings…');
+ const timeout=setTimeout(()=>controller.abort(),25000);
  try{
-  const endpoints=['https://overpass.private.coffee/api/interpreter','https://overpass-api.de/api/interpreter'];
-  let body=null;
-  for(const endpoint of endpoints){
-   try{
-    const res=await fetch(endpoint+'?data='+encodeURIComponent(query),{signal:controller.signal});
-    if(!res.ok)throw Error('OSM building service '+res.status);
-    body=await res.json();
-    if(!Array.isArray(body.elements))throw Error('Incomplete building response');
-    break;
-   }catch(error){
-    if(controller.signal.aborted)throw error;
-    if(endpoint===endpoints[endpoints.length-1])throw error;
-   }
-  }
+  const params=new URLSearchParams({
+   lat:point[0].toFixed(6),lon:point[1].toFixed(6),radius:'600'
+  });
+  const res=await fetch('/api/admin/planner/buildings?'+params.toString(),{
+   credentials:'same-origin',signal:controller.signal,
+   headers:{'Accept':'application/json'}
+  });
+  if(!res.ok)throw Error('Building API '+res.status);
+  const body=await res.json();
   if(!enabled||request!==buildingEpoch||run!==epoch)return;
   const elements=Array.isArray(body.elements)?body.elements:[];
   buildingCache.set(key,elements);
   if(buildingCache.size>6)buildingCache.delete(buildingCache.keys().next().value);
   const count=drawBuildings(elements);
-  status(count?count+' approximate OSM buildings loaded.':'No OSM building geometry found near this shot.');
+  buildingStatus(count?count+' 3D buildings shown':'No mapped buildings in this area');
+  if(!count)status('No OSM footprints here. Try an urban shot or move the waypoint.');
  }catch(error){
-  if(request!==buildingEpoch||run!==epoch||!enabled)return;
-  status('Building data unavailable; shot playback still works. Try again later.');
- }finally{clearTimeout(timeout)}
+  if(!enabled||run!==epoch||request!==buildingEpoch)return;
+  buildingKey=''; // Do not lock out retries after a transient failure.
+  buildingStatus('Building load failed · tap Reload buildings');
+  console.warn('OFFSET 3D building data:',error);
+ }finally{
+  clearTimeout(timeout);
+  if(buildingAbort===controller)buildingAbort=null;
+ }
 }
+
 function stop(reset=true){
  playing=false;cancelAnimationFrame(raf);raf=0;$play.textContent='▶ Play flight';lastTime=0;
  if(reset)playElapsed=0;
@@ -288,8 +292,8 @@ async function initialise(run){
  installEditing();
  overlay('');
  renderRoute();showCamera();
+ status('Drone camera ready · press Play flight to preview your shot.');
  loadBuildings(route(core()?.getShot())[core()?.getActiveWaypoint()]||route(core()?.getShot())[0],run);
- status('Drone camera ready · drag to orbit, or press Play flight.');
 }
 function destroy(){
  stop();
@@ -359,6 +363,12 @@ $('sim-reset').addEventListener('click',resetCamera);
 $('sim-view').addEventListener('change',event=>{
  stop();overview=event.target.value==='overview';showCamera();
  status(overview?'Orbit overview: drag the city to inspect the route.':'Drone camera: view from the selected waypoint.');
+});
+$('sim-reload-buildings').addEventListener('click',()=>{
+ const points=route(core()?.getShot()),at=points[core()?.getActiveWaypoint()]||points[0];
+ if(!at){buildingStatus('Add a waypoint first');return}
+ buildingKey='';
+ loadBuildings(at,epoch,true);
 });
 $('sim-speed').addEventListener('input',event=>{
  $('sim-speed-value').textContent=event.target.value+' m/s';
