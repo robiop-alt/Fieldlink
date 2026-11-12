@@ -878,3 +878,22 @@
   min-height:42px;padding:11px;
  }
 }
+
+
+/* Dedicated tilt up/down controls for the 3D view. */
+.shot-preview-view .preview-pitch-controls{
+ position:absolute;z-index:4;left:7px;top:7px;
+ display:flex;align-items:center;gap:5px;
+ padding:4px;border:1px solid #435e52;border-radius:7px;
+ background:rgba(16,29,25,.93);box-shadow:0 2px 12px #0006;
+}
+.shot-preview-view .preview-pitch-controls[hidden]{display:none!important}
+.offset-planner .preview-pitch-controls button{
+ width:30px;height:30px;min-height:30px;padding:2px;
+ border:1px solid #4b6558;border-radius:5px;
+ background:#253c32;color:#d8f5df;font-size:19px;line-height:1;
+}
+.shot-preview-view .preview-pitch-controls span{
+ min-width:48px;text-align:center;color:#dcece0;
+ font:10px 'DM Mono',monospace;
+}
