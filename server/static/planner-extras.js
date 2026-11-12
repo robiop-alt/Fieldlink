@@ -76,17 +76,20 @@ function daylightEvents(pos,day){
 function sunDisplay(){
  const s=shot(),m=map();
  if(sunLayer){sunLayer.remove();sunLayer=null}
- if(!s||!m)return;
+ const events=$('sun-events');
+ if(!s){if(events)events.textContent='Select a shot to calculate sunrise and sunset.';return}
  const h=hours(),pos=place();
+ if(!pos){if(events)events.textContent='Waiting for map location…';$('sun-status').textContent='Select a location';return}
  $('sun-hour').value=h;
  $('sun-hour-label').textContent=String(Math.floor(h)).padStart(2,'0')+':'+String(Math.round((h%1)*60)).padStart(2,'0');
  if(!pos){$('sun-status').textContent='Select a location';return}
  const sun=solar(pos,dateForShot(),h);
- if(!sun){$('sun-status').textContent='Select a valid date';return}
+ if(!sun){$('sun-status').textContent='Select a valid date';if(events)events.textContent='Sun times unavailable for this date.';return}
  $('sun-bearing').textContent='Sun '+Math.round(sun.azimuth)+'°';
  $('sun-elevation').textContent='Elevation '+sun.elevation.toFixed(1)+'°';
- $('sun-events').textContent=daylightEvents(pos,dateForShot());
+ try{if(events)events.textContent=daylightEvents(pos,dateForShot())}catch(error){console.error('Sun times:',error);if(events)events.textContent='Sunrise/sunset temporarily unavailable. Try another date.'}
  const daylight=sun.elevation>-.833;
+ if(!m)return;
  $('sun-status').textContent=daylight?(sun.elevation<6?'Low sun':'Daylight'):'Below horizon';
  const sunPoint=endpoint(pos,sun.azimuth,Math.max(80,Math.min(500,m.getZoom()>14?150:350)));
  const shadowPoint=endpoint(pos,(sun.azimuth+180)%360,Math.max(55,Math.min(270,m.getZoom()>14?110:220)));
@@ -232,7 +235,13 @@ $('reference-file').addEventListener('change',async e=>{
  finally{button.disabled=false;button.textContent='+ Image'}
 });
 $('reference-remove').addEventListener('click',()=>{const s=shot();if(!s)return;s.referenceImage='';referenceDisplay();saved()});
-$('shot-date').addEventListener('change',sunDisplay);
+// Date changes can precede the shot editor's model sync on iOS.
+function refreshSunAfterDate(){const s=shot();if(s)s.date=$('shot-date').value;sunDisplay()}
+$('shot-date').addEventListener('input',refreshSunAfterDate);
+$('shot-date').addEventListener('change',refreshSunAfterDate);
+document.addEventListener('offset:planner-map-ready',()=>sunDisplay());
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',sunDisplay,{once:true})}
+else sunDisplay();
 document.addEventListener('offset:shot-rendered',showPanels);
 document.addEventListener('offset:map-rendered',()=>{sunDisplay();queueTerrain()});
 document.addEventListener('offset:planner-map-ready',e=>{
