@@ -5,9 +5,9 @@
    No token or Google Earth scraping. */
 const $=id=>document.getElementById(id),core=()=>window.OFFSETPlanner;
 const VERSION='1.135.0',BASE='https://cdn.jsdelivr.net/npm/cesium@'+VERSION+'/Build/Cesium/';
-let viewer=null,buildings=null,enabled=false,loadingSdk=null,epoch=0;
+let viewer=null,buildingTileset=null,enabled=false,loadingSdk=null,epoch=0;
 let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=null;
-let overview=false,buildingKey='',buildingEpoch=0,buildingAbort=null,buildingCache=new Map();
+let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
 const $status=$('sim-status'),$overlay=$('shot-preview-terrain-loading'),$play=$('sim-play');
 const rad=Math.PI/180,deg=180/Math.PI;
 const valid=p=>core()?.coordsOk(p);
@@ -115,124 +115,58 @@ function renderRoute(){
     fillColor:C.Color.WHITE,disableDepthTestDistance:Number.POSITIVE_INFINITY}
  })._offsetTarget=true;
 }
-function parseHeight(tags){
- const raw=Number.parseFloat(String(tags.height||'').replace(',','.'));
- if(Number.isFinite(raw)&&raw>0&&raw<450)return raw;
- const levels=Number.parseFloat(tags['building:levels']);
- return Number.isFinite(levels)&&levels>0?Math.min(450,levels*3.1):10;
+/* Re:Earth Buildings streams open Overture/OSM 3D Tiles directly into
+   Cesium. The former Overpass proxy failed because Render lacked outbound
+   network access and browsers encountered CORS failures. */
+const BUILDING_TILESET_URL='https://buildings.reearth.land/tileset.json';
+function buildingStatus(message){
+ const node=$('sim-building-status');if(node)node.textContent=message;
 }
-function drawBuildings(elements){
- if(!viewer||!buildings)return 0;
- const C=window.Cesium;buildings.entities.removeAll();let count=0;
- for(const building of elements){
-  const geom=building.geometry,tags=building.tags||{};
-  if(!Array.isArray(geom)||geom.length<3)continue;
-  const coords=[];
-  for(const pt of geom){
-   if(Number.isFinite(pt.lon)&&Number.isFinite(pt.lat))coords.push(pt.lon,pt.lat);
-  }
-  if(coords.length<6)continue;
+function discardBuildingTileset(){
+ buildingEpoch++;
+ visibleBuildingTiles=0;
+ if(buildingTileset){
   try{
-   buildings.entities.add({polygon:{
-    hierarchy:C.Cartesian3.fromDegreesArray(coords),
-    height:0,extrudedHeight:parseHeight(tags),
-    material:C.Color.fromCssColorString('#bfcac5').withAlpha(.91),
-    outline:false
-   }});
-   count++;
-  }catch(error){/* Skip malformed OSM footprints. */}
-  if(count>=500)break;
+   if(viewer&&!viewer.isDestroyed())viewer.scene.primitives.remove(buildingTileset);
+   else if(!buildingTileset.isDestroyed())buildingTileset.destroy();
+  }catch(error){console.warn('OFFSET building cleanup:',error)}
+  buildingTileset=null;
  }
- return count;
 }
-function buildingStatus(message){const node=$('sim-building-status');if(node)node.textContent=message}
-function normaliseOSM(elements){
- return elements.filter(obj=>Array.isArray(obj.geometry)&&obj.geometry.length>=3)
-  .map(obj=>({geometry:obj.geometry,tags:obj.tags||{}})).slice(0,900);
-}
-async function browserBuildings(point,controller){
- // Render may not have outbound network access, so query from the client.
- // Overpass allows small on-demand bounding-radius lookups; no background scraping.
- const query='[out:json][timeout:16];(way["building"](around:600,'+
-  point[0].toFixed(6)+','+point[1].toFixed(6)+');way["building:part"](around:600,'+
-  point[0].toFixed(6)+','+point[1].toFixed(6)+'););out geom;';
- const providers=[
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.nchc.org.tw/api/interpreter'
- ];
- const errors=[];
- for(const endpoint of providers){
-  if(controller.signal.aborted)throw Error('Building request cancelled');
-  try{
-   const response=await fetch(endpoint+'?data='+encodeURIComponent(query),{
-    method:'GET',mode:'cors',signal:controller.signal,
-    headers:{'Accept':'application/json'}
-   });
-   if(!response.ok)throw Error('HTTP '+response.status);
-   const data=await response.json();
-   if(!Array.isArray(data.elements))throw Error('Invalid OSM geometry response');
-   return normaliseOSM(data.elements);
-  }catch(error){
-   errors.push(error?.message||'Network error');
-   if(controller.signal.aborted)throw error;
-  }
- }
- throw Error('Browser building providers unavailable ('+errors.join(', ').slice(0,140)+')');
-}
-
 async function loadBuildings(point,run,force=false){
- if(!point||!viewer||!buildings)return;
- const key=point.map(n=>(Math.round(n*1000)/1000).toFixed(3)).join(',');
- if(!force&&buildingKey===key)return;
- if(buildingAbort)buildingAbort.abort();
+ if(!point||!viewer||!enabled)return;
+ if(buildingTileset&&!force)return;
+ if(force)discardBuildingTileset();
  const request=++buildingEpoch;
- const controller=new AbortController();
- buildingAbort=controller;
- buildingKey=key;
- if(force)buildingCache.delete(key);
- if(buildingCache.has(key)){
-  const count=drawBuildings(buildingCache.get(key));
-  buildingStatus(count+' buildings shown (cached)');
-  return;
- }
- buildingStatus('Loading 3D buildings…');
- const timeout=setTimeout(()=>controller.abort(),25000);
+ buildingStatus('Connecting 3D building tiles…');
  try{
-  const params=new URLSearchParams({
-   lat:point[0].toFixed(6),lon:point[1].toFixed(6),radius:'600'
+  const C=window.Cesium;
+  const tileset=await C.Cesium3DTileset.fromUrl(BUILDING_TILESET_URL,{
+   maximumScreenSpaceError:12,
+   cacheBytes:96*1024*1024,
+   maximumCacheOverflowBytes:32*1024*1024
   });
-  let elements=null,origin='OFFSET server';
-  try{
-   const response=await fetch('/api/admin/planner/buildings?'+params.toString(),{
-    credentials:'same-origin',signal:controller.signal,
-    headers:{'Accept':'application/json'}
-   });
-   if(!response.ok)throw Error('Building API '+response.status);
-   const body=await response.json();
-   if(!Array.isArray(body.elements))throw Error('Missing building geometry');
-   elements=body.elements;
-  }catch(serverError){
-   if(controller.signal.aborted)throw serverError;
-   buildingStatus('Server unavailable · trying browser connection…');
-   elements=await browserBuildings(point,controller);
-   origin='browser';
+  if(!enabled||!viewer||run!==epoch||request!==buildingEpoch){
+   if(!tileset.isDestroyed())tileset.destroy();return;
   }
-  if(!enabled||request!==buildingEpoch||run!==epoch)return;
-  buildingCache.set(key,elements);
-  if(buildingCache.size>6)buildingCache.delete(buildingCache.keys().next().value);
-  const count=drawBuildings(elements);
-  buildingStatus(count?count+' 3D buildings shown · '+origin:'No mapped buildings in this area');
-  if(!count)status('No OSM footprints here. Try an urban shot or move the waypoint.');
+  buildingTileset=tileset;
+  viewer.scene.primitives.add(tileset);
+  buildingStatus('3D source connected · loading nearby tiles…');
+  tileset.tileVisible.addEventListener(()=>{
+   if(request!==buildingEpoch||!enabled)return;
+   if(visibleBuildingTiles++===0)
+    buildingStatus('3D building tiles visible · Re:Earth / Overture');
+  });
+  tileset.tileFailed.addEventListener(error=>{
+   if(!enabled||request!==buildingEpoch)return;
+   console.warn('OFFSET building tile:',error);
+   if(visibleBuildingTiles===0)
+    buildingStatus('3D tile download failed · tap Reload buildings');
+  });
  }catch(error){
   if(!enabled||run!==epoch||request!==buildingEpoch)return;
-  buildingKey=''; // Do not lock out retries after a transient failure.
-  buildingStatus('Network or data source unavailable · Reload buildings');
-  console.warn('OFFSET 3D building data:',error);
- }finally{
-  clearTimeout(timeout);
-  if(buildingAbort===controller)buildingAbort=null;
+  console.warn('OFFSET 3D Tiles loading:',error);
+  buildingStatus('Could not connect to 3D buildings · Reload buildings');
  }
 }
 
@@ -331,8 +265,6 @@ async function initialise(run){
   scene3DOnly:true,requestRenderMode:false
  });
  viewer.scene.globe.depthTestAgainstTerrain=false;
- buildings=new C.CustomDataSource('OSM approximated buildings');
- await viewer.dataSources.add(buildings);
  if(!enabled||run!==epoch)return;
  installEditing();
  overlay('');
@@ -342,11 +274,10 @@ async function initialise(run){
 }
 function destroy(){
  stop();
- buildingEpoch++;
- if(buildingAbort)buildingAbort.abort();
+ discardBuildingTileset();
  if(dragHandler){dragHandler.destroy();dragHandler=null}
  if(viewer){viewer.destroy();viewer=null}
- buildings=null;buildingKey='';activeDrag=null;
+ activeDrag=null;
 }
 function setExpanded(on){
  const panel=document.querySelector('.shot-preview-panel');
@@ -412,7 +343,6 @@ $('sim-view').addEventListener('change',event=>{
 $('sim-reload-buildings').addEventListener('click',()=>{
  const points=route(core()?.getShot()),at=points[core()?.getActiveWaypoint()]||points[0];
  if(!at){buildingStatus('Add a waypoint first');return}
- buildingKey='';
  loadBuildings(at,epoch,true);
 });
 $('sim-speed').addEventListener('input',event=>{
