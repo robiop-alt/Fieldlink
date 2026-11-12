@@ -181,6 +181,12 @@ const BUILDING_TILESET_URL='https://buildings.reearth.land/tileset.json';
 function configureBuildings(){
  if(!buildingTileset||!window.Cesium)return;
  const C=window.Cesium,choice=$('sim-building-style').value;
+ // Add ambient sky illumination to dark façades. This is diffuse fill,
+ // separate from the main directional source; do not flatten all shading.
+ if(buildingTileset.imageBasedLighting){
+  buildingTileset.imageBasedLighting.imageBasedLightingFactor=new C.Cartesian2(2.5,.8);
+  buildingTileset.imageBasedLighting.luminanceAtZenith=.65;
+ }
  // Style the existing model's surfaces. Building façades are NOT photo-textured;
  // materials are illustrative, not a surveyed account of actual appearance.
  if(choice==='original'){
@@ -399,9 +405,24 @@ async function initialise(run){
  viewer.scene.globe.enableLighting=false;
  viewer.shadows=false;
  viewer.scene.shadowMap.enabled=false;
+ // Place the key light relative to the selected location, not fixed Earth
+ // coordinates (which can point underground in Norway).
+ const lightAt=route(core()?.getShot())[0]||[59.91,10.75];
+ const globeUp=C.Cartesian3.normalize(
+  C.Cartesian3.fromDegrees(lightAt[1],lightAt[0],0),new C.Cartesian3()
+ );
+ const east=new C.Cartesian3(
+  -Math.sin(lightAt[1]*rad),Math.cos(lightAt[1]*rad),0
+ );
+ const lightDirection=C.Cartesian3.normalize(
+  C.Cartesian3.add(
+   C.Cartesian3.multiplyByScalar(globeUp,-.9,new C.Cartesian3()),
+   C.Cartesian3.multiplyByScalar(east,-.35,new C.Cartesian3()),
+   new C.Cartesian3()
+  ),new C.Cartesian3()
+ );
  viewer.scene.light=new C.DirectionalLight({
-  direction:C.Cartesian3.normalize(new C.Cartesian3(.25,.45,-.86),new C.Cartesian3()),
-  intensity:1.7
+  direction:lightDirection,intensity:1.25
  });
  viewer.scene.fog.enabled=false;
  if(!enabled||run!==epoch)return;
