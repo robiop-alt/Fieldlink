@@ -38,6 +38,41 @@ function endpoint(point,bearing,distance){
  const lon2=lon+Math.atan2(Math.sin(angle)*Math.sin(arc)*Math.cos(lat),Math.cos(arc)-Math.sin(lat)*Math.sin(lat2));
  return [lat2*deg,lon2*deg];
 }
+let sunEventsCacheKey='',sunEventsCacheText='';
+function daylightEvents(pos,day){
+ const key=day+':'+pos.map(x=>x.toFixed(3)).join(',');
+ if(key===sunEventsCacheKey)return sunEventsCacheText;
+ const h=1/12;
+ const transitions={sunrise:null,sunset:null,goldenMorningEnd:null,goldenEveningStart:null};
+ const format=t=>{if(t==null)return '—';const minutes=Math.round(t*60);return String(Math.floor(minutes/60)%24).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0')};
+ let previous=solar(pos,day,0);
+ for(let t=h;t<=24.0001;t+=h){
+  const current=solar(pos,day,Math.min(t,23.99));
+  if(!previous||!current)break;
+  const crossings=[
+   ['sunrise',-.833,true],
+   ['sunset',-.833,false],
+   ['goldenMorningEnd',6,true],
+   ['goldenEveningStart',6,false],
+  ];
+  for(const [label,threshold,rising] of crossings){
+   const a=previous.elevation-threshold,b=current.elevation-threshold;
+   if((rising&&a<0&&b>=0)||(!rising&&a>0&&b<=0)){
+    transitions[label]=t-h+h*(-a)/(b-a);
+   }
+  }
+  previous=current;
+ }
+ const sr=transitions.sunrise,ss=transitions.sunset;
+ let result='Sunrise '+format(sr)+' · Sunset '+format(ss);
+ if(sr!==null&&ss!==null){
+  result+=' · Golden '+format(sr)+'–'+format(transitions.goldenMorningEnd)+' / '+format(transitions.goldenEveningStart)+'–'+format(ss);
+ }else{
+  result+=' · No normal sunrise/sunset (polar conditions possible)';
+ }
+ sunEventsCacheKey=key;sunEventsCacheText=result;
+ return result;
+}
 function sunDisplay(){
  const s=shot(),m=map();
  if(sunLayer){sunLayer.remove();sunLayer=null}
@@ -50,6 +85,7 @@ function sunDisplay(){
  if(!sun){$('sun-status').textContent='Select a valid date';return}
  $('sun-bearing').textContent='Sun '+Math.round(sun.azimuth)+'°';
  $('sun-elevation').textContent='Elevation '+sun.elevation.toFixed(1)+'°';
+ $('sun-events').textContent=daylightEvents(pos,dateForShot());
  const daylight=sun.elevation>-.833;
  $('sun-status').textContent=daylight?(sun.elevation<6?'Low sun':'Daylight'):'Below horizon';
  const sunPoint=endpoint(pos,sun.azimuth,Math.max(80,Math.min(500,m.getZoom()>14?150:350)));
