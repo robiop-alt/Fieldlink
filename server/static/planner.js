@@ -363,6 +363,6 @@ $('print-plan').onclick=async()=>{
  }catch(error){alert('PDF export failed: '+(error.message||'Please try again'))}
  finally{button.disabled=false;button.textContent=label}
 };
-window.OFFSETPlanner={getShot,getMap:()=>map,save:scheduleSave,renderMap,render,coordsOk,lensFov};
+window.OFFSETPlanner={getShot,getMap:()=>map,getActiveWaypoint:()=>activeWaypoint,getBearing:()=>{const shot=getShot();return shot?effectiveBearing(shot):0},save:scheduleSave,renderMap,render,coordsOk,lensFov};
 window.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&saveTimer){clearTimeout(saveTimer);saveTimer=null;saveNow(current)}});start();
 })();
