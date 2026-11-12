@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const clone=x=>JSON.parse(JSON.stringify(x));
 let plans=[],current=null,activeShot=0,activeWaypoint=0,map,routeLine,aimLine,markers=[],marshalMarkers=[],sketchLayers=[],targetMarker,coneLayers=[],coneHeadingMarker,searchPin,locationPin,tool='move',saveTimer=null,saveEpoch=0,loading=false;
 const coordsOk=p=>Array.isArray(p)&&p.length===2&&p.every(v=>typeof v==='number'&&Number.isFinite(v)&&Math.abs(v)<=180)&&Math.abs(p[0])<=90;
-function syncDateDisplay(){const input=$('shot-date'),face=$('shot-date-display');if(!input||!face)return;const value=input.value;if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)){face.textContent='Select date';face.classList.add('is-empty');return}const [year,month,day]=value.split('-');face.textContent=day+'.'+month+'.'+year;face.classList.remove('is-empty')}
+function syncDateDisplay(){const input=$('shot-date'),face=$('shot-date-display');if(!input||!face)return;const value=input.value;if(!/^\d{4}-\d{2}-\d{2}$/.test(value)){face.textContent='Select date';face.classList.add('is-empty');return}const [year,month,day]=value.split('-');face.textContent=day+'.'+month+'.'+year;face.classList.remove('is-empty')}
 const blankShot=(name='New shot')=>({id:crypto.randomUUID(),name,description:'',drone:'',lens:'',date:'',time:'',sunHour:12,referenceImage:'',route:[],sketches:[],target:null,waypointCones:[]});
 const api=async(path,opt={})=>{const r=await fetch(path,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...opt});if(!r.ok){let message='Request failed ('+r.status+')';try{const d=await r.json();message=typeof d.detail==='string'?d.detail:message}catch{}throw Error(message)}return r.json()};
 function state(message){$('save-state').textContent=message}
@@ -19,7 +19,7 @@ function scheduleSave(){if(!current)return;state('Unsaved…');clearTimeout(save
 async function saveNow(plan){if(!plan)return false;const epoch=++saveEpoch;state('Saving…');try{const res=await api('/api/admin/planner/'+encodeURIComponent(plan.id),{method:'PUT',body:JSON.stringify({name:plan.name,shots:clone(plan.shots),marshals:clone(plan.marshals||[]),center:map?map.getCenter():plan.center,zoom:map?map.getZoom():plan.zoom})});if(epoch===saveEpoch)state('Saved');plan.updated=res.updated;return true}catch(e){if(epoch===saveEpoch)state('Save failed');console.error(e);return false}}
 
 
-function lensFov(shot){const match=String(shot?.lens||'').match(/(?:^|\\D)(18|24|35|50)(?:\\D|$)/);return match?Math.round(2*Math.atan(35.95/(2*Number(match[1])))*180/Math.PI*10)/10:null}
+function lensFov(shot){const match=String(shot?.lens||'').match(/(?:^|\D)(18|24|35|50)(?:\D|$)/);return match?Math.round(2*Math.atan(35.95/(2*Number(match[1])))*180/Math.PI*10)/10:null}
 function defaultCone(bearing=0){return {visible:true,mode:'manual',bearing,fov:50,range:30,lensAuto:true}}
 function cones(shot){
  if(!Array.isArray(shot.waypointCones))shot.waypointCones=[];
