@@ -93,8 +93,8 @@ function sunDisplay(){
  // Lines indicate solar orientation and opposite shadow direction only. They
  // DO NOT represent real shadow lengths or terrain obstruction predictions.
  sunLayer=L.layerGroup([
-  L.polyline([pos,sunPoint],{color:'#f0bd5e',weight:2,opacity:daylight?.95:.42,dashArray:'7 4',interactive:false,className:'sun-map-ray'}),
-  L.polyline([pos,shadowPoint],{color:'#606b75',weight:2,opacity:daylight?.8:.3,dashArray:'3 5',interactive:false,className:'sun-map-ray'}),
+  L.polyline([pos,sunPoint],{color:'#f6b844',weight:4,opacity:daylight?1:.62,interactive:false,className:'sun-map-ray',lineCap:'round'}),
+  L.polyline([pos,shadowPoint],{color:'#52677b',weight:2.7,opacity:daylight?.9:.45,dashArray:'6 6',interactive:false,className:'sun-map-ray',lineCap:'round'}),
   L.circleMarker(pos,{radius:4,weight:1,color:'#f5d38b',fillColor:'#f0bd5e',fillOpacity:1,interactive:false})
  ]).addTo(m);
 }
