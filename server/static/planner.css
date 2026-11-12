@@ -822,3 +822,59 @@
  background:#192823;color:#def8e5;border-color:#436052;
 }
 .shot-preview-view.terrain-enabled #shot-preview-2dmap{display:none!important}
+
+
+/* Independently collapsible Planner subsections, with saved open states. */
+.offset-planner .planner-fold-actions{
+ display:flex;justify-content:flex-end;gap:6px;margin:0 0 10px;
+}
+.offset-planner .planner-fold-actions button{
+ min-height:27px;padding:5px 8px;background:transparent;
+ border:1px solid #33443d;color:#a8bbae;font-size:10px;font-weight:500;
+}
+.offset-planner .planner-fold{
+ display:block;min-width:0;margin:9px 0 0;
+ border:1px solid #33463f;border-radius:8px;
+ background:#17201e;overflow:hidden;
+}
+.offset-planner .planner-fold>summary.planner-fold-label{
+ display:flex;align-items:center;justify-content:space-between;
+ gap:10px;list-style:none;cursor:pointer;
+ min-height:38px;padding:9px 11px;color:#d6e6d9;
+ font:600 12px 'DM Sans',sans-serif;
+ user-select:none;-webkit-user-select:none;
+}
+.offset-planner .planner-fold>summary::-webkit-details-marker{display:none}
+.offset-planner .planner-fold>summary:hover{background:#1c2a24}
+.offset-planner .planner-fold>summary:focus-visible{
+ outline:2px solid #59bb79;outline-offset:-2px;
+}
+.offset-planner .planner-fold-chevron{
+ width:8px;height:8px;flex:0 0 8px;
+ border-right:1.8px solid #91b8a1;border-bottom:1.8px solid #91b8a1;
+ transform:rotate(45deg);transition:transform .16s ease;
+ margin-right:3px;margin-top:-4px;
+}
+.offset-planner .planner-fold[open]>.planner-fold-label{
+ border-bottom:1px solid #304139;
+}
+.offset-planner .planner-fold[open] .planner-fold-chevron{
+ transform:rotate(225deg);margin-top:4px;
+}
+.offset-planner .planner-fold>.marshal-panel,
+.offset-planner .planner-fold>.cone-settings,
+.offset-planner .planner-fold>.planner-extra-panel{
+ border:0!important;border-radius:0!important;
+ margin:0!important;background:transparent!important;
+ padding:11px!important;box-shadow:none;
+}
+.offset-planner .planner-fold>.marshal-panel .marshal-panel-head,
+.offset-planner .planner-fold>.cone-settings .cone-settings-head,
+.offset-planner .planner-fold>.planner-extra-panel>.planner-extra-heading{
+ margin-bottom:4px;
+}
+@media(max-width:800px){
+ .offset-planner .planner-fold>summary.planner-fold-label{
+  min-height:42px;padding:11px;
+ }
+}
