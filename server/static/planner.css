@@ -1211,3 +1211,92 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
  width:auto;max-width:155px;min-height:30px;height:30px;
  padding:4px 7px;font-size:11px;margin:0;
 }
+
+
+/* Per-waypoint camera tilt, small enough for mobile controls. */
+.offset-planner .sim-tilt-row{gap:9px}
+.offset-planner .sim-tilt-row label{min-width:95px}
+.offset-planner .sim-tilt-row input[type=range]{
+ flex:1;min-width:50px;height:26px;min-height:26px;
+ accent-color:#69bb73;margin:0
+}
+.offset-planner #sim-landscape-settings[hidden]{display:none!important}
+
+/* Expanded landscape: the 3D image occupies the entire viewport.
+   Important controls float over the picture, others live in Settings. */
+@media screen and (orientation:landscape) and (max-height:600px){
+ .offset-planner .shot-preview-panel.sim-expanded{
+  position:fixed!important;inset:0!important;
+  width:100vw!important;height:100dvh!important;max-height:100dvh!important;
+  min-height:0!important;margin:0!important;padding:0!important;
+  display:block!important;overflow:hidden!important;
+  background:#0c1716!important;border:0!important;border-radius:0!important;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .shot-preview-view{
+  position:absolute!important;inset:0!important;
+  width:100%!important;height:100%!important;
+  min-height:0!important;max-height:none!important;
+  margin:0!important;border:0!important;border-radius:0!important;
+  aspect-ratio:auto!important;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .planner-extra-heading{
+  position:absolute!important;z-index:20;top:0;left:0;right:0;
+  display:flex!important;align-items:center;justify-content:flex-end;
+  min-height:0!important;margin:0!important;
+  padding:max(7px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 7px max(12px,env(safe-area-inset-left))!important;
+  border:0!important;
+  background:linear-gradient(to bottom,rgba(11,25,21,.85),rgba(11,25,21,0));
+  pointer-events:none;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .planner-extra-heading>strong{
+  margin-right:auto;font-size:12px;text-shadow:0 1px 3px #000;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .planner-extra-heading .preview-actions{
+  display:flex;align-items:center;gap:5px;pointer-events:auto;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .planner-extra-heading .preview-actions button{
+  font-size:11px;min-height:30px;height:30px;padding:4px 8px;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .preview-aspect-label,
+ .offset-planner .shot-preview-panel.sim-expanded .preview-altitude{display:none!important}
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-controls{
+  position:absolute!important;z-index:19;left:0;right:0;bottom:0;
+  top:auto!important;margin:0!important;
+  padding:36px max(12px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))!important;
+  display:block!important;overflow:visible!important;
+  background:linear-gradient(to top,rgba(11,25,21,.82),rgba(11,25,21,0));
+  pointer-events:none;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-controls>.shot-simulator-main{
+  display:flex!important;flex-wrap:nowrap;align-items:center;gap:6px;
+  pointer-events:auto;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-main label{
+  margin:0;font-size:10px
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-main select{
+  width:auto;max-width:140px;min-height:31px;height:31px;font-size:10px
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-controls>:not(.shot-simulator-main){
+  display:none!important;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .preview-pitch-controls{
+  top:52px;left:max(12px,env(safe-area-inset-left));
+ }
+ .offset-planner .shot-preview-panel.sim-expanded.sim-expanded-settings .shot-simulator-controls{
+  top:45px!important;bottom:0;max-height:none!important;
+  padding:12px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))!important;
+  display:flex!important;flex-direction:column;gap:10px;align-items:stretch;
+  overflow-y:auto!important;overscroll-behavior:contain;
+  background:rgba(10,23,20,.97);pointer-events:auto;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded.sim-expanded-settings .shot-simulator-controls>:not(.shot-simulator-main):not([hidden]){
+  display:flex!important;flex:0 0 auto;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded.sim-expanded-settings .shot-simulator-controls>.shot-simulator-speed:not([hidden]){
+  display:grid!important;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded.sim-expanded-settings .shot-simulator-controls>.sim-status:not([hidden]){
+  display:block!important;
+ }
+}
