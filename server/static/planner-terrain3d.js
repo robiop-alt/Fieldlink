@@ -2,7 +2,7 @@
 /* Optional 3D terrain scout preview. The camera is a tilted map overview,
    not a pixel-accurate cinematography image or obstacle clearance model. */
 const $=id=>document.getElementById(id),core=()=>window.OFFSETPlanner;
-let viewer=null,loading=null,enabled=false,initialized=false,viewerFailed=false,updatePending=false;
+let viewer=null,loading=null,enabled=false,initialized=false,viewerFailed=false,updatePending=false,modeEpoch=0;
 const CDN='https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/';
 const empty={type:'FeatureCollection',features:[]};
 function loadMapLibre(){
@@ -47,10 +47,11 @@ function dataForShot(s){
  const center=destination(origin,bearing,Math.max(20,range*.35));
  return {center:[center[1],center[0]],bearing,range,collection:{type:'FeatureCollection',features},valid:true};
 }
-async function init3D(){
+async function init3D(epoch){
  const api=core(),s=api?.getShot(),btn=$('preview-3d-toggle');
  if(!s?.route?.length){setStatus('Add a waypoint before opening 3D terrain.');return false}
  const gl=await loadMapLibre();
+ if(!enabled||epoch!==modeEpoch)return false;
  if(typeof gl.supported==='function'&&!gl.supported()){throw Error('3D WebGL is unavailable on this device')}
  const current=dataForShot(s),initialCoords=current.center;
  viewer=new gl.Map({
@@ -102,7 +103,7 @@ async function init3D(){
   }
  });
  viewer.addControl(new gl.NavigationControl({showCompass:true,showZoom:true,visualizePitch:true}),'top-right');
- viewer.on('load',()=>{initialized=true;setStatus('');sync3D();});
+ viewer.on('load',()=>{initialized=true;if(enabled&&epoch===modeEpoch){setStatus('');sync3D()}});
  viewer.on('error',e=>{
   const msg=e?.error?.message||'';
   if(msg.includes('terrain')||msg.includes('Failed to fetch')||msg.includes('tile'))setStatus('Some terrain tiles are unavailable; try a different area.');
@@ -124,6 +125,7 @@ function sync3D(){
 }
 function refresh(){if(!enabled||updatePending)return;updatePending=true;requestAnimationFrame(()=>{updatePending=false;sync3D()})}
 function setMode(on){
+ const epoch=++modeEpoch;
  enabled=!!on;
  const node=$('shot-preview-view'),target=$('shot-preview-terrain'),toggle=$('preview-3d-toggle');
  node.classList.toggle('terrain-enabled',enabled);
@@ -135,12 +137,16 @@ function setMode(on){
   setStatus('');
   // Release the WebGL context when returning to 2D on iPhone.
   if(viewer){viewer.remove();viewer=null;initialized=false}
+  // Explicitly restore the SVG viewfinder, regardless of 3D loading state.
+  const svg=$('shot-preview-svg');if(svg){svg.hidden=false;svg.style.display='block'}
+  const fallback=$('preview-empty');if(fallback)fallback.style.removeProperty('display');
   document.dispatchEvent(new Event('offset:map-rendered'));
   return;
  }
  setStatus('Loading 3D terrain…');
  if(viewer){if(initialized){setStatus('');requestAnimationFrame(sync3D)}return}
- init3D().catch(err=>{
+ init3D(epoch).catch(err=>{
+  if(!enabled||epoch!==modeEpoch)return;
   console.warn('OFFSET 3D:',err);
   viewerFailed=true;
   setStatus(err.message||'3D terrain unavailable. Use 2D View to continue.');
