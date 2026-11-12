@@ -897,3 +897,112 @@
  min-width:48px;text-align:center;color:#dcece0;
  font:10px 'DM Mono',monospace;
 }
+
+
+/* Short landscape viewports: predictable, scrollable iPhone/iPad planning.
+   Override overlapping narrow-screen and earlier landscape rules. */
+@media screen and (orientation:landscape) and (min-width:500px) and (max-width:1200px) and (max-height:650px) {
+ html,body.offset-planner{
+  overflow-x:hidden;overflow-y:auto;
+  width:100%;max-width:100%;
+  -webkit-text-size-adjust:100%;
+ }
+ body.offset-planner{overscroll-behavior-y:auto}
+ .offset-planner .planner-shell{
+  width:100%;max-width:none;
+  padding:
+   max(8px,env(safe-area-inset-top))
+   max(10px,env(safe-area-inset-right))
+   max(16px,env(safe-area-inset-bottom))
+   max(10px,env(safe-area-inset-left));
+ }
+ .offset-planner .planner-top{
+  display:flex;flex-wrap:nowrap;align-items:center;
+  min-height:37px;gap:7px;padding:4px 0 7px;
+ }
+ .offset-planner .planner-top .planner-logo img{width:82px;max-width:25vw;height:auto}
+ .offset-planner .planner-top button.planner-refresh{
+  margin-left:auto;min-height:33px;padding:6px 8px;
+ }
+ .offset-planner .planner-top .planner-back{min-height:33px;padding:8px;font-size:10px}
+ .offset-planner .planner-bar{
+  display:flex!important;flex-wrap:wrap!important;align-items:center;
+  gap:5px;padding:7px 0 8px;min-width:0;
+ }
+ .offset-planner .planner-bar .field{
+  flex:1 1 175px;min-width:130px;max-width:none;
+  grid-column:auto;
+ }
+ .offset-planner .planner-bar .field select{min-height:35px;margin-top:3px}
+ .offset-planner .planner-bar button{min-height:34px;padding:6px 8px;font-size:10px}
+ .offset-planner #save-state{min-width:0;flex:0 0 auto;padding:4px 2px}
+ .offset-planner .planner-workspace{
+  display:grid!important;
+  grid-template-columns:minmax(190px,min(29%,255px)) minmax(0,1fr)!important;
+  align-items:start;gap:8px;min-height:0;width:100%;
+ }
+ .offset-planner .planner-sidebar{
+  order:0;min-width:0;padding:10px;
+  max-height:none!important;overflow:visible!important;
+ }
+ .offset-planner .planner-sidebar .shot-list{grid-template-columns:minmax(0,1fr)}
+ .offset-planner .map-panel{
+  order:1;min-width:0;min-height:0;
+  overflow:hidden;display:flex;flex-direction:column;
+ }
+ .offset-planner .mobile-shot-select{display:none}
+ .offset-planner .map-top-controls{
+  display:flex;flex-wrap:nowrap;align-items:center;
+  gap:4px;padding:5px;min-width:0;
+ }
+ .offset-planner .map-top-controls #map-search-form{flex:1 1 auto;min-width:0}
+ .offset-planner .map-top-controls #map-search{min-height:30px;font-size:12px}
+ .offset-planner .map-top-controls #locate-me{min-width:34px;min-height:34px;padding:5px}
+ .offset-planner .map-top-controls #locate-me span{display:none}
+ .offset-planner .map-top-controls .basemap-switch select{width:72px;min-height:34px;font-size:10px}
+ .offset-planner .map-toolbar{
+  display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
+  touch-action:pan-x;-webkit-overflow-scrolling:touch;
+  overscroll-behavior-inline:contain;
+  gap:3px;padding:5px;min-width:0;
+ }
+ .offset-planner .map-toolbar button{
+  flex:0 0 36px;min-width:36px;min-height:36px;
+  padding:6px;font-size:0;
+ }
+ .offset-planner .map-toolbar button span{display:none}
+ .offset-planner .map-toolbar svg{width:18px;height:18px}
+ .offset-planner .airspace-controls{flex-wrap:wrap;gap:5px;padding:5px}
+ .offset-planner .airspace-legend{display:none}
+ .offset-planner .airspace-status{padding:4px 7px;font-size:9px}
+ .offset-planner .map-panel>.sun-panel{padding:7px 9px 6px}
+ .offset-planner .map-panel>.sun-panel .planner-extra-heading strong{font-size:11px}
+ .offset-planner .map-panel>.sun-panel .planner-extra-heading>span{font-size:9px}
+ .offset-planner .map-panel>.sun-panel .extra-hint{display:none}
+ .offset-planner #planner-map{
+  height:clamp(230px,calc(100dvh - 195px),420px)!important;
+  min-height:230px!important;max-height:none!important;
+  flex:0 0 auto!important;touch-action:none;
+ }
+ .offset-planner .map-footer{padding:6px 8px;font-size:10px}
+ .offset-planner .map-footer span:first-child{flex:1 1 100%}
+ .offset-planner .shot-editor .fields-two{
+  grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;
+ }
+ .offset-planner .shot-editor input,
+ .offset-planner .shot-editor select{
+  min-width:0;max-width:100%;
+ }
+ .offset-planner .shot-preview-panel .preview-actions{flex-wrap:wrap;gap:5px}
+ .offset-planner .shot-preview-panel #preview-aspect{width:77px}
+ .offset-planner .shot-preview-view{min-height:170px;max-height:none}
+}
+@media screen and (orientation:landscape) and (min-width:500px) and (max-width:760px) and (max-height:650px){
+ .offset-planner .planner-workspace{
+  grid-template-columns:minmax(165px,29%) minmax(0,1fr)!important;
+ }
+ .offset-planner .planner-top .planner-logo img{width:70px}
+ .offset-planner .planner-bar .field{flex-basis:100%}
+ .offset-planner .planner-bar button{font-size:10px;padding:5px 6px}
+ .offset-planner .map-top-controls .basemap-switch{display:none}
+}
