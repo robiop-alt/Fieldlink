@@ -288,6 +288,23 @@ function destroy(){
  if(viewer){viewer.destroy();viewer=null}
  buildings=null;buildingKey='';activeDrag=null;
 }
+function setExpanded(on){
+ const panel=document.querySelector('.shot-preview-panel');
+ if(!panel)return;
+ panel.classList.toggle('sim-expanded',on);
+ document.body.classList.toggle('simulator-expanded',on);
+ $('sim-expand').textContent=on?'Close':'Expand';
+ requestAnimationFrame(()=>requestAnimationFrame(()=>{
+  if(enabled&&viewer){viewer.resize();if(!playing&&!overview)showCamera()}
+ }));
+}
+$('sim-expand').addEventListener('click',()=>{
+ const panel=document.querySelector('.shot-preview-panel');
+ setExpanded(!panel?.classList.contains('sim-expanded'));
+});
+document.addEventListener('keydown',event=>{
+ if(event.key==='Escape'&&document.querySelector('.shot-preview-panel.sim-expanded'))setExpanded(false);
+});
 function setMode(on){
  const s=core()?.getShot();
  if(on&&!route(s).length){status('Add a waypoint to start the 3D Simulator.');return}
@@ -299,6 +316,8 @@ function setMode(on){
  $('preview-pitch-controls').hidden=!on;
  $('shot-simulator-controls').hidden=!on;
  $('preview-terrain-credit').hidden=!on;
+ $('sim-expand').hidden=!on;
+ if(!on)setExpanded(false);
  $('preview-3d-toggle').setAttribute('aria-pressed',String(on));
  $('preview-3d-toggle').textContent=on?'2D Map':'3D Simulator';
  document.dispatchEvent(new Event('offset:preview-mode-changed'));
