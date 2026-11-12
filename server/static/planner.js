@@ -363,6 +363,17 @@ $('print-plan').onclick=async()=>{
  }catch(error){alert('PDF export failed: '+(error.message||'Please try again'))}
  finally{button.disabled=false;button.textContent=label}
 };
-window.OFFSETPlanner={getShot,getMap:()=>map,getActiveWaypoint:()=>activeWaypoint,getBearing:()=>{const shot=getShot();return shot?effectiveBearing(shot):0},save:scheduleSave,renderMap,render,coordsOk,lensFov};
+function moveWaypointFromPreview(index,point){
+ const shot=getShot();
+ if(!shot||!coordsOk(point)||index<0||index>=shot.route.length)return;
+ shot.route[index]=point;activeWaypoint=index;renderMap();scheduleSave();
+}
+function moveTargetFromPreview(point){
+ const shot=getShot();if(!shot||!coordsOk(point))return;
+ shot.target=point;renderMap();scheduleSave();
+}
+window.OFFSETPlanner={getShot,getMap:()=>map,getActiveWaypoint:()=>activeWaypoint,
+ setActiveWaypoint:selectWaypoint,moveWaypoint:moveWaypointFromPreview,moveTarget:moveTargetFromPreview,
+ getBearing:()=>{const shot=getShot();return shot?effectiveBearing(shot):0},save:scheduleSave,renderMap,render,coordsOk,lensFov};
 window.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&saveTimer){clearTimeout(saveTimer);saveTimer=null;saveNow(current)}});start();
 })();
