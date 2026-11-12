@@ -776,3 +776,49 @@
   font-size:10px;min-height:34px;padding:6px 8px
  }
 }
+
+
+/* Real 2D shot map and per-waypoint camera height. */
+.offset-planner .shot-preview-panel .preview-altitude{
+ display:grid;grid-template-columns:minmax(0,1fr) 70px;gap:6px 10px;align-items:center;
+ margin:12px 0 0;
+}
+.offset-planner .shot-preview-panel .preview-altitude label{
+ grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;
+ margin:0;color:#bfcdc1;font-size:11px;
+}
+.offset-planner .shot-preview-panel #preview-height-label{
+ color:#a7dfac;font:11px 'DM Mono',monospace;
+}
+.offset-planner .shot-preview-panel #preview-height{
+ appearance:auto;-webkit-appearance:auto;accent-color:#59b970;
+ margin:0;padding:0;height:30px;min-height:30px;width:100%;background:transparent;border:0;
+}
+.offset-planner .shot-preview-panel #preview-height-number{
+ margin:0;width:100%;height:34px;min-height:34px;padding:5px 6px;
+ font:12px 'DM Mono',monospace;text-align:center;
+}
+.shot-preview-view #shot-preview-2dmap{
+ position:absolute;inset:0;z-index:1;background:#263b35;width:100%;height:100%;
+}
+.shot-preview-view #shot-preview-2dmap[hidden]{display:none!important}
+.shot-preview-view #shot-preview-svg{display:none!important}
+.shot-preview-view .preview-empty{z-index:2;pointer-events:none}
+.shot-preview-view .preview-pin{
+ display:grid;place-items:center;border:0;background:transparent;
+}
+.shot-preview-view .preview-pin span{
+ display:grid;place-items:center;width:29px;height:29px;border-radius:50%;
+ background:#203b2d;border:2px solid #61dc98;color:#e8ffeb;
+ font:bold 12px 'DM Sans',sans-serif;box-shadow:0 2px 8px #0d15158c;
+}
+.shot-preview-view .preview-pin span.selected{
+ background:#5ac476;border-color:#d6ffe4;color:#123120;
+}
+.shot-preview-view #shot-preview-2dmap .leaflet-control-zoom{
+ margin:6px;border:1px solid #436052;border-radius:7px;overflow:hidden;
+}
+.shot-preview-view #shot-preview-2dmap .leaflet-control-zoom a{
+ background:#192823;color:#def8e5;border-color:#436052;
+}
+.shot-preview-view.terrain-enabled #shot-preview-2dmap{display:none!important}
