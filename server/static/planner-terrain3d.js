@@ -2,7 +2,7 @@
 /* Optional 3D terrain scout preview. The camera is a tilted map overview,
    not a pixel-accurate cinematography image or obstacle clearance model. */
 const $=id=>document.getElementById(id),core=()=>window.OFFSETPlanner;
-let viewer=null,loading=null,enabled=false,initialized=false,viewerFailed=false,updatePending=false,modeEpoch=0,draggableMarkers=[];
+let viewer=null,loading=null,enabled=false,initialized=false,viewerFailed=false,updatePending=false,modeEpoch=0,draggableMarkers=[],userPitch=null;
 const CDN='https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/';
 const empty={type:'FeatureCollection',features:[]};
 function loadMapLibre(){
@@ -112,6 +112,19 @@ async function init3D(epoch){
  viewer.on('idle',()=>{if(initialized&&enabled)setStatus('')});
  return true;
 }
+function updatePitchLabel(){
+ const label=$('preview-pitch-value');
+ if(label)label.textContent='Tilt '+Math.round(userPitch??viewer?.getPitch?.()??73)+'°';
+}
+function changePitch(delta){
+ if(!enabled||!viewer||!initialized)return;
+ const current=Number.isFinite(userPitch)?userPitch:viewer.getPitch();
+ userPitch=Math.max(0,Math.min(80,Math.round(current+delta)));
+ viewer.easeTo({pitch:userPitch,duration:220});
+ updatePitchLabel();
+}
+$('preview-pitch-up').addEventListener('click',()=>changePitch(-10));
+$('preview-pitch-down').addEventListener('click',()=>changePitch(10));
 function setStatus(message){const node=$('shot-preview-terrain-loading');if(!node)return;node.hidden=!message;node.textContent=message}
 function renderDraggableMarkers(s){
  if(!viewer||!window.maplibregl)return;
@@ -151,11 +164,12 @@ function updateCameraView(data,s){
      new window.maplibregl.LngLat(targetCoords[0],targetCoords[1]),
      Number.isFinite(targetHeight)?targetHeight:0
    );
-   viewer.jumpTo(camera);return;
+   viewer.jumpTo(camera);if(userPitch!==null)viewer.setPitch(userPitch);updatePitchLabel();return;
   }
  }catch(error){console.warn('Camera-height view fallback',error)}
- viewer.jumpTo({center:data.center,bearing:data.bearing,pitch:73,
+ viewer.jumpTo({center:data.center,bearing:data.bearing,pitch:userPitch??73,
   zoom:Math.max(12,Math.min(18,17-Math.log2((data.height+data.range)/45)))});
+ updatePitchLabel();
 }
 function sync3D(){
  if(!enabled||!viewer||!initialized)return;
@@ -177,6 +191,8 @@ function setMode(on){
  node.classList.toggle('terrain-enabled',enabled);
  node.setAttribute('role',enabled?'group':'img');
  target.hidden=!enabled;
+ $('preview-pitch-controls').hidden=!enabled;
+ if(enabled)updatePitchLabel();
  const overview=$('shot-preview-2dmap');if(overview)overview.hidden=enabled;
  toggle.setAttribute('aria-pressed',String(enabled));toggle.textContent=enabled?'2D Map':'3D View';
  $('preview-terrain-credit').hidden=!enabled;
@@ -185,6 +201,7 @@ function setMode(on){
   // Release the WebGL context when returning to 2D on iPhone.
   draggableMarkers.forEach(m=>m.remove());draggableMarkers=[];
   if(viewer){viewer.remove();viewer=null;initialized=false}
+  userPitch=null;
   // Explicitly restore the SVG viewfinder, regardless of 3D loading state.
   const svg=$('shot-preview-svg');if(svg){svg.hidden=false;svg.style.display='block'}
   const fallback=$('preview-empty');if(fallback)fallback.style.removeProperty('display');
