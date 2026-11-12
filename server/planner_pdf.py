@@ -8,7 +8,8 @@ import logging
 import urllib.request
 import concurrent.futures
 import textwrap
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -149,7 +150,145 @@ def _basemap(zoom,cx,cy,width,height):
     return Image.blend(image,gray,.88)
 
 
-def _map(c, route, target, cones, marshals, x, top, w, h):
+
+# NOAA-style approximate solar ephemeris. Sunrise/set use -0.833 degree
+# elevation; golden-hour thresholds are -0.833 to +6 degrees.
+def _solar_timezone(point):
+    # The Planner currently records coordinates, not an IANA timezone.
+    # Norway is identified explicitly; elsewhere use UTC instead of
+    # inventing local clock times. The PDF labels the chosen timezone.
+    if point and 57 <= point[0] <= 72 and 4 <= point[1] <= 32:
+        return ZoneInfo("Europe/Oslo"), "Europe/Oslo"
+    return timezone.utc, "UTC"
+
+
+def _sun_at(point, moment):
+    day_of_year = moment.timetuple().tm_yday
+    days = 366 if (moment.year % 4 == 0 and
+                   (moment.year % 100 != 0 or moment.year % 400 == 0)) else 365
+    local_hour = moment.hour + moment.minute / 60 + moment.second / 3600
+    gamma = 2 * math.pi / days * (day_of_year - 1 + (local_hour - 12) / 24)
+    equation = 229.18 * (0.000075 + 0.001868 * math.cos(gamma)
+               - 0.032077 * math.sin(gamma) - 0.014615 * math.cos(2*gamma)
+               - 0.040849 * math.sin(2*gamma))
+    decl = (0.006918 - 0.399912 * math.cos(gamma)
+            + 0.070257 * math.sin(gamma)
+            - 0.006758 * math.cos(2*gamma) + 0.000907 * math.sin(2*gamma)
+            - 0.002697 * math.cos(3*gamma) + 0.00148 * math.sin(3*gamma))
+    offset_hours = (moment.utcoffset() or timedelta()).total_seconds() / 3600
+    hour_angle = math.radians((local_hour * 60 + equation +
+                                4 * point[1] - 60 * offset_hours) / 4 - 180)
+    latitude = math.radians(point[0])
+    sine = (math.sin(latitude)*math.sin(decl) +
+            math.cos(latitude)*math.cos(decl)*math.cos(hour_angle))
+    elevation = math.degrees(math.asin(max(-1, min(1, sine))))
+    azimuth = (math.degrees(math.atan2(
+        math.sin(hour_angle),
+        math.cos(hour_angle)*math.sin(latitude) -
+        math.tan(decl)*math.cos(latitude))) + 180) % 360
+    return elevation, azimuth
+
+
+def _sun_events(shot, location):
+    if not _coord(location):
+        return None
+    value = shot.get("date")
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        date = datetime.strptime(value, "%Y-%m-%d").date()
+        tz, tz_label = _solar_timezone(location)
+        midnight = datetime(date.year, date.month, date.day, tzinfo=tz)
+    except (ValueError, OverflowError):
+        return None
+    # Resolve all crossings with 5 minute sampling and linear interpolation.
+    # Use timedelta arithmetic so hh:60 is never an invalid time string.
+    crossings = {"sunrise":None, "sunset":None, "golden_am":None, "golden_pm":None}
+    previous = _sun_at(location, midnight)[0]
+    for minute in range(5, 1441, 5):
+        at = midnight + timedelta(minutes=minute)
+        current = _sun_at(location, at)[0]
+        for key, level, upward in (
+            ("sunrise", -0.833, True),
+            ("sunset", -0.833, False),
+            ("golden_am", 6, True),
+            ("golden_pm", 6, False),
+        ):
+            a,b = previous-level,current-level
+            if (upward and a < 0 <= b) or (not upward and a > 0 >= b):
+                fraction = -a/(b-a) if b != a else 0
+                transition = midnight + timedelta(minutes=minute-5+5*fraction)
+                crossings[key] = {
+                    "time":transition.strftime("%H:%M"),
+                    "azimuth":_sun_at(location, transition)[1],
+                }
+        previous=current
+    return {"timezone":tz_label, **crossings}
+
+
+def _draw_sun_rays(c, solar, anchor, project, x, top, w, h):
+    if not solar or not _coord(anchor):
+        return
+    origin_x,origin_y = project(anchor)
+    # Vector projection to the edge of the map: direction only, not sun
+    # elevation, obstacle clearance, or actual shadow length.
+    c.saveState()
+    clipping=c.beginPath()
+    clipping.roundRect(x,top-h,w,h,7)
+    c.clipPath(clipping,stroke=0,fill=0)
+    rays=(("sunrise",colors.HexColor("#d59b30"),"RISE"),
+          ("sunset",colors.HexColor("#bc6060"),"SET"))
+    for key,color,label in rays:
+        event=solar.get(key)
+        if event is None:continue
+        a=math.radians(event["azimuth"])
+        dx,dy=math.sin(a),math.cos(a)
+        length=max(w,h)*1.7
+        end_x,end_y=origin_x+dx*length,origin_y+dy*length
+        c.setStrokeColor(color);c.setLineWidth(2)
+        c.setDash(7,4 if key=="sunrise" else 7)
+        c.line(origin_x,origin_y,end_x,end_y)
+        c.setDash()
+        # Label is inset so it remains visible at the map edge.
+        # Find first edge intersection in the ray direction.
+        factors=[]
+        if dx>0:factors.append((x+w-origin_x)/dx)
+        elif dx<0:factors.append((x-origin_x)/dx)
+        if dy>0:factors.append((top-origin_y)/dy)
+        elif dy<0:factors.append((top-h-origin_y)/dy)
+        positive=[v for v in factors if v>0]
+        if positive:
+            t=max(0,min(positive)-18)
+            px,py=origin_x+dx*t,origin_y+dy*t
+            c.setFont("Helvetica-Bold",8)
+            c.setFillColor(color)
+            c.drawCentredString(px,py+4,label)
+    c.restoreState()
+
+
+def _sun_summary(c, events, x, y, w):
+    c.setFillColor(colors.HexColor("#f2f5f0"))
+    c.roundRect(x,y-49,w,48,5,stroke=0,fill=1)
+    c.setFillColor(INK);c.setFont("Helvetica-Bold",9)
+    c.drawString(x+10,y-12,"SUN POSITION")
+    c.setFont("Helvetica",7);c.setFillColor(MUTED)
+    c.drawRightString(x+w-10,y-12,events["timezone"]+" · approximate")
+    def item(key):
+        event=events.get(key)
+        return (event["time"]+" / "+str(round(event["azimuth"]))+" deg") if event else "Not occurring"
+    c.setFont("Helvetica",8);c.setFillColor(INK)
+    c.drawString(x+10,y-25,"Sunrise: "+item("sunrise"))
+    c.drawString(x+w/2+8,y-25,"Sunset: "+item("sunset"))
+    def time(key):
+        return events[key]["time"] if events.get(key) else "--:--"
+    morning=time("sunrise")+" - "+time("golden_am") if events.get("sunrise") else "Not occurring"
+    evening=time("golden_pm")+" - "+time("sunset") if events.get("sunset") else "Not occurring"
+    c.setFont("Helvetica",8);c.setFillColor(MUTED)
+    c.drawString(x+10,y-39,"Golden AM: "+morning)
+    c.drawString(x+w/2+8,y-39,"Golden PM: "+evening)
+
+
+def _map(c, route, target, cones, marshals, x, top, w, h, solar=None):
     """Render a real street basemap, then precisely aligned vector map annotations."""
     valid=[p for p in route if _coord(p)]
     pts=valid+([target] if _coord(target) else [])+[
@@ -186,6 +325,9 @@ def _map(c, route, target, cones, marshals, x, top, w, h):
         for i in range(1,5):
             c.line(x+i*w/5,top-h,x+i*w/5,top)
             c.line(x,top-i*h/5,x+w,top-i*h/5)
+
+    if solar:
+        _draw_sun_rays(c,solar,valid[0] if valid else pts[0],project,x,top,w,h)
 
     if len(valid)>1:
         c.setStrokeColor(GREEN);c.setLineWidth(2.5)
@@ -286,10 +428,19 @@ def make_planner_pdf(plan):
         y-=8
         route=shot.get("route") if isinstance(shot.get("route"),list) else []
         cones=shot.get("waypointCones") if isinstance(shot.get("waypointCones"),list) else []
-        # Tall street map is the primary part of the shot page.
-        map_height=290 if y>=580 else 245
-        _map(c,route,shot.get("target"),cones,marshals,M,y,PW-2*M,map_height)
-        y-=map_height+16
+        # Solar information is shot-specific. Never silently invent a date.
+        point=next((p for p in route if _coord(p)), None)
+        if point is None and _coord(shot.get("target")):
+            point=shot["target"]
+        solar=_sun_events(shot,point)
+        map_height=(245 if y>=580 else 205) if solar else (290 if y>=580 else 245)
+        _map(c,route,shot.get("target"),cones,marshals,M,y,PW-2*M,map_height,solar)
+        y-=map_height+8
+        if solar:
+            _sun_summary(c,solar,M,y,PW-2*M)
+            y-=54
+        else:
+            y-=8
 
         col_width=(PW-2*M-16)/2
         left_x=M
