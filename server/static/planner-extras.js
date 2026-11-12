@@ -148,7 +148,7 @@ function showProfile(values,metres){
 async function loadTerrain(force=false){
  const s=shot(),m=map();if(!s||!m)return;
  const points=resampleRoute(s.route),node=$('terrain-status'),chart=$('terrain-profile');
- if(!points.length){terrainKey='';chart.hidden=true;$('terrain-summary').replaceChildren();node.textContent='Draw a route to see terrain heights.';return}
+ if(!points.length){terrainKey='';terrainEpoch++;if(terrainAbort)terrainAbort.abort();chart.hidden=true;$('terrain-summary').replaceChildren();node.textContent='Draw a route to see terrain heights.';return}
  const key=points.map(p=>p.map(x=>x.toFixed(5)).join(',')).join(';');
  if(key===terrainKey&&!force)return;
  terrainKey=key;
@@ -173,7 +173,7 @@ async function loadTerrain(force=false){
   showProfile(values,metres);
  }catch(err){
   if(err.name==='AbortError'||epoch!==terrainEpoch)return;
-  chart.hidden=true;node.textContent='Terrain unavailable. Tap Refresh to retry.';
+  terrainKey='';chart.hidden=true;node.textContent='Terrain unavailable. Tap Refresh to retry.';
   $('terrain-summary').replaceChildren();
  }
 }
