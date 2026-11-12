@@ -72,9 +72,10 @@ function updateConeControls(){
  activeWaypoint=Math.min(activeWaypoint,Math.max(shot.route.length-1,0));
  select.value=String(activeWaypoint);select.disabled=!shot.route.length;
  const c=coneData(shot);
- for(const id of ['cone-visible','cone-mode','cone-bearing','cone-fov','cone-range','cone-lens-auto'])$(id).disabled=!c;
- if(!c){$('cone-lens-auto').checked=false;$('cone-visible').checked=false;$('cone-mode-tip').textContent='Add a waypoint to create its attached camera cone.';$('cone-reset-origin').disabled=true;return}
+ for(const id of ['cone-visible','cone-mode','cone-bearing','cone-fov','cone-range','cone-tilt','cone-lens-auto'])$(id).disabled=!c;
+ if(!c){$('cone-tilt').value='-10';$('cone-lens-auto').checked=false;$('cone-visible').checked=false;$('cone-mode-tip').textContent='Add a waypoint to create its attached camera cone.';$('cone-reset-origin').disabled=true;return}
  const follow=c.mode==='target'&&coordsOk(shot.target);
+ $('cone-tilt').value=Number.isFinite(Number(c.tilt))?c.tilt:(Number.isFinite(Number(shot.simPitch))?shot.simPitch:-10);
  $('cone-visible').checked=c.visible;$('cone-mode').value=c.mode;
  $('cone-bearing').value=Math.round(effectiveBearing(shot));$('cone-bearing').disabled=follow;
  $('cone-lens-auto').checked=!!c.lensAuto;$('cone-fov').disabled=!!c.lensAuto&&!!lensFov(shot);$('cone-fov').value=c.fov;$('cone-range').value=c.range;$('cone-lens-status').textContent=c.lensAuto?(lensFov(shot)?'Full-frame X9 · horizontal FOV '+c.fov.toFixed(1)+'°':'Enter 18, 24, 35 or 50 mm in Lens to calculate FOV'):'Manual FOV (°)';
@@ -338,6 +339,12 @@ $('cone-mode').addEventListener('change',e=>{const s=getShot();if(!s)return;cons
 $('cone-lens-auto').addEventListener('change',e=>{const shot=getShot(),c=shot&&coneData(shot);if(!c)return;c.lensAuto=e.target.checked;renderMap();scheduleSave()});
 $('shot-lens').addEventListener('change',()=>{const shot=getShot();if(shot&&shot.route.length){renderMap();scheduleSave()}});
 for(const key of ['bearing','fov','range'])$('cone-'+key).addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s),value=Number(e.target.value);if(!c||!Number.isFinite(value))return;if(key==='fov')c.lensAuto=false;c[key]=key==='bearing'?((value%360)+360)%360:key==='fov'?Math.max(5,Math.min(170,value)):Math.max(1,Math.min(10000,value));renderMap();scheduleSave()});
+$('cone-tilt').addEventListener('change',e=>{
+ const shot=getShot(),c=shot&&coneData(shot);if(!c)return;
+ const value=Number(e.target.value);if(!Number.isFinite(value))return;
+ c.tilt=Math.max(-85,Math.min(35,Math.round(value)));
+ renderMap();scheduleSave();
+});
 $('cone-reset-origin').onclick=()=>{const s=getShot();if(!s||!s.route.length)return;selectWaypoint(s.route.length-1)};
 $('cone-waypoint').onchange=e=>selectWaypoint(Number(e.target.value)||0);
 
