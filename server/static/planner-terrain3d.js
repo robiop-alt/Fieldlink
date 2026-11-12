@@ -159,11 +159,11 @@ async function loadBuildings(point,run){
  }
  status('Loading OpenStreetMap building outlines…');
  const query='[out:json][timeout:20];way["building"](around:350,'+point[0].toFixed(6)+','+point[1].toFixed(6)+');out geom;';
- buildingAbort=new AbortController();
- const timeout=setTimeout(()=>buildingAbort?.abort(),18000);
+ const controller=new AbortController();buildingAbort=controller;
+ const timeout=setTimeout(()=>controller.abort(),18000);
  try{
   const url='https://overpass.kumi.systems/api/interpreter?data='+encodeURIComponent(query);
-  const res=await fetch(url,{signal:buildingAbort.signal});
+  const res=await fetch(url,{signal:controller.signal});
   if(!res.ok)throw Error('OSM building service '+res.status);
   const body=await res.json();
   if(!enabled||request!==buildingEpoch||run!==epoch)return;
@@ -260,7 +260,7 @@ function installEditing(){
 async function initialise(run){
  const C=await loadSDK();
  if(!enabled||run!==epoch)return;
- if(!C.FeatureDetection.supportsWebgl())throw Error('3D WebGL is unavailable in this browser');
+ if(typeof C.FeatureDetection?.supportsWebgl==='function'&&!C.FeatureDetection.supportsWebgl())throw Error('3D WebGL is unavailable in this browser');
  C.Ion.defaultAccessToken='';
  const layer=new C.ImageryLayer(new C.OpenStreetMapImageryProvider({url:'https://tile.openstreetmap.org/'}));
  viewer=new C.Viewer('shot-preview-terrain',{
