@@ -61,6 +61,7 @@ function render(){
   const main=api().getMap();if(main)mini.setView(main.getCenter(),main.getZoom());
  }
 }
+document.addEventListener('offset:planner-layout',()=>{if(mini&&!$('shot-preview-2dmap').hidden)mini.invalidateSize({pan:false});});
 document.addEventListener('offset:map-rendered',render);
 document.addEventListener('offset:shot-rendered',render);
 document.addEventListener('offset:preview-mode-changed',render);
