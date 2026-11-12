@@ -729,3 +729,6 @@
  .offset-planner .shot-preview-panel{padding:11px}
  .offset-planner #preview-aspect{min-height:36px;height:36px;font-size:12px}
 }
+
+/* SVG groups need explicit hidden handling in Safari. */
+#preview-target[hidden]{display:none!important}
