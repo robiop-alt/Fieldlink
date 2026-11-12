@@ -1153,3 +1153,47 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
  .offset-planner .shot-preview-panel.sim-expanded #sim-reload-buildings{min-height:29px}
  .offset-planner .shot-preview-panel.sim-expanded #sim-building-status{font-size:9px}
 }
+
+
+/* Compact imagery and model appearance settings in Shot Simulator. */
+.offset-planner .sim-imagery-row{
+ display:flex;align-items:center;flex-wrap:wrap;gap:8px;
+}
+.offset-planner .sim-imagery-row label{
+ display:flex;align-items:center;gap:6px;margin:0;
+ font-size:10px;color:#b7c9bc;
+}
+.offset-planner .sim-imagery-row select{
+ margin:0;min-height:31px;height:31px;
+ padding:5px 7px;font-size:11px;
+ max-width:175px;
+}
+.offset-planner .sim-imagery-key{
+ display:flex;align-items:end;gap:7px;flex-wrap:wrap;
+ padding:8px;border:1px solid #385145;border-radius:7px;
+ background:rgba(20,36,29,.75);
+}
+.offset-planner .sim-imagery-key[hidden]{display:none!important}
+.offset-planner .sim-imagery-key label{
+ flex:1 1 160px;min-width:0;
+ display:flex;flex-direction:column;align-items:start;gap:4px;
+ font-size:10px;color:#c8d9cd;
+}
+.offset-planner .sim-imagery-key input{
+ width:100%;min-height:31px;height:31px;margin:0;
+ padding:5px 8px;font:11px ui-monospace,monospace;
+}
+.offset-planner #sim-imagery-apply{
+ min-height:31px;padding:5px 10px;font-size:11px;
+}
+.offset-planner #sim-imagery-hint{
+ flex:1 1 100%;font-size:10px;color:#a9bcaf;line-height:1.4;
+}
+@media screen and (orientation:landscape) and (max-height:530px){
+ .offset-planner .shot-preview-panel.sim-expanded .sim-imagery-row{
+  flex:1 1 auto;gap:5px;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .sim-imagery-row select{
+  max-width:140px;font-size:10px;
+ }
+}
