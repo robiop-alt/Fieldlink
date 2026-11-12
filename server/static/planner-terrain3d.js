@@ -162,7 +162,7 @@ async function loadBuildings(point,run){
  const controller=new AbortController();buildingAbort=controller;
  const timeout=setTimeout(()=>controller.abort(),18000);
  try{
-  const url='https://overpass.kumi.systems/api/interpreter?data='+encodeURIComponent(query);
+  const url='https://overpass.private.coffee/api/interpreter?data='+encodeURIComponent(query);
   const res=await fetch(url,{signal:controller.signal});
   if(!res.ok)throw Error('OSM building service '+res.status);
   const body=await res.json();
