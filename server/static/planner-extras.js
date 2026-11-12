@@ -17,8 +17,11 @@ function hours(){const h=Number(shot()?.sunHour);return Number.isFinite(h)?Math.
 function solar(pos,day,hour){
  // NOAA GML approximation for solar coordinates. Civil time is the browser
  // timezone (explicitly stated in the UI), not a location-derived timezone.
- const time=new Date(day+'T'+String(Math.floor(hour)).padStart(2,'0')+':'+String(Math.round((hour%1)*60)).padStart(2,'0')+':00');
+ const time=new Date(day+'T00:00:00');
  if(!Number.isFinite(time.getTime()))return null;
+ // Add whole minutes via Date arithmetic: fractional steps may round to :60,
+ // which is not a valid ISO clock time and previously stopped sunrise/sunset.
+ time.setMinutes(Math.round(hour*60));
  const n=Math.floor((Date.UTC(time.getFullYear(),time.getMonth(),time.getDate())-Date.UTC(time.getFullYear(),0,0))/86400000);
  const days=(time.getFullYear()%4===0&&(time.getFullYear()%100!==0||time.getFullYear()%400===0))?366:365;
  const gamma=2*Math.PI/days*(n-1+(hour-12)/24);
