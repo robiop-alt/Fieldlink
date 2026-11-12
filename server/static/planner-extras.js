@@ -12,7 +12,7 @@ function map(){return core()?.getMap()}
 function saved(){core()?.save()}
 function valid(p){return core()?.coordsOk(p)}
 function place(){const s=shot(),m=map();return s?.route?.find(valid)|| (m?[m.getCenter().lat,m.getCenter().lng]:null)}
-function dateForShot(){return shot()?.date || new Date().toLocaleDateString('en-CA').replace(/\//g,'-')}
+function dateForShot(){if(shot()?.date)return shot().date;const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
 function hours(){const h=Number(shot()?.sunHour);return Number.isFinite(h)?Math.min(23.75,Math.max(0,h)):12}
 function solar(pos,day,hour){
  // NOAA GML approximation for solar coordinates. Civil time is the browser
