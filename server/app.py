@@ -397,6 +397,46 @@ def export_drone_plan_pdf(plan_id: str, request: Request,
                              'X-Content-Type-Options': 'nosniff'})
 
 
+class PlannerElevationRequest(BaseModel):
+    points: list[list[float]] = Field(min_length=1, max_length=30)
+
+
+@app.post('/api/admin/planner/elevation')
+def planner_route_elevation(body: PlannerElevationRequest, request: Request,
+                            x_admin_key: str = Header(default='')):
+    """Sample 90-metre terrain heights. A reference, not obstacle clearance data."""
+    require_admin(x_admin_key, request)
+    for p in body.points:
+        if (len(p)!=2 or
+            not all(isinstance(v,(int,float)) and __import__('math').isfinite(v) for v in p) or
+            not -90<=p[0]<=90 or not -180<=p[1]<=180):
+            raise HTTPException(422, 'Invalid elevation coordinate')
+    from urllib.parse import urlencode
+    import json, urllib.request
+    params=urlencode({
+        'latitude': ','.join(f'{p[0]:.6f}' for p in body.points),
+        'longitude': ','.join(f'{p[1]:.6f}' for p in body.points)
+    })
+    req=urllib.request.Request(
+        'https://api.open-meteo.com/v1/elevation?'+params,
+        headers={'User-Agent':'OFFSET-Planner/1.0', 'Accept':'application/json'})
+    try:
+        with urllib.request.urlopen(req,timeout=9) as response:
+            data=json.loads(response.read(16000))
+        elevations=data.get('elevation')
+        if not isinstance(elevations,list) or len(elevations)!=len(body.points):
+            raise ValueError('Missing terrain samples')
+        values=[float(x) for x in elevations]
+        if not all(__import__('math').isfinite(v) for v in values):
+            raise ValueError('Invalid terrain samples')
+    except Exception:
+        import logging
+        logging.getLogger('offset.planner').warning('Terrain API unavailable',exc_info=True)
+        raise HTTPException(503,'Terrain elevation data unavailable')
+    return JSONResponse({'elevation':values,'resolution_m':90,'source':'Open-Meteo / Copernicus DEM'},
+                        headers={'Cache-Control':'private, max-age=600'})
+
+
 @app.get('/api/admin/planner/zones')
 def planner_drone_geozones(request: Request, south: float, west: float, north: float, east: float,
                           x_admin_key: str = Header(default='')):
@@ -445,6 +485,12 @@ def save_drone_plan(plan_id: str, body: DronePlanSave, request: Request, x_admin
                 not all(isinstance(v,(int,float)) and -180<=v<=180 for v in point) or
                 not -90<=point[0]<=90):
                 raise HTTPException(422,'Invalid map coordinate')
+    # Keep inline shot references small so the SQLite plan store and PDF stay fast.
+    for shot in body.shots:
+        image=shot.get('referenceImage','')
+        if image and (not isinstance(image,str) or len(image)>250000
+                      or not image.startswith('data:image/jpeg;base64,')):
+            raise HTTPException(422,'Reference image must be an optimised JPEG under 185 KB')
     # Road marshals belong to the plan (not an individual shot).
     # Their positions are planning annotations, not traffic closure permissions.
     for guard in body.marshals:
