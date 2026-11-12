@@ -6,7 +6,7 @@
 const $=id=>document.getElementById(id),core=()=>window.OFFSETPlanner;
 const VERSION='1.135.0',BASE='https://cdn.jsdelivr.net/npm/cesium@'+VERSION+'/Build/Cesium/';
 let viewer=null,buildings=null,enabled=false,loadingSdk=null,epoch=0;
-let playing=false,raf=0,lastTime=0,metres=0,routeLength=0,activeDrag=null,dragHandler=null;
+let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=null;
 let overview=false,buildingKey='',buildingEpoch=0,buildingAbort=null,buildingCache=new Map();
 const $status=$('sim-status'),$overlay=$('shot-preview-terrain-loading'),$play=$('sim-play');
 const rad=Math.PI/180,deg=180/Math.PI;
@@ -162,10 +162,20 @@ async function loadBuildings(point,run){
  const controller=new AbortController();buildingAbort=controller;
  const timeout=setTimeout(()=>controller.abort(),18000);
  try{
-  const url='https://overpass.private.coffee/api/interpreter?data='+encodeURIComponent(query);
-  const res=await fetch(url,{signal:controller.signal});
-  if(!res.ok)throw Error('OSM building service '+res.status);
-  const body=await res.json();
+  const endpoints=['https://overpass.private.coffee/api/interpreter','https://overpass-api.de/api/interpreter'];
+  let body=null;
+  for(const endpoint of endpoints){
+   try{
+    const res=await fetch(endpoint+'?data='+encodeURIComponent(query),{signal:controller.signal});
+    if(!res.ok)throw Error('OSM building service '+res.status);
+    body=await res.json();
+    if(!Array.isArray(body.elements))throw Error('Incomplete building response');
+    break;
+   }catch(error){
+    if(controller.signal.aborted)throw error;
+    if(endpoint===endpoints[endpoints.length-1])throw error;
+   }
+  }
   if(!enabled||request!==buildingEpoch||run!==epoch)return;
   const elements=Array.isArray(body.elements)?body.elements:[];
   buildingCache.set(key,elements);
@@ -177,12 +187,13 @@ async function loadBuildings(point,run){
   status('Building data unavailable; shot playback still works. Try again later.');
  }finally{clearTimeout(timeout)}
 }
-function stop(){
+function stop(reset=true){
  playing=false;cancelAnimationFrame(raf);raf=0;$play.textContent='▶ Play flight';lastTime=0;
+ if(reset)playElapsed=0;
 }
 function play(){
  if(!viewer)return;
- if(playing){stop();status('Playback paused.');return}
+ if(playing){stop(false);status('Playback paused. Press Play to resume.');return}
  const s=core()?.getShot(),points=route(s);
  if(points.length<2){status('Add at least two waypoints to play a camera flight.');return}
  if(overview){overview=false;$('sim-view').value='camera'}
@@ -190,12 +201,12 @@ function play(){
  const total=legs.reduce((sum,l)=>sum+l,0);
  if(total<.01){status('Waypoints must be in different positions.');return}
  const speed=Number($('sim-speed').value)||3;
- let elapsed=0;
+ let elapsed=playElapsed;
  playing=true;$play.textContent='Ⅱ Pause';
  function frame(now){
   if(!playing||!enabled)return;
   if(lastTime)elapsed+=Math.min((now-lastTime)/1000,.1)*speed;
-  lastTime=now;
+  lastTime=now;playElapsed=elapsed;
   let remaining=Math.min(elapsed,total),index=0;
   while(index<legs.length-1&&remaining>legs[index])remaining-=legs[index++];
   const t=legs[index]>0?Math.max(0,Math.min(1,remaining/legs[index])):1;
