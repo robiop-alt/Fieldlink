@@ -521,3 +521,45 @@
 @media(max-width:600px){
  .offset-planner .shot-editor .fields-date-time{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 }
+
+
+/* Compact shot planning extensions: sunlight, terrain and references. */
+.planner-extra-panel{
+ margin:14px 0 0;
+ padding:12px;
+ border:1px solid #364943;
+ border-radius:9px;
+ background:#182220;
+ min-width:0;
+}
+.planner-extra-heading{
+ display:flex;
+ justify-content:space-between;
+ align-items:center;
+ gap:8px;
+ min-width:0;
+}
+.planner-extra-heading strong{font:650 12px 'DM Sans',sans-serif;color:#e4eee6}
+.planner-extra-heading button{min-height:29px;padding:5px 9px;font-size:10px}
+.planner-extra-heading>span{color:#a4b3ab;font-size:10px;text-align:right}
+.planner-extra-panel label{display:block;margin:10px 0 0;font-size:11px;color:#c2d3c8}
+.planner-extra-panel label #sun-hour-label{float:right;color:#c5f0ce;font:11px 'DM Mono',monospace}
+.offset-planner .planner-extra-panel input[type="range"]{
+ display:block;width:100%;height:26px;min-height:26px;margin:6px 0 0;padding:0;
+ accent-color:#e8b45a;cursor:pointer;background:transparent;border:0;
+}
+.sun-metrics{display:flex;flex-wrap:wrap;justify-content:space-between;gap:5px 8px;margin-top:6px;color:#cbddce;font:10px 'DM Mono',monospace}
+.extra-hint{font-size:10px;line-height:1.55;color:#91a79b;margin:7px 0 0}
+#terrain-profile{display:block;width:100%;height:105px;margin-top:10px;border-radius:5px;background:#111a1a;overflow:hidden}
+#terrain-profile[hidden],#reference-preview[hidden],#reference-remove[hidden]{display:none!important}
+#terrain-profile .terrain-fill{fill:#244b3c}
+#terrain-profile .terrain-line{fill:none;stroke:#74c38e;stroke-width:2;vector-effect:non-scaling-stroke}
+#terrain-profile .terrain-grid{stroke:#385148;stroke-width:.6;stroke-dasharray:3 4;vector-effect:non-scaling-stroke}
+#terrain-profile text{font:10px 'DM Mono',monospace;fill:#bdd4c2}
+#reference-preview{display:block;margin:10px 0 6px;width:100%;height:auto;max-height:168px;object-fit:contain;border-radius:6px;background:#0b1412}
+#reference-remove{margin-top:7px;font-size:10px;min-height:29px}
+.offset-planner .shot-editor label.lens-auto-row{
+ display:flex;align-items:center;gap:8px;color:#badaae;font-size:11px;margin:12px 0 0;
+}
+.offset-planner .shot-editor .lens-auto-row input{flex:0 0 17px;width:17px;height:17px;min-height:17px;margin:0;accent-color:#57b62f}
+.sun-map-ray{pointer-events:none}
