@@ -401,6 +401,22 @@ class PlannerElevationRequest(BaseModel):
     points: list[list[float]] = Field(min_length=1, max_length=30)
 
 
+@app.get('/api/admin/planner/buildings')
+def planner_3d_buildings(request: Request, lat: float, lon: float, radius: int = 500,
+                         x_admin_key: str = Header(default='')):
+    """Same-origin OSM building geometry for the storyboard 3D preview."""
+    require_admin(x_admin_key, request)
+    try:
+        from planner_buildings import buildings_near
+        data = buildings_near(lat, lon, radius)
+    except ValueError:
+        raise HTTPException(422, 'Invalid 3D building location')
+    except Exception:
+        import logging
+        logging.getLogger('offset.planner_3d').warning('OSM buildings unavailable', exc_info=True)
+        raise HTTPException(503, 'Building data temporarily unavailable')
+    return JSONResponse(data, headers={'Cache-Control':'private, max-age=900'})
+
 @app.post('/api/admin/planner/elevation')
 def planner_route_elevation(body: PlannerElevationRequest, request: Request,
                             x_admin_key: str = Header(default='')):
