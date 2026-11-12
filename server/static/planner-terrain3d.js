@@ -6,6 +6,7 @@
 const $=id=>document.getElementById(id),core=()=>window.OFFSETPlanner;
 const VERSION='1.135.0',BASE='https://cdn.jsdelivr.net/npm/cesium@'+VERSION+'/Build/Cesium/';
 let viewer=null,buildingTileset=null,enabled=false,loadingSdk=null,epoch=0;
+let terrainProvider=null,terrainHeights=[],terrainSignature='',terrainEpoch=0,terrainReady=false;
 let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=null;
 let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
 const $status=$('sim-status'),$overlay=$('shot-preview-terrain-loading'),$play=$('sim-play');
@@ -48,6 +49,36 @@ function fov(s){
  return Math.max(5,Math.min(150,n));
 }
 function route(s){return (s?.route||[]).filter(valid)}
+function groundAt(point,index){
+ if(Number.isInteger(index)&&Number.isFinite(terrainHeights[index]))return terrainHeights[index];
+ if(terrainReady&&viewer&&point){
+  const C=window.Cesium;
+  const ground=viewer.scene.globe.getHeight(C.Cartographic.fromDegrees(point[1],point[0]));
+  if(Number.isFinite(ground))return ground;
+ }
+ return 0;
+}
+function heightAboveEllipsoid(s,point,index){return groundAt(point,index)+altitude(s,index)}
+async function sampleRouteTerrain(run){
+ if(!terrainProvider||!viewer||!enabled)return;
+ const s=core()?.getShot(),points=route(s),signature=JSON.stringify(points);
+ if(!points.length||terrainSignature===signature)return;
+ const request=++terrainEpoch;
+ terrainSignature=signature;
+ const C=window.Cesium;
+ try{
+  const positions=points.map(p=>C.Cartographic.fromDegrees(p[1],p[0]));
+  await C.sampleTerrainMostDetailed(terrainProvider,positions);
+  if(!enabled||!viewer||run!==epoch||request!==terrainEpoch)return;
+  terrainHeights=positions.map(p=>Number.isFinite(p.height)?p.height:0);
+  renderRoute();
+  if(!playing)showCamera();
+ }catch(error){
+  if(run!==epoch||request!==terrainEpoch||!enabled)return;
+  console.warn('OFFSET terrain height sample:',error);
+  status('Terrain heights unavailable. Drone altitude is approximate.');
+ }
+}
 function orient(s,position,next=null){
  if(valid(s.target)&&s?.waypointCones?.[core().getActiveWaypoint()]?.mode==='target')return bearing(position,s.target);
  return next&&valid(next)?bearing(position,next):core().getBearing();
@@ -73,10 +104,10 @@ function showCamera(){
  if(overview){
   const C=window.Cesium;
   viewer.camera.setView({
-   destination:C.Cartesian3.fromDegrees(point[1],point[0],Math.max(120,altitude(s,i)+115)),
+   destination:C.Cartesian3.fromDegrees(point[1],point[0],heightAboveEllipsoid(s,point,i)+115),
    orientation:{heading:core().getBearing()*rad,pitch:-58*rad,roll:0}
   });
- }else cameraAt(point,altitude(s,i),orient(s,point,points[i+1]),pitch(s));
+ }else cameraAt(point,heightAboveEllipsoid(s,point,i),orient(s,point,points[i+1]),pitch(s));
  $('preview-pitch-value').textContent='Tilt '+Math.round(pitch(s))+'°';
 }
 function resetCamera(){stop();showCamera();status(overview?'Orbit overview. Drag to inspect the buildings.':'Drone camera at selected waypoint.')}
@@ -88,7 +119,7 @@ function renderRoute(){
  if(!points.length)return;
  if(points.length>1)viewer.entities.add({
   polyline:{
-   positions:points.map((p,i)=>C.Cartesian3.fromDegrees(p[1],p[0],altitude(s,i))),
+   positions:points.map((p,i)=>C.Cartesian3.fromDegrees(p[1],p[0],heightAboveEllipsoid(s,p,i))),
    width:3,material:C.Color.fromCssColorString('#58eb99'),
    clampToGround:false
   }
@@ -96,7 +127,7 @@ function renderRoute(){
  points.forEach((p,i)=>{
   const entry=viewer.entities.add({
    name:markerLabel(i),
-   position:C.Cartesian3.fromDegrees(p[1],p[0],altitude(s,i)),
+   position:C.Cartesian3.fromDegrees(p[1],p[0],heightAboveEllipsoid(s,p,i)),
    point:{pixelSize:i===core().getActiveWaypoint()?15:12,
     color:C.Color.fromCssColorString(i===core().getActiveWaypoint()?'#b2ff94':'#47d695'),
     outlineColor:C.Color.BLACK,outlineWidth:2,
@@ -108,7 +139,7 @@ function renderRoute(){
   entry._offsetWaypoint=i;
  });
  if(valid(s.target))viewer.entities.add({
-  position:C.Cartesian3.fromDegrees(s.target[1],s.target[0],3),
+  position:C.Cartesian3.fromDegrees(s.target[1],s.target[0],groundAt(s.target,null)+3),
   point:{pixelSize:13,color:C.Color.fromCssColorString('#f3a978'),
     outlineColor:C.Color.BLACK,outlineWidth:2,disableDepthTestDistance:Number.POSITIVE_INFINITY},
   label:{text:'TARGET',font:'11px sans-serif',pixelOffset:new C.Cartesian2(0,-22),
@@ -196,7 +227,8 @@ function play(){
   const a=points[index],b=points[index+1];
   const here=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];
   const h=altitude(s,index)+(altitude(s,index+1)-altitude(s,index))*t;
-  cameraAt(here,h,orient(s,here,b),pitch(s));
+  const ground=groundAt(a,index)+(groundAt(b,index+1)-groundAt(a,index))*t;
+  cameraAt(here,ground+h,orient(s,here,b),pitch(s));
   const pct=Math.min(100,Math.round(elapsed/total*100));
   status('Playing shot · '+pct+'% · '+Math.round(h)+' m planned height');
   if(elapsed>=total){stop();status('Shot playback complete.');return}
@@ -256,9 +288,16 @@ async function initialise(run){
  if(!enabled||run!==epoch)return;
  if(typeof C.FeatureDetection?.supportsWebgl==='function'&&!C.FeatureDetection.supportsWebgl())throw Error('3D WebGL is unavailable in this browser');
  C.Ion.defaultAccessToken='';
+ overlay('Loading matching terrain and buildings…');
+ terrainProvider=await C.CesiumTerrainProvider.fromUrl(
+  'https://terrain.reearth.land/cesium-mesh/ellipsoid',
+  {requestVertexNormals:true}
+ );
+ if(!enabled||run!==epoch)return;
+ terrainReady=true;
  const layer=new C.ImageryLayer(new C.OpenStreetMapImageryProvider({url:'https://tile.openstreetmap.org/'}));
  viewer=new C.Viewer('shot-preview-terrain',{
-  baseLayerPicker:false,baseLayer:layer,terrainProvider:new C.EllipsoidTerrainProvider(),
+  baseLayerPicker:false,baseLayer:layer,terrainProvider:terrainProvider,
   animation:false,timeline:false,homeButton:false,fullscreenButton:false,
   sceneModePicker:false,geocoder:false,infoBox:false,selectionIndicator:false,
   navigationHelpButton:false,vrButton:false,shouldAnimate:false,
@@ -269,12 +308,14 @@ async function initialise(run){
  installEditing();
  overlay('');
  renderRoute();showCamera();
- status('Drone camera ready · press Play flight to preview your shot.');
+ sampleRouteTerrain(run);
+ status('Matching terrain loaded · sampling waypoint heights.');
  loadBuildings(route(core()?.getShot())[core()?.getActiveWaypoint()]||route(core()?.getShot())[0],run);
 }
 function destroy(){
  stop();
  discardBuildingTileset();
+ terrainEpoch++;terrainHeights=[];terrainSignature='';terrainProvider=null;terrainReady=false;
  if(dragHandler){dragHandler.destroy();dragHandler=null}
  if(viewer){viewer.destroy();viewer=null}
  activeDrag=null;
@@ -327,8 +368,12 @@ function setMode(on){
 }
 function refresh(){
  if(!enabled||!viewer)return;
- stop();renderRoute();showCamera();
+ stop();
  const points=route(core()?.getShot()),run=epoch;
+ const signature=JSON.stringify(points);
+ if(signature!==terrainSignature){terrainHeights=[];terrainSignature='';}
+ renderRoute();showCamera();
+ sampleRouteTerrain(run);
  loadBuildings(points[core().getActiveWaypoint()]||points[0],run);
 }
 $('preview-3d-toggle').addEventListener('click',()=>setMode(!enabled));
