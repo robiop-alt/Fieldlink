@@ -71,10 +71,24 @@ async function init3D(){
       maxzoom:19,attribution:'© OpenStreetMap contributors'},
     terrain:{type:'raster-dem',url:'https://tiles.mapterhorn.com/tilejson.json',encoding:'terrarium',
       attribution:'© Mapterhorn'},
+    buildings:{type:'vector',url:'https://tiles.openfreemap.org/planet',
+      attribution:'© OpenFreeMap / OpenMapTiles / OpenStreetMap contributors'},
     coverage:{type:'geojson',data:empty}
    },
    layers:[
     {id:'base',type:'raster',source:'osm'},
+    // Extruded OpenStreetMap building footprints: use mapped height where
+    // provided and otherwise a clearly approximate 10 m visual fallback.
+    {id:'3d-buildings',type:'fill-extrusion',source:'buildings', 'source-layer':'building',
+     minzoom:14,
+     filter:['!=',['get','hide_3d'],true],
+     paint:{
+      'fill-extrusion-color':'#c2d1c7',
+      'fill-extrusion-opacity':0.83,
+      'fill-extrusion-height':['interpolate',['linear'],['zoom'],14,0,15,
+        ['max',2,['coalesce',['to-number',['get','render_height']],['to-number',['get','height']],10]]],
+      'fill-extrusion-base':['max',0,['coalesce',['to-number',['get','render_min_height']],['to-number',['get','min_height']],0]]
+     }},
     {id:'route',type:'line',source:'coverage',filter:['==',['get','kind'],'route'],
      paint:{'line-color':'#3bd982','line-width':3,'line-opacity':.95}},
     {id:'aim',type:'line',source:'coverage',filter:['==',['get','kind'],'aim'],
@@ -106,7 +120,7 @@ function sync3D(){
  viewer.jumpTo({center:data.center,bearing:data.bearing,pitch:73,zoom:Math.max(13,Math.min(16.8,17-Math.log2(data.range/35)))});
  viewer.resize();
  const note=$('preview-note');
- note.textContent='3D terrain overview aligned with waypoint heading · drag to orbit and inspect. Terrain is approximate; not an optical camera frame or clearance check.';
+ note.textContent='3D terrain + buildings aligned with waypoint heading · drag to orbit. Building heights may be estimated or missing. Not an optical camera frame, obstacle survey or clearance check.';
 }
 function refresh(){if(!enabled||updatePending)return;updatePending=true;requestAnimationFrame(()=>{updatePending=false;sync3D()})}
 function setMode(on){
