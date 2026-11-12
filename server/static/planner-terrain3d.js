@@ -123,8 +123,8 @@ function changePitch(delta){
  viewer.easeTo({pitch:userPitch,duration:220});
  updatePitchLabel();
 }
-$('preview-pitch-up').addEventListener('click',()=>changePitch(-10));
-$('preview-pitch-down').addEventListener('click',()=>changePitch(10));
+$('preview-pitch-up').addEventListener('click',()=>changePitch(10));
+$('preview-pitch-down').addEventListener('click',()=>changePitch(-10));
 function setStatus(message){const node=$('shot-preview-terrain-loading');if(!node)return;node.hidden=!message;node.textContent=message}
 function renderDraggableMarkers(s){
  if(!viewer||!window.maplibregl)return;
