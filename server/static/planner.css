@@ -632,3 +632,100 @@
   text-align:left;
  }
 }
+
+
+/* Shot preview: a compact, responsive cinematography framing diagram. */
+.offset-planner .shot-preview-panel{
+ margin-top:14px;
+ background:#151f20;
+ border-color:#365349;
+}
+.shot-preview-panel .planner-extra-heading{
+ align-items:center;
+}
+.shot-preview-panel .planner-extra-heading strong{
+ font-size:12px;
+ color:#e9f4e7;
+}
+.offset-planner .shot-preview-panel label.preview-aspect-label{
+ display:flex;
+ align-items:center;
+ gap:7px;
+ margin:0;
+ color:#9db6a7;
+ font-size:10px;
+ white-space:nowrap;
+}
+.offset-planner #preview-aspect{
+ width:84px;
+ min-width:0;
+ min-height:31px;
+ height:31px;
+ margin:0;
+ padding:5px 22px 5px 7px;
+ border-radius:6px;
+ font-size:11px;
+ background:#101919;
+ color:#d4e8d7;
+}
+.shot-preview-view{
+ position:relative;
+ width:100%;
+ aspect-ratio:16/9;
+ max-height:370px;
+ overflow:hidden;
+ border-radius:7px;
+ margin-top:10px;
+ border:1px solid #43564e;
+ background:#24342e;
+ box-shadow:inset 0 0 0 1px #07110d;
+}
+.shot-preview-view.is-portrait{
+ max-width:195px;
+ width:min(100%,195px);
+ margin-left:auto;
+ margin-right:auto;
+ max-height:none;
+}
+.shot-preview-view svg{
+ display:block;
+ width:100%;
+ height:100%;
+}
+.shot-preview-view .preview-empty{
+ position:absolute;
+ inset:0;
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ padding:13px;
+ background:rgba(11,22,19,.74);
+ text-align:center;
+ font-size:11px;
+ line-height:1.5;
+ color:#d1e3d4;
+}
+.shot-preview-view .preview-empty[hidden]{
+ display:none!important;
+}
+.shot-preview-panel .preview-data{
+ display:flex;
+ flex-wrap:wrap;
+ gap:5px 10px;
+ margin-top:9px;
+ color:#d3e5d7;
+ font:10px 'DM Mono',monospace;
+}
+.shot-preview-panel .preview-data span{
+ white-space:nowrap;
+}
+.shot-preview-panel .preview-note{
+ font-size:10px;
+ color:#9bafa3;
+ margin-top:7px;
+ line-height:1.5;
+}
+@media(max-width:800px){
+ .offset-planner .shot-preview-panel{padding:11px}
+ .offset-planner #preview-aspect{min-height:36px;height:36px;font-size:12px}
+}
