@@ -1131,3 +1131,25 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
   flex:1 1 100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
  }
 }
+
+
+/* Building-data diagnostics stay separate from playback status. */
+.offset-planner .shot-simulator-controls .sim-buildings-row{
+ display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+ padding:5px 0;border-top:1px solid #2b4034;
+}
+.offset-planner .shot-simulator-controls #sim-reload-buildings{
+ min-height:30px;padding:5px 8px;font-size:10px;
+ background:#20342b;border-color:#44634e;color:#d4eedc;
+}
+.offset-planner .shot-simulator-controls #sim-building-status{
+ font-size:10px;color:#b8cdbf;line-height:1.3;
+ overflow-wrap:anywhere;
+}
+@media screen and (orientation:landscape) and (max-height:530px){
+ .offset-planner .shot-preview-panel.sim-expanded .sim-buildings-row{
+  flex:1 1 190px;border:0;padding:0;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded #sim-reload-buildings{min-height:29px}
+ .offset-planner .shot-preview-panel.sim-expanded #sim-building-status{font-size:9px}
+}
