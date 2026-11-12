@@ -208,6 +208,7 @@ $('preview-3d-toggle').addEventListener('click',()=>{
  setMode(next);
 });
 document.addEventListener('offset:map-rendered',refresh);
+document.addEventListener('offset:preview-height-changed',refresh);
 document.addEventListener('offset:shot-rendered',refresh);
 window.addEventListener('resize',()=>{if(enabled&&viewer)viewer.resize()});
 $('preview-aspect').addEventListener('change',()=>{if(enabled&&viewer)requestAnimationFrame(()=>viewer.resize())});
