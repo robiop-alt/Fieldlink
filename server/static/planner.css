@@ -1006,3 +1006,77 @@
  .offset-planner .planner-bar button{font-size:10px;padding:5px 6px}
  .offset-planner .map-top-controls .basemap-switch{display:none}
 }
+
+
+/* Cesium-based shot simulator: dedicated camera viewport and transport. */
+.shot-preview-view.terrain-enabled{
+ min-height:270px;
+ aspect-ratio:16 / 10 !important;
+ max-height:none;
+ background:#10202a;
+}
+.shot-preview-view.terrain-enabled.is-portrait{width:100%;max-width:100%;margin-inline:0}
+.shot-preview-view.terrain-enabled #shot-preview-terrain{
+ inset:0;min-width:0;min-height:0;
+ touch-action:none;
+}
+.shot-preview-view.terrain-enabled #shot-preview-terrain .cesium-viewer,
+.shot-preview-view.terrain-enabled #shot-preview-terrain .cesium-widget{
+ width:100%;height:100%;overflow:hidden;
+}
+.shot-preview-view.terrain-enabled #shot-preview-terrain .cesium-widget canvas{
+ width:100%;height:100%;touch-action:none;
+}
+.shot-preview-view.terrain-enabled .cesium-viewer-bottom{
+ bottom:3px;left:3px;max-width:95%;font-size:8px;
+}
+.shot-preview-view.terrain-enabled .cesium-credit-logoContainer{
+ transform:scale(.65);transform-origin:bottom left;
+}
+.shot-preview-view.terrain-enabled .preview-pitch-controls{
+ top:7px;left:7px;z-index:6;
+}
+.shot-simulator-controls{
+ display:grid;gap:9px;
+ padding:10px 0 0;
+}
+.shot-simulator-controls[hidden]{display:none!important}
+.shot-simulator-main{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.offset-planner .shot-simulator-main button{
+ flex:0 0 auto;min-height:34px;padding:7px 9px;
+ font-size:11px;
+}
+.shot-simulator-main>label{display:flex;align-items:center;gap:7px;margin:0 0 0 auto;font-size:10px}
+.offset-planner .shot-simulator-main>label select{
+ width:120px;min-height:34px;height:34px;margin:0;
+ padding:5px;font-size:11px;
+}
+.offset-planner .shot-simulator-controls .sim-edit-toggle{
+ display:flex;align-items:center;gap:8px;margin:0;
+ width:fit-content;font-size:11px;color:#d0e3d1;
+}
+.offset-planner .shot-simulator-controls .sim-edit-toggle input{
+ width:17px;height:17px;min-height:17px;margin:0;accent-color:#57b62f;
+}
+.shot-simulator-speed{display:grid;gap:5px}
+.offset-planner .shot-simulator-speed label{
+ display:flex;align-items:center;justify-content:space-between;
+ margin:0;font-size:11px;
+}
+.offset-planner .shot-simulator-speed label strong{
+ font:11px 'DM Mono',monospace;color:#b2dcab;
+}
+.offset-planner #sim-speed{
+ height:25px;min-height:25px;margin:0;padding:0;
+ border:0;background:transparent;accent-color:#69bb73;
+}
+.shot-simulator-controls .sim-status{
+ margin:0;font-size:10px;line-height:1.45;color:#b7c9bb;
+}
+.offset-planner .shot-preview-panel #preview-3d-toggle[aria-pressed="true"]{
+ border-color:#76b18b;background:#294938;
+}
+@media(max-width:800px){
+ .shot-preview-view.terrain-enabled{min-height:250px;max-width:100%}
+ .offset-planner .shot-simulator-main>label select{width:112px}
+}
