@@ -1197,3 +1197,17 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
   max-width:140px;font-size:10px;
  }
 }
+
+
+/* Shot Simulator — restrained flight smoothing control. */
+.offset-planner .sim-motion-row{
+ display:flex;align-items:center;justify-content:space-between;
+ gap:8px;min-width:0;
+}
+.offset-planner .sim-motion-row label{
+ font-size:11px;margin:0;white-space:nowrap;color:#b7c9bc;
+}
+.offset-planner .sim-motion-row select{
+ width:auto;max-width:155px;min-height:30px;height:30px;
+ padding:4px 7px;font-size:11px;margin:0;
+}
