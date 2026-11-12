@@ -187,27 +187,17 @@ function configureBuildings(){
   buildingTileset.imageBasedLighting.imageBasedLightingFactor=new C.Cartesian2(2.5,.8);
   buildingTileset.imageBasedLighting.luminanceAtZenith=.65;
  }
- // Style the existing model's surfaces. Building façades are NOT photo-textured;
- // materials are illustrative, not a surveyed account of actual appearance.
- if(choice==='original'){
-  buildingTileset.style=new C.Cesium3DTileStyle({color:"color('white')"});
- }else if(choice==='natural'){
-  buildingTileset.style=new C.Cesium3DTileStyle({
-   color:{conditions:[
-    ["${height} >= 55","color('#bbcac7')"],
-    ["${height} >= 18","color('#d6c5ae')"],
-    ["true","color('#d3c9b8')"]
-   ]}
-  });
- }else{
-  buildingTileset.style=new C.Cesium3DTileStyle({
-   color:{conditions:[
-    ["${height} >= 55","color('#7f969e')"],
-    ["${height} >= 18","color('#a6b0b2')"],
-    ["true","color('#b7b4aa')"]
-   ]}
-  });
- }
+ // Many Re:Earth / Overture tiles do not expose per-feature `height`.
+ // Height-dependent style conditions previously crashed Cesium rendering.
+ // Use safe, consistent colors that preserve surface normal shading.
+ const colors={
+  original:"color('white')",
+  natural:"color('#d4c8b7')",
+  contrast:"color('#a9b7ba')"
+ };
+ const color=colors[choice]||colors.original;
+ buildingTileset.style=new C.Cesium3DTileStyle({color});
+
 }
 function satelliteLayer(C){
  return new C.ImageryLayer(new C.UrlTemplateImageryProvider({
