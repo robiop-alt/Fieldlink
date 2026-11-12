@@ -86,8 +86,8 @@ async function init3D(){
       'fill-extrusion-color':'#c2d1c7',
       'fill-extrusion-opacity':0.83,
       'fill-extrusion-height':['interpolate',['linear'],['zoom'],14,0,15,
-        ['max',2,['coalesce',['to-number',['get','render_height']],['to-number',['get','height']],10]]],
-      'fill-extrusion-base':['max',0,['coalesce',['to-number',['get','render_min_height']],['to-number',['get','min_height']],0]]
+        ['max',2,['to-number',['coalesce',['get','render_height'],['get','height']],10]]],
+      'fill-extrusion-base':['max',0,['to-number',['coalesce',['get','render_min_height'],['get','min_height']],0]]
      }},
     {id:'route',type:'line',source:'coverage',filter:['==',['get','kind'],'route'],
      paint:{'line-color':'#3bd982','line-width':3,'line-opacity':.95}},
