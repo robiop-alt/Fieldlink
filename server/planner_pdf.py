@@ -267,6 +267,9 @@ def make_planner_pdf(plan):
         y=_page(c,name,f"SHOT {index+1:02d} / {len(shots):02d}")
         y=_line(c,_safe(shot.get("name"),100) or f"Shot {index+1}",M,y,14,INK,True)
         details=[_safe(shot.get(k),60) for k in ("drone","lens","date","time")]
+        if isinstance(shot.get("sunHour"),(int,float)):
+            hours=max(0,min(23.75,float(shot["sunHour"])))
+            details.append(f"Sun preview {int(hours):02d}:{int(round((hours%1)*60)):02d}")
         details=[p for p in details if p]
         if details:
             y-=3
@@ -303,7 +306,30 @@ def make_planner_pdf(plan):
             if data.get("visible",True):
                 y_left=_line(c,f"     {data.get('mode','manual')} camera · FOV {data.get('fov',50)} deg",left_x,y_left,7,MUTED)
 
-        y_right=_line(c,f"ROAD MARSHALS ({len(marshals)})",right_x,y,10,RED,True)
+        # Embed the selected shot reference alongside the plan on the SAME page.
+        ref=shot.get("referenceImage","")
+        y_right=y
+        if isinstance(ref,str) and ref.startswith("data:image/jpeg;base64,") and len(ref)<250000:
+            try:
+                import base64
+                img=Image.open(io.BytesIO(base64.b64decode(ref.split(",",1)[1],validate=True)))
+                img.load()
+                if img.width>2000 or img.height>2000:
+                    raise ValueError("Image dimensions exceed export limit")
+                y_right=_line(c,"SHOT REFERENCE",right_x,y_right,10,GREEN,True)
+                thumb_h=75
+                c.setFillColor(colors.HexColor("#edf1ed"))
+                c.roundRect(right_x,y_right-thumb_h,col_width,thumb_h,5,stroke=0,fill=1)
+                img.thumbnail((round(col_width*2),round(thumb_h*2)))
+                aw=min(col_width,img.width*thumb_h/max(1,img.height))
+                ah=min(thumb_h,img.height*aw/max(1,img.width))
+                c.drawImage(ImageReader(img),right_x+(col_width-aw)/2,
+                            y_right-thumb_h+(thumb_h-ah)/2,aw,ah,mask="auto")
+                y_right-=thumb_h+11
+            except Exception:
+                _LOG.warning("Could not embed shot reference image",exc_info=True)
+                y_right=y
+        y_right=_line(c,f"ROAD MARSHALS ({len(marshals)})",right_x,y_right,10,RED,True)
         if not marshals:
             _line(c,"None placed",right_x,y_right,8,MUTED)
         for i,g in enumerate(marshals):
