@@ -2,7 +2,7 @@
 /* Optional 3D terrain scout preview. The camera is a tilted map overview,
    not a pixel-accurate cinematography image or obstacle clearance model. */
 const $=id=>document.getElementById(id),core=()=>window.OFFSETPlanner;
-let viewer=null,loading=null,enabled=false,initialized=false,viewerFailed=false,updatePending=false,modeEpoch=0;
+let viewer=null,loading=null,enabled=false,initialized=false,viewerFailed=false,updatePending=false,modeEpoch=0,draggableMarkers=[];
 const CDN='https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/';
 const empty={type:'FeatureCollection',features:[]};
 function loadMapLibre(){
@@ -28,6 +28,7 @@ function destination(start,bearing,metres){
 function feature(type,coords,properties){
  return {type:'Feature',geometry:{type,coordinates:coords},properties:properties||{}};
 }
+function heightFor(shot,index){const value=Number(shot?.waypointCones?.[index]?.altitudeAGL);return Number.isFinite(value)&&value>=2?Math.min(500,value):30}
 function dataForShot(s){
  const api=core(),index=api.getActiveWaypoint(),origin=s?.route?.[index],valid=api.coordsOk;
  if(!valid(origin))return {center:[10.7522,59.9139],bearing:0,range:100,collection:empty,valid:false};
@@ -45,7 +46,7 @@ function dataForShot(s){
   if(points.length>1)features.push(feature('LineString',points,{kind:'route'}));
  }
  const center=destination(origin,bearing,Math.max(20,range*.35));
- return {center:[center[1],center[0]],bearing,range,collection:{type:'FeatureCollection',features},valid:true};
+ return {center:[center[1],center[0]],bearing,range,height:heightFor(s,index),collection:{type:'FeatureCollection',features},valid:true};
 }
 async function init3D(epoch){
  const api=core(),s=api?.getShot(),btn=$('preview-3d-toggle');
@@ -112,13 +113,58 @@ async function init3D(epoch){
  return true;
 }
 function setStatus(message){const node=$('shot-preview-terrain-loading');if(!node)return;node.hidden=!message;node.textContent=message}
+function renderDraggableMarkers(s){
+ if(!viewer||!window.maplibregl)return;
+ draggableMarkers.forEach(m=>m.remove());draggableMarkers=[];
+ const api=core(),valid=api.coordsOk;
+ (s.route||[]).forEach((point,index)=>{
+  if(!valid(point))return;
+  const marker=new window.maplibregl.Marker({color:index===api.getActiveWaypoint()?'#a7f28a':'#41bd7a',draggable:true,scale:.75})
+   .setLngLat([point[1],point[0]]).addTo(viewer);
+  marker.getElement().title='Move waypoint '+(index+1);
+  marker.on('dragend',()=>{
+   const p=marker.getLngLat();api.moveWaypoint(index,[p.lat,p.lng]);
+  });
+  marker.on('click',()=>api.setActiveWaypoint(index));
+  draggableMarkers.push(marker);
+ });
+ if(valid(s.target)){
+  const marker=new window.maplibregl.Marker({color:'#f5a475',draggable:true,scale:.85})
+   .setLngLat([s.target[1],s.target[0]]).addTo(viewer);
+  marker.getElement().title='Move camera target';
+  marker.on('dragend',()=>{const p=marker.getLngLat();api.moveTarget([p.lat,p.lng])});
+  draggableMarkers.push(marker);
+ }
+}
+function updateCameraView(data,s){
+ const current=s.route[core().getActiveWaypoint()];
+ const coords=[current[1],current[0]];
+ const ground=typeof viewer.queryTerrainElevation==='function'?viewer.queryTerrainElevation(coords):null;
+ const altitude=(Number.isFinite(ground)?ground:0)+data.height;
+ const target=core().coordsOk(s.target)?s.target:destination(current,data.bearing,Math.max(50,data.range));
+ const targetCoords=[target[1],target[0]];
+ try{
+  if(typeof viewer.calculateCameraOptionsFromTo==='function'){
+   const targetHeight=typeof viewer.queryTerrainElevation==='function'?viewer.queryTerrainElevation(targetCoords):null;
+   const camera=viewer.calculateCameraOptionsFromTo(
+     new window.maplibregl.LngLat(coords[0],coords[1]),altitude,
+     new window.maplibregl.LngLat(targetCoords[0],targetCoords[1]),
+     Number.isFinite(targetHeight)?targetHeight:0
+   );
+   viewer.jumpTo(camera);return;
+  }
+ }catch(error){console.warn('Camera-height view fallback',error)}
+ viewer.jumpTo({center:data.center,bearing:data.bearing,pitch:73,
+  zoom:Math.max(12,Math.min(18,17-Math.log2((data.height+data.range)/45)))});
+}
 function sync3D(){
  if(!enabled||!viewer||!initialized)return;
  const s=core()?.getShot();if(!s)return;
  const data=dataForShot(s);
  if(!data.valid){setStatus('Add a waypoint to use 3D Terrain.');return}
  const source=viewer.getSource('coverage');if(source)source.setData(data.collection);
- viewer.jumpTo({center:data.center,bearing:data.bearing,pitch:73,zoom:Math.max(13,Math.min(16.8,17-Math.log2(data.range/35)))});
+ renderDraggableMarkers(s);
+ updateCameraView(data,s);
  viewer.resize();
  const note=$('preview-note');
  note.textContent='3D terrain + buildings aligned with waypoint heading · drag to orbit. Building heights may be estimated or missing. Not an optical camera frame, obstacle survey or clearance check.';
@@ -131,18 +177,22 @@ function setMode(on){
  node.classList.toggle('terrain-enabled',enabled);
  node.setAttribute('role',enabled?'group':'img');
  target.hidden=!enabled;
- toggle.setAttribute('aria-pressed',String(enabled));toggle.textContent=enabled?'2D View':'3D Terrain';
+ const overview=$('shot-preview-2dmap');if(overview)overview.hidden=enabled;
+ toggle.setAttribute('aria-pressed',String(enabled));toggle.textContent=enabled?'2D Map':'3D View';
  $('preview-terrain-credit').hidden=!enabled;
  if(!enabled){
   setStatus('');
   // Release the WebGL context when returning to 2D on iPhone.
+  draggableMarkers.forEach(m=>m.remove());draggableMarkers=[];
   if(viewer){viewer.remove();viewer=null;initialized=false}
   // Explicitly restore the SVG viewfinder, regardless of 3D loading state.
   const svg=$('shot-preview-svg');if(svg){svg.hidden=false;svg.style.display='block'}
   const fallback=$('preview-empty');if(fallback)fallback.style.removeProperty('display');
   document.dispatchEvent(new Event('offset:map-rendered'));
+  document.dispatchEvent(new Event('offset:preview-mode-changed'));
   return;
  }
+ document.dispatchEvent(new Event('offset:preview-mode-changed'));
  setStatus('Loading 3D terrain…');
  if(viewer){if(initialized){setStatus('');requestAnimationFrame(sync3D)}return}
  init3D(epoch).catch(err=>{
