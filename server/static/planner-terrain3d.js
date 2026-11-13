@@ -10,6 +10,10 @@ let terrainProvider=null,terrainHeights=[],terrainSignature='',terrainEpoch=0,te
 let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=null;
 let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
 let currentImageryLayer=null,flightMarker=null,flightRadiusCircle=null;
+function heightRadiusVisible(){
+ try{return localStorage.getItem('offset-planner-drone-radius-visible-v1')!=='off'}
+ catch{return true}
+}
 let lastQualityChange=0,frameInterval=16;
 const imageryKeyStore='offset-planner-maptiler-key-v1';
 let maptilerKey='';
@@ -262,7 +266,7 @@ function updateFlightMarker(position,aglHeight,terrainHeight){
   flightRadiusCircle.ellipse.semiMajorAxis=Math.max(.1,radius);
   flightRadiusCircle.ellipse.semiMinorAxis=Math.max(.1,radius);
   flightRadiusCircle.ellipse.height=ground+.35;
-  flightRadiusCircle.show=overview;
+  flightRadiusCircle.show=overview&&heightRadiusVisible();
  }
 }
 function renderWaypointTicks(plan=flightData()){
@@ -370,11 +374,11 @@ function renderRoute(){
     semiMajorAxis:Math.max(.1,altitude(s,0)),
     semiMinorAxis:Math.max(.1,altitude(s,0)),
     height:groundAt(first,0)+.35,
-    material:C.Color.fromCssColorString('#79e8aa').withAlpha(.07),
-    outline:true,outlineColor:C.Color.fromCssColorString('#a9ffd1').withAlpha(.86),
+    material:C.Color.fromCssColorString('#ff922f').withAlpha(.17),
+    outline:true,outlineColor:C.Color.fromCssColorString('#ffad51'),
     outlineWidth:2
    },
-   show:overview
+   show:overview&&heightRadiusVisible()
   });
   flightMarker=viewer.entities.add({
    name:'Drone position',
@@ -396,10 +400,10 @@ function renderRoute(){
    ellipse:{
     semiMajorAxis:Math.max(.1,height),semiMinorAxis:Math.max(.1,height),
     height:ground+.35,
-    material:C.Color.fromCssColorString('#79e8aa').withAlpha(.07),
-    outline:true,outlineColor:C.Color.fromCssColorString('#a9ffd1').withAlpha(.86),
+    material:C.Color.fromCssColorString('#ff922f').withAlpha(.17),
+    outline:true,outlineColor:C.Color.fromCssColorString('#ffad51'),
     outlineWidth:2
-   },show:overview
+   },show:overview&&heightRadiusVisible()
   });
  }
  points.forEach((p,i)=>{
@@ -1014,6 +1018,9 @@ $('sim-imagery-apply').addEventListener('click',()=>{
  try{if(maptilerKey)localStorage.setItem(imageryKeyStore,maptilerKey);else localStorage.removeItem(imageryKeyStore)}catch{}
  if(!maptilerKey){$('sim-imagery-hint').textContent='Enter a MapTiler key to use satellite imagery.';return}
  setImageryMode();
+});
+document.addEventListener('offset:radius-toggle',()=>{
+ if(flightRadiusCircle)flightRadiusCircle.show=overview&&heightRadiusVisible();
 });
 $('sim-hud-toggle').addEventListener('change',()=>{
  if(viewer&&!playing)showCamera();
