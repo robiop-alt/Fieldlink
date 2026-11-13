@@ -437,8 +437,10 @@ function defaultSunControls(){
  if(newShot){sunManualDate=false}
  sunShotSignature=signature;
  if(sunManualDate)return;
+ const now=new Date();
+ const localDate=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
  const date=/^\d{4}-\d{2}-\d{2}$/.test(shot?.date||'')
-  ?shot.date:new Date().toLocaleDateString('en-CA');
+  ?shot.date:localDate;
  const timeOfDay=String(shot?.time||'').toLowerCase();
  const hour=timeOfDay.includes('sunrise')?'06':timeOfDay.includes('morning')?'09':
   timeOfDay.includes('sunset')?'19':timeOfDay.includes('golden')?'18':
