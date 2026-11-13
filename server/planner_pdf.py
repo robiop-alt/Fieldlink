@@ -137,7 +137,7 @@ def _basemap(zoom,cx,cy,width,height):
     x_start=math.floor(left/_TILE_SIZE);x_end=math.floor((left+width-1)/_TILE_SIZE)
     y_start=math.floor(top/_TILE_SIZE);y_end=math.floor((top+height-1)/_TILE_SIZE)
     locations=[(xx,yy) for xx in range(x_start,x_end+1) for yy in range(y_start,y_end+1)]
-    if len(locations)>20:return None
+    if len(locations)>48:return None
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         results=list(executor.map(lambda q:_get_tile(zoom,*q),locations))
     present=sum(tile is not None for tile in results)
@@ -352,6 +352,32 @@ def _closure_overlay(path,zoom,cx,cy,width,height):
     outline=Image.new('RGBA',(width,height),(218,113,22,0));outline.putalpha(edge.point(lambda v:round(v*.85)))
     return Image.alpha_composite(fill,outline)
 
+def _draw_marshal(c,x,y,number):
+    """Vector map pin: exact position at tip, high-visibility vest and list number."""
+    c.saveState();c.translate(x,y)
+    path=c.beginPath();path.moveTo(0,0);path.lineTo(-9,10)
+    path.curveTo(-16,19,-10,31,0,31)
+    path.curveTo(10,31,16,19,9,10);path.close()
+    c.setFillColor(RED);c.setStrokeColor(colors.white);c.setLineWidth(1.25)
+    c.drawPath(path,fill=1,stroke=1)
+    # White head and arms, gold safety vest, clean rounded limbs.
+    c.setFillColor(colors.white);c.circle(0,24,2.3,fill=1,stroke=0)
+    c.setStrokeColor(colors.white);c.setLineWidth(1.8);c.setLineCap(1)
+    c.line(-3,19,-5.3,14.7);c.line(3,19,5.3,14.7)
+    c.line(-1.6,12,-2.4,6.6);c.line(1.6,12,2.4,6.6)
+    c.setFillColor(colors.HexColor('#ffe08a'))
+    vest=c.beginPath();vest.moveTo(-3,20);vest.lineTo(3,20);vest.lineTo(3.5,12);vest.lineTo(-3.5,12);vest.close()
+    c.drawPath(vest,fill=1,stroke=0)
+    c.setStrokeColor(colors.white);c.setLineWidth(.8);c.line(-3.3,14.2,3.3,14.2)
+    c.setStrokeColor(colors.HexColor('#b92f3d'));c.setLineWidth(.6);c.line(0,19.8,0,12)
+    # Number ties the symbol to the road-marshal list on the same page.
+    c.setFillColor(colors.white);c.setStrokeColor(RED);c.setLineWidth(1)
+    c.circle(11,27,6.6,fill=1,stroke=1)
+    c.setFillColor(RED);c.setFont('Helvetica-Bold',6.5 if number<100 else 5.5)
+    c.drawCentredString(11,24.8,str(number).zfill(2))
+    c.restoreState()
+
+
 def _map(c, route, target, cones, marshals, x, top, w, h, solar=None, sketches=None, text_boxes=None, closure_path=None):
     """Render a real street basemap, then precisely aligned vector map annotations."""
     drawings=[[p for p in line if _coord(p)] for line in (sketches or []) if isinstance(line,list)]
@@ -367,8 +393,8 @@ def _map(c, route, target, cones, marshals, x, top, w, h, solar=None, sketches=N
     if not pts:
         _line(c,"No mapped positions in this shot",x+12,top-24,9,MUTED)
         return
-    # Render 1.6 pixels per PDF point for legible map labels.
-    width=round(w*1.6);height=round(h*1.6)
+    # 216 dpi raster basemap; annotations remain resolution-independent vectors.
+    width=round(w*3);height=round(h*3)
     chosen=_fit_map(pts,width,height)
     zoom,cx,cy=chosen
     scale=w/width
@@ -461,13 +487,9 @@ def _map(c, route, target, cones, marshals, x, top, w, h, solar=None, sketches=N
     if _coord(target):
         xp,yp=project(target);c.setStrokeColor(colors.HexColor("#ce9d4d"))
         c.setLineWidth(1);c.line(xp-6,yp,xp+6,yp);c.line(xp,yp-6,xp,yp+6)
-    for m in marshals:
-        if not isinstance(m,dict) or not _coord(m.get("position")):continue
-        xp,yp=project(m["position"]);c.setFillColor(RED)
-        c.circle(xp,yp+4,2,fill=1,stroke=0)
-        c.setStrokeColor(RED);c.setLineWidth(1.5)
-        c.line(xp,yp+1,xp,yp-6);c.line(xp-3,yp-2,xp+3,yp-2)
-        c.line(xp,yp-6,xp-3,yp-10);c.line(xp,yp-6,xp+3,yp-10)
+    for i,m in enumerate(marshals):
+        if not isinstance(m,dict) or not _coord(m.get('position')):continue
+        _draw_marshal(c,*project(m['position']),i+1)
     c.setFillColor(colors.HexColor("#33443b"))
     c.setFont("Helvetica",7)
     note="Map: © OpenStreetMap contributors · Not for navigation" if backdrop is not None else "Basemap unavailable · schematic only"
