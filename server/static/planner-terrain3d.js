@@ -294,24 +294,57 @@ function renderWaypointTicks(plan=flightData()){
   layer.append(mark);
  }
 }
+let stillQualityTimer=null,cameraMoving=false,adaptivePenalty=0;
+function deviceQualityProfile(){
+ const touch=window.matchMedia('(any-pointer:coarse)').matches||(window.navigator?.maxTouchPoints||0)>1;
+ const shortSide=Math.min(window.screen?.width||window.innerWidth,window.screen?.height||window.innerHeight);
+ if(touch&&shortSide>=700)return {name:'iPad / tablet',moving:.98,still:1.2,movingError:14,stillError:9,cache:192,pixels:4000000};
+ if(touch||window.innerWidth<700)return {name:'Phone',moving:.82,still:1,movingError:20,stillError:14,cache:96,pixels:2300000};
+ return {name:'Desktop',moving:1.1,still:1.3,movingError:12,stillError:8,cache:256,pixels:6000000};
+}
 function applyQuality(){
  if(!viewer||viewer.isDestroyed())return;
- const setting=$('sim-quality')?.value||'auto';
- const mobile=window.matchMedia('(pointer:coarse)').matches||
-  window.matchMedia('(max-width:900px)').matches;
- viewer.resolutionScale=setting==='quality'?1.05:setting==='performance'?.68:mobile?.82:1;
+ const setting=$('sim-quality')?.value||'auto',profile=deviceQualityProfile();
+ const moving=playing||cameraMoving,performanceMode=setting==='performance';
+ const base=performanceMode?.68:setting==='quality'?(moving?1.1:1.3):(moving?profile.moving:profile.still);
+ const penalty=setting==='auto'&&moving?adaptivePenalty:0;
+ const canvas=viewer.scene.canvas;
+ const pixelCap=Math.sqrt(profile.pixels/Math.max(1,canvas.clientWidth*canvas.clientHeight));
+ viewer.useBrowserRecommendedResolution=true;
+ viewer.resolutionScale=Math.min(pixelCap,Math.max(.64,base-penalty));
+ const error=performanceMode?27:setting==='quality'?(moving?10:7):(moving?profile.movingError+Math.round(penalty*35):profile.stillError);
  if(buildingTileset){
-  buildingTileset.maximumScreenSpaceError=setting==='quality'?11:setting==='performance'?27:mobile?19:14;
+  buildingTileset.maximumScreenSpaceError=error;
+  buildingTileset.cacheBytes=profile.cache*1024*1024;
+  buildingTileset.maximumCacheOverflowBytes=Math.min(64,profile.cache/4)*1024*1024;
+  buildingTileset.foveatedScreenSpaceError=true;
+  buildingTileset.foveatedConeSize=.35;
+  buildingTileset.foveatedTimeDelay=.15;
+  buildingTileset.cullRequestsWhileMoving=true;
  }
- lastQualityChange=performance.now();frameInterval=16;
+ const scene=viewer.scene;
+ const samples=performanceMode?1:moving?2:4;
+ if(scene.msaaSupported)scene.msaaSamples=samples;
+ const fxaa=scene.postProcessStages?.fxaa;
+ if(fxaa)fxaa.enabled=!scene.msaaSupported||samples===1;
+ const option=$('sim-quality')?.querySelector('option[value="auto"]');
+ if(option)option.textContent='Auto · '+profile.name;
+ lastQualityChange=performance.now();
+}
+function queueStillQuality(){
+ clearTimeout(stillQualityTimer);
+ stillQualityTimer=setTimeout(()=>{
+  stillQualityTimer=null;if(playing)return;
+  cameraMoving=false;applyQuality();
+ },500);
 }
 function adaptiveQuality(now,dt){
- if($('sim-quality').value!=='auto'||!viewer||now-lastQualityChange<3200)return;
  frameInterval=frameInterval*.92+dt*.08;
- if(frameInterval>38&&viewer.resolutionScale>.64){
-  viewer.resolutionScale=Math.max(.64,viewer.resolutionScale-.09);
-  if(buildingTileset)buildingTileset.maximumScreenSpaceError=22;
-  lastQualityChange=now;
+ if($('sim-quality').value!=='auto'||!viewer||now-lastQualityChange<3200)return;
+ if(frameInterval>38&&adaptivePenalty<.32){
+  adaptivePenalty=Math.min(.32,adaptivePenalty+.08);applyQuality();lastQualityChange=now;
+ }else if(frameInterval<24&&adaptivePenalty>0&&now-lastQualityChange>10000){
+  adaptivePenalty=Math.max(0,adaptivePenalty-.04);applyQuality();lastQualityChange=now;
  }
 }
 // Dock the real planner map and its existing controls, preserving Leaflet's
@@ -830,6 +863,7 @@ function stop(reset=true){
  activeFlightPlan=null;
  if(reset)playElapsed=0;
  updatePlayButton();syncTimeline(flightData().total);
+ queueStillQuality();
 }
 function play(){
  if(!viewer)return;
@@ -839,7 +873,7 @@ function play(){
  if(playElapsed>=plan.total)playElapsed=0;
  if(overview){overview=false;$('sim-view').value='camera'}
  activeFlightPlan=plan;
- playing=true;lastTime=0;updatePlayButton();
+ playing=true;lastTime=0;frameInterval=16;clearTimeout(stillQualityTimer);cameraMoving=true;applyQuality();updatePlayButton();
  function frame(now){
   if(!playing||!enabled)return;
   const speed=Math.max(1,Number($('sim-speed').value)||3);
@@ -865,6 +899,7 @@ function scrubFlight(value){
  const plan=flightData();
  if(!viewer||plan.total<=0)return;
  if(overview){overview=false;$('sim-view').value='camera'}
+ if(!playing){if(!cameraMoving){cameraMoving=true;applyQuality()}queueStillQuality()}
  playElapsed=plan.total*Math.max(0,Math.min(1000,Number(value)||0))/1000;
  lastTime=0;
  drawFlight(motionDistance(playElapsed,plan.total),plan);
@@ -1020,6 +1055,12 @@ async function initialise(run){
   scene3DOnly:true,requestRenderMode:false
  });
  currentImageryLayer=layer;
+ adaptivePenalty=0;cameraMoving=false;
+ viewer.camera.moveStart.addEventListener(()=>{
+  if(playing||cameraMoving)return;
+  clearTimeout(stillQualityTimer);cameraMoving=true;applyQuality();
+ });
+ viewer.camera.moveEnd.addEventListener(()=>{if(!playing)queueStillQuality()});
  applyQuality();
  showGoogleControls();
  configureSky(false);
@@ -1061,6 +1102,7 @@ async function initialise(run){
 }
 function destroy(){
  stop();
+ clearTimeout(stillQualityTimer);stillQualityTimer=null;cameraMoving=false;adaptivePenalty=0;
  discardBuildingTileset();
  terrainEpoch++;terrainHeights=[];terrainSignature='';terrainProvider=null;terrainReady=false;
  if(dragHandler){dragHandler.destroy();dragHandler=null}
