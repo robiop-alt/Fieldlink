@@ -623,24 +623,72 @@ $('cone-waypoint').onchange=e=>selectWaypoint(Number(e.target.value)||0);
 document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
 document.querySelectorAll('.shot-editor input,.shot-editor textarea,.shot-editor select').forEach(el=>el.addEventListener('input',readFields));
 $('export-plan').onclick=()=>{if(!current)return;const blob=new Blob([JSON.stringify({format:'OFFSET Planner v1',name:current.name,shots:current.shots},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(current.name.replace(/[^a-z0-9_-]+/gi,'-')||'offset-plan')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
-let pdfExportPlan=null,pdfExportBusy=false;
+let pdfExportPlan=null,pdfExportBusy=false,preparedPDF=null;
 function updatePDFSelection(){
  const count=$('pdf-shot-list').querySelectorAll('input:checked').length;
  $('pdf-shot-count').textContent=count+' selected';$('pdf-shot-open').disabled=pdfExportBusy||count===0;
+ $('pdf-shot-download').disabled=pdfExportBusy||count===0;
 }
 $('print-plan').onclick=()=>{
  if(!current)return;
- readFields();pdfExportPlan=current;
+ readFields();pdfExportPlan=current;invalidatePreparedPDF();
  $('pdf-shot-list').replaceChildren(...current.shots.map((shot,i)=>{
   const label=document.createElement('label'),input=document.createElement('input'),name=document.createElement('span');
-  input.type='checkbox';input.value=i;input.checked=true;input.onchange=updatePDFSelection;
+  input.type='checkbox';input.value=i;input.checked=true;input.onchange=()=>{invalidatePreparedPDF();updatePDFSelection()};
   name.textContent=String(i+1).padStart(2,'0')+' · '+(shot.name||'Untitled shot');label.append(input,name);return label;
  }));
  updatePDFSelection();$('pdf-shot-dialog').showModal();
 };
 for(const [id,mode] of [['pdf-select-all','all'],['pdf-select-none','none'],['pdf-select-current','current']]){
- $(id).onclick=()=>{$('pdf-shot-list').querySelectorAll('input').forEach(input=>input.checked=mode==='all'||mode==='current'&&Number(input.value)===activeShot);updatePDFSelection()};
+ $(id).onclick=()=>{$('pdf-shot-list').querySelectorAll('input').forEach(input=>input.checked=mode==='all'||mode==='current'&&Number(input.value)===activeShot);invalidatePreparedPDF();updatePDFSelection()};
 }
+function invalidatePreparedPDF(){
+ preparedPDF=null;$('pdf-shot-download').textContent='Download PDF';$('pdf-download-status').textContent='';
+}
+function pdfSelectionURL(){
+ const indices=Array.from($('pdf-shot-list').querySelectorAll('input:checked'),input=>input.value);
+ return '/api/admin/planner/'+encodeURIComponent(pdfExportPlan.id)+'/pdf?shots='+encodeURIComponent(indices.join(','));
+}
+async function savePreparedPDF(){
+ const file=preparedPDF;if(!file)return;
+ const native=window.webkit?.messageHandlers?.offsetPDF;
+ if(native){
+  const bytes=new Uint8Array(await file.arrayBuffer());let binary='';
+  for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
+  await native.postMessage({name:file.name,data:btoa(binary)});
+ }else if(navigator.canShare?.({files:[file]})&&navigator.share){
+  await navigator.share({files:[file]});
+ }else{
+  const url=URL.createObjectURL(file),link=document.createElement('a');
+  link.href=url;link.download=file.name;document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+ }
+}
+$('pdf-shot-download').onclick=async()=>{
+ if(pdfExportBusy||!pdfExportPlan||$('pdf-shot-download').disabled)return;
+ const status=$('pdf-download-status');
+ if(preparedPDF){
+  pdfExportBusy=true;updatePDFSelection();
+  try{await savePreparedPDF();status.textContent='Use Save to Files in the share sheet to keep a copy.'}
+  catch(error){if(error.name!=='AbortError')status.textContent='Could not save PDF: '+error.message}
+  finally{pdfExportBusy=false;updatePDFSelection()}
+  return;
+ }
+ pdfExportBusy=true;$('pdf-shot-form').querySelectorAll('input,button').forEach(control=>control.disabled=true);
+ status.textContent='Preparing PDF…';clearTimeout(saveTimer);saveTimer=null;
+ try{
+  if(!await saveNow(pdfExportPlan))throw Error('Could not save the plan. Please try again.');
+  const response=await fetch(pdfSelectionURL(),{credentials:'same-origin'});
+  if(!response.ok)throw Error('PDF generation failed ('+response.status+')');
+  if(!response.headers.get('content-type')?.includes('application/pdf'))throw Error('Please sign in again and retry.');
+  const blob=await response.blob();
+  const name=(pdfExportPlan.name.replace(/[^a-z0-9_-]+/gi,'-')||'offset-plan')+'.pdf';
+  preparedPDF=new File([blob],name,{type:'application/pdf'});
+  $('pdf-shot-download').textContent='Save / Share PDF';
+  status.textContent='PDF ready. Tap Save / Share PDF, then choose Save to Files.';
+ }catch(error){status.textContent=error.message||'Could not prepare PDF. Please try again.'}
+ finally{pdfExportBusy=false;$('pdf-shot-form').querySelectorAll('input,button').forEach(control=>control.disabled=false);updatePDFSelection()}
+};
 $('pdf-shot-cancel').onclick=()=>$('pdf-shot-dialog').close();
 $('pdf-shot-dialog').addEventListener('cancel',event=>{if(pdfExportBusy)event.preventDefault()});
 $('pdf-shot-form').onsubmit=async event=>{

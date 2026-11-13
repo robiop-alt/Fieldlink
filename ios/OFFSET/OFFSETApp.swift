@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import UIKit
 
 struct SavedProject: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
@@ -179,24 +180,73 @@ struct ReviewWebView: UIViewRepresentable {
     let url: URL
     let refreshCount: Int
 
-    final class Coordinator {
+    @MainActor final class Coordinator: NSObject, WKScriptMessageHandlerWithReply {
+        weak var webView: WKWebView?
+        let allowedHost: String?
         var lastRefreshCount: Int
 
-        init(refreshCount: Int) {
+        init(refreshCount: Int, allowedHost: String?) {
             lastRefreshCount = refreshCount
+            self.allowedHost = allowedHost
+            super.init()
+        }
+
+        func userContentController(_ userContentController: WKUserContentController,
+                                   didReceive message: WKScriptMessage,
+                                   replyHandler: @escaping (Any?, String?) -> Void) {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.protocol == "https",
+                  message.frameInfo.securityOrigin.host == allowedHost,
+                  let body = message.body as? [String: String],
+                  let encoded = body["data"], encoded.count <= 40_000_000,
+                  let data = Data(base64Encoded: encoded),
+                  data.starts(with: Data("%PDF".utf8)),
+                  let view = webView,
+                  var presenter = view.window?.rootViewController else {
+                replyHandler(nil, "Unable to save this PDF. Try fewer shots or open in Safari.")
+                return
+            }
+            while let presented = presenter.presentedViewController { presenter = presented }
+            let rawName = (body["name"] ?? "OFFSET-plan.pdf") as NSString
+            var name = rawName.lastPathComponent.replacingOccurrences(
+                of: "[^A-Za-z0-9._-]", with: "-", options: .regularExpression)
+            if !name.lowercased().hasSuffix(".pdf") { name += ".pdf" }
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            let file = directory.appendingPathComponent(name)
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try data.write(to: file, options: .atomic)
+            } catch {
+                try? FileManager.default.removeItem(at: directory)
+                replyHandler(nil, "Could not prepare the PDF for sharing.")
+                return
+            }
+            let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+            sheet.popoverPresentationController?.sourceView = view
+            sheet.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+            sheet.popoverPresentationController?.permittedArrowDirections = []
+            sheet.completionWithItemsHandler = { _, _, _, _ in try? FileManager.default.removeItem(at: directory) }
+            presenter.present(sheet, animated: true) { replyHandler(["presented": true], nil) }
         }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(refreshCount: refreshCount)
+        Coordinator(refreshCount: refreshCount, allowedHost: url.host)
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let view = WKWebView()
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "offsetPDF")
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        context.coordinator.webView = view
         view.allowsBackForwardNavigationGestures = true
         view.scrollView.contentInsetAdjustmentBehavior = .never
         view.load(URLRequest(url: url))
         return view
+    }
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "offsetPDF", contentWorld: .page)
+        coordinator.webView = nil
     }
     func updateUIView(_ uiView: WKWebView, context: Context) {
         guard context.coordinator.lastRefreshCount != refreshCount else { return }
