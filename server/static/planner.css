@@ -1574,3 +1574,25 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
  padding:0;margin:0;accent-color:#ffb761;cursor:pointer;
 }
 .offset-planner #sim-sun-time:disabled{opacity:.4}
+
+/* Keep sunlight immediately below playback, including landscape fullscreen. */
+@media screen and (orientation:landscape) and (max-height:600px){
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-controls>.sim-sun-controls{
+  display:flex!important;pointer-events:auto;
+  flex-wrap:nowrap;gap:10px;margin-top:2px;padding:3px 0 0;border:0;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .sim-sun-controls>.sim-sun-switch{
+  flex:0 0 auto;white-space:nowrap;color:#effbf1;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .sim-sun-controls>.sim-sun-time{
+  flex:1 1 auto;min-width:90px;color:#effbf1;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded:not(.sim-expanded-settings) .sim-sun-controls>.sim-sun-date,
+ .offset-planner .shot-preview-panel.sim-expanded:not(.sim-expanded-settings) .sim-sun-controls>label[for="sim-sun-utc"],
+ .offset-planner .shot-preview-panel.sim-expanded:not(.sim-expanded-settings) .sim-sun-controls>.sim-sun-status{
+  display:none;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded.sim-expanded-settings .shot-simulator-controls>.sim-sun-controls{
+  flex-wrap:wrap;
+ }
+}
