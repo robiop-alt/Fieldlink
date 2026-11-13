@@ -1354,3 +1354,50 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
   flex:0 0 auto!important;
  }
 }
+
+
+/* Lightweight camera data overlay. Never cover the main center of frame. */
+.offset-planner .sim-camera-hud{
+ position:absolute;right:10px;top:9px;z-index:8;pointer-events:none;
+ max-width:min(58%,320px);display:flex;justify-content:flex-end;
+ gap:3px 9px;flex-wrap:wrap;align-items:center;
+ padding:6px 9px;border-radius:6px;
+ background:rgba(10,23,21,.62);backdrop-filter:blur(5px);
+ color:#e8f6ed;font:10px/1.45 'DM Mono',monospace;
+ font-variant-numeric:tabular-nums;
+ text-shadow:0 1px 3px #000a;
+}
+.offset-planner .sim-camera-hud[hidden]{display:none!important}
+.offset-planner #sim-hud-waypoint{color:#a6efa9;font-weight:700}
+.offset-planner .sim-motion-row #sim-hud-toggle{
+ width:17px;height:17px;min-height:17px;margin:0;accent-color:#67c48b;
+}
+.offset-planner .sim-seek-wrap{
+ position:relative;flex:1 1 auto;min-width:45px;
+ display:flex;align-items:center;
+}
+.offset-planner .sim-seek-wrap #sim-seek{z-index:2;position:relative}
+.offset-planner .sim-timeline-waypoints{
+ position:absolute;inset:0 7px;z-index:3;pointer-events:none;
+}
+.offset-planner .sim-waypoint-tick{
+ display:block;position:absolute;top:10px;
+ width:8px;height:8px;min-width:8px;min-height:8px;
+ transform:translateX(-50%);border:1px solid #daeede;
+ background:#2c8057;border-radius:50%;padding:0;margin:0;
+ pointer-events:auto;cursor:pointer;
+ box-shadow:0 0 0 2px #14271ec7;
+}
+.offset-planner .sim-waypoint-tick:focus-visible{
+ outline:2px solid #fff;outline-offset:4px;
+}
+@media screen and (orientation:landscape) and (max-height:600px){
+ .offset-planner .shot-preview-panel.sim-expanded .sim-camera-hud{
+  top:max(48px,calc(env(safe-area-inset-top) + 40px));
+  right:max(12px,env(safe-area-inset-right));font-size:10px;
+  max-width:52%;padding:4px 7px;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded.sim-expanded-settings .sim-camera-hud{
+  display:none!important;
+ }
+}
