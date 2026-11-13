@@ -491,7 +491,9 @@ def make_planner_pdf(plan):
     for index,shot in enumerate(shots):
         marshals=[g for g in (shot.get("marshals") or [])
                   if isinstance(g,dict) and _coord(g.get("position"))]
-        y=_page(c,name,f"SHOT {index+1:02d} / {len(shots):02d}")
+        number=(plan.get('_pdf_shot_numbers') or list(range(1,len(shots)+1)))[index]
+        total=plan.get('_pdf_total_shots',len(shots))
+        y=_page(c,name,f"SHOT {number:02d} / {total:02d}")
         y=_line(c,_safe(shot.get("name"),100) or f"Shot {index+1}",M,y,14,INK,True)
         details=[_safe(shot.get(k),60) for k in ("drone","lens","date","time")]
         if isinstance(shot.get("sunHour"),(int,float)):

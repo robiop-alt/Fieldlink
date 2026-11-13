@@ -623,24 +623,39 @@ $('cone-waypoint').onchange=e=>selectWaypoint(Number(e.target.value)||0);
 document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
 document.querySelectorAll('.shot-editor input,.shot-editor textarea,.shot-editor select').forEach(el=>el.addEventListener('input',readFields));
 $('export-plan').onclick=()=>{if(!current)return;const blob=new Blob([JSON.stringify({format:'OFFSET Planner v1',name:current.name,shots:current.shots},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(current.name.replace(/[^a-z0-9_-]+/gi,'-')||'offset-plan')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
-$('print-plan').onclick=async()=>{
+let pdfExportPlan=null,pdfExportBusy=false;
+function updatePDFSelection(){
+ const count=$('pdf-shot-list').querySelectorAll('input:checked').length;
+ $('pdf-shot-count').textContent=count+' selected';$('pdf-shot-open').disabled=pdfExportBusy||count===0;
+}
+$('print-plan').onclick=()=>{
  if(!current)return;
- const button=$('print-plan');
- if(button.disabled)return;
- readFields();
+ readFields();pdfExportPlan=current;
+ $('pdf-shot-list').replaceChildren(...current.shots.map((shot,i)=>{
+  const label=document.createElement('label'),input=document.createElement('input'),name=document.createElement('span');
+  input.type='checkbox';input.value=i;input.checked=true;input.onchange=updatePDFSelection;
+  name.textContent=String(i+1).padStart(2,'0')+' · '+(shot.name||'Untitled shot');label.append(input,name);return label;
+ }));
+ updatePDFSelection();$('pdf-shot-dialog').showModal();
+};
+for(const [id,mode] of [['pdf-select-all','all'],['pdf-select-none','none'],['pdf-select-current','current']]){
+ $(id).onclick=()=>{$('pdf-shot-list').querySelectorAll('input').forEach(input=>input.checked=mode==='all'||mode==='current'&&Number(input.value)===activeShot);updatePDFSelection()};
+}
+$('pdf-shot-cancel').onclick=()=>$('pdf-shot-dialog').close();
+$('pdf-shot-dialog').addEventListener('cancel',event=>{if(pdfExportBusy)event.preventDefault()});
+$('pdf-shot-form').onsubmit=async event=>{
+ event.preventDefault();const button=$('pdf-shot-open');if(button.disabled||!pdfExportPlan)return;
+ const indices=Array.from($('pdf-shot-list').querySelectorAll('input:checked'),input=>Number(input.value));
+ if(!indices.length)return;
+ const plan=pdfExportPlan;pdfExportBusy=true;
+ $('pdf-shot-form').querySelectorAll('input,button').forEach(control=>control.disabled=true);
+ button.disabled=true;button.textContent='Preparing PDF…';
  clearTimeout(saveTimer);saveTimer=null;
- button.disabled=true;
- const label=button.textContent;
- button.textContent='Preparing PDF…';
  try{
-  const plan=current;
-  const saved=await saveNow(plan);
-  if(!saved){alert('Could not save the plan. PDF export cancelled to avoid missing edits.');return}
-  // Same-tab PDF navigation works in iOS Safari, unlike window.print() or
-  // an asynchronously opened popup, which may be blocked.
-  window.location.assign('/api/admin/planner/'+encodeURIComponent(plan.id)+'/pdf');
+  if(!await saveNow(plan)){alert('Could not save the plan. PDF export cancelled to avoid missing edits.');return}
+  window.location.assign('/api/admin/planner/'+encodeURIComponent(plan.id)+'/pdf?shots='+encodeURIComponent(indices.join(',')));
  }catch(error){alert('PDF export failed: '+(error.message||'Please try again'))}
- finally{button.disabled=false;button.textContent=label}
+ finally{pdfExportBusy=false;$('pdf-shot-form').querySelectorAll('input,button').forEach(control=>control.disabled=false);button.textContent='Open PDF';updatePDFSelection()}
 };
 function moveWaypointFromPreview(index,point){
  const shot=getShot();

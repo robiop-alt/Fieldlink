@@ -1844,3 +1844,15 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 .offset-planner .leaflet-popup-content button{font-size:11px;min-height:32px;margin:4px 0 0;padding:5px 8px}
 .offset-planner .leaflet-popup-content .annotation-delete{display:block;background:#802e34;border-color:#b65258;color:#fff}
 .offset-planner .map-toolbar button[data-tool="sketch"]{color:#ff777d}
+
+.offset-planner #pdf-shot-dialog{width:min(480px,calc(100vw - 24px));max-height:85dvh;padding:18px;border:1px solid #46634f;border-radius:10px;background:#14221c;color:#edf3ee}
+.offset-planner #pdf-shot-dialog::backdrop{background:#0009}
+.offset-planner #pdf-shot-title{font-size:16px;margin:0 0 12px}
+.offset-planner .pdf-shot-shortcuts,.offset-planner .pdf-shot-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.offset-planner .pdf-shot-shortcuts button{font-size:11px;padding:5px 9px}
+.offset-planner #pdf-shot-count{margin-left:auto;font-size:11px;color:#b7cbbd}
+.offset-planner #pdf-shot-list{max-height:50dvh;overflow-y:auto;overscroll-behavior:contain;margin:12px 0;border-block:1px solid #344f3e}
+.offset-planner #pdf-shot-list label{display:flex;align-items:center;gap:10px;padding:10px 4px;font-size:13px;cursor:pointer}
+.offset-planner #pdf-shot-list input{width:18px;height:18px;min-height:18px;flex:0 0 18px;margin:0;accent-color:#80bd85}
+.offset-planner #pdf-shot-list span{min-width:0;overflow-wrap:anywhere}
+.offset-planner .pdf-shot-actions{justify-content:flex-end}

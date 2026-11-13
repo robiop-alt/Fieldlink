@@ -444,17 +444,31 @@ def planner_page(request: Request):
     return FileResponse('static/planner.html', media_type='text/html',
                         headers={'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'})
 
+def selected_pdf_plan(plan, selection):
+    if selection is None:return plan
+    parts=selection.split(',')
+    if len(parts)>200 or any(not re.fullmatch(r'[0-9]{1,3}',part) for part in parts):
+        raise HTTPException(400,'Choose at least one valid shot')
+    selected={int(part) for part in parts}
+    shots=plan.get('shots',[])
+    if any(index>=len(shots) for index in selected):
+        raise HTTPException(400,'Selected shot no longer exists')
+    indices=[i for i in range(len(shots)) if i in selected]
+    return {**plan,'shots':[shots[i] for i in indices],
+            '_pdf_shot_numbers':[i+1 for i in indices],'_pdf_total_shots':len(shots)}
+
 @app.get('/api/admin/planner/{plan_id}/pdf')
 def export_drone_plan_pdf(plan_id: str, request: Request,
-                          x_admin_key: str = Header(default='')):
+                          x_admin_key: str = Header(default=''), shots: str | None = None):
     require_admin(x_admin_key, request)
     with db() as c:
         row=c.execute('SELECT * FROM drone_plans WHERE id=?',(plan_id,)).fetchone()
     if not row:
         raise HTTPException(404, 'Planner project not found')
+    plan=selected_pdf_plan(planner_document(row),shots)
     try:
         from planner_pdf import make_planner_pdf
-        pdf=make_planner_pdf(planner_document(row))
+        pdf=make_planner_pdf(plan)
     except Exception:
         import logging
         logging.getLogger('offset.planner_pdf').exception('Planner PDF rendering failed')
