@@ -362,7 +362,7 @@ function applySplitLayout(){
   requestAnimationFrame(()=>{if(splitMap)splitMap.invalidateSize({pan:false})});
  }else clearSplitMap();
  if(viewer&&!viewer.isDestroyed())requestAnimationFrame(()=>{
-  viewer.resize();syncFrameGuides();updateCameraFrustum();
+  viewer.resize();updateCameraFrustum();
   if(!playing&&!overview)showCamera();
  });
 }
@@ -468,39 +468,15 @@ function applySun(){
  viewer.scene.globe.enableLighting=shadows;
  if(buildingTileset)buildingTileset.shadows=shadows?C.ShadowMode.ENABLED:C.ShadowMode.DISABLED;
 }
-const frameRatios={'16:9':16/9,'2.39:1':2.39,'9:16':9/16,'1:1':1};
 let lastCameraHorizontalFov=null;
-function selectedFrame(){
- const value=core()?.getShot()?.previewAspect;
- return Object.hasOwn(frameRatios,value)?value:'16:9';
-}
-function frameBounds(width,height,ratio){
- const w=Math.min(width,height*ratio),h=w/ratio;
- return {left:(width-w)/2,top:(height-h)/2,width:w,height:h};
-}
-function syncFrameGuides(){
- const guides=$('sim-frame-guides'),pane=$('shot-preview-terrain');
- const chosen=selectedFrame();$('sim-frame').value=chosen;
- guides.hidden=!enabled;
- if(!enabled)return;
- const width=pane.clientWidth,height=pane.clientHeight;
- if(!width||!height){guides.hidden=true;return}
- Object.assign(guides.style,{left:pane.offsetLeft+'px',top:pane.offsetTop+'px',width:width+'px',height:height+'px'});
- const frame=frameBounds(width,height,frameRatios[chosen]);
- Object.assign($('sim-frame-box').style,{left:frame.left+'px',top:frame.top+'px',width:frame.width+'px',height:frame.height+'px'});
- $('sim-frame-label').textContent=chosen;
-}
 function updateCameraFrustum(horizontalFov=lastCameraHorizontalFov){
  if(!viewer||viewer.isDestroyed()||!window.Cesium||overview)return;
  const C=window.Cesium,canvas=viewer.scene.canvas;
  const width=Math.max(1,canvas.clientWidth),height=Math.max(1,canvas.clientHeight);
- const aspect=width/height,frame=frameBounds(width,height,frameRatios[selectedFrame()]);
+ const aspect=width/height;
  const horizontal=Number.isFinite(horizontalFov)?horizontalFov:fov(core()?.getShot());
  lastCameraHorizontalFov=horizontal;
- // Preserve the lens's horizontal field inside the selected frame when the
- // surrounding viewport changes size (Expand, rotation, or Map + Camera).
- const viewportHorizontal=2*Math.atan(Math.tan(horizontal*rad/2)*width/frame.width);
- const chosen=aspect>=1?viewportHorizontal:2*Math.atan(Math.tan(viewportHorizontal/2)/aspect);
+ const chosen=aspect>=1?horizontal*rad:2*Math.atan(Math.tan(horizontal*rad/2)/aspect);
  viewer.camera.frustum=new C.PerspectiveFrustum({
   fov:Math.min(Math.PI-.02,chosen),aspectRatio:aspect,near:.2,far:200000
  });
@@ -1082,7 +1058,7 @@ function destroy(){
  terrainEpoch++;terrainHeights=[];terrainSignature='';terrainProvider=null;terrainReady=false;
  if(dragHandler){dragHandler.destroy();dragHandler=null}
  if(viewer){viewer.destroy();viewer=null}
- lastCameraHorizontalFov=null;$('sim-frame-guides').hidden=true;
+ lastCameraHorizontalFov=null;
  clearSplitMap();sunSnapshot=null;
  currentImageryLayer=null;flightMarker=null;flightRadiusCircle=null;
  activeDrag=null;
@@ -1123,7 +1099,6 @@ function setMode(on){
  enabled=on;
  const run=++epoch;
  $('shot-preview-view').classList.toggle('terrain-enabled',on);
- syncFrameGuides();
  $('shot-preview-terrain').hidden=!on;
  $('shot-preview-2dmap').hidden=on;
  $('preview-pitch-controls').hidden=!on;
@@ -1272,19 +1247,9 @@ document.addEventListener('offset:shot-rendered',refresh);
 document.addEventListener('offset:preview-height-changed',refresh);
 document.addEventListener('offset:planner-layout',()=>{if(enabled&&viewer)viewer.resize()});
 window.addEventListener('resize',()=>{if(enabled&&viewer){applySplitLayout();viewer.resize()}});
-$('preview-aspect').addEventListener('change',()=>{
- syncFrameGuides();
+const viewportObserver=new ResizeObserver(()=>{
  if(enabled&&viewer){viewer.resize();updateCameraFrustum()}
 });
-$('sim-frame').addEventListener('change',event=>{
- $('preview-aspect').value=event.target.value;
- $('preview-aspect').dispatchEvent(new Event('change'));
-});
-const frameObserver=new ResizeObserver(()=>{
- syncFrameGuides();
- if(enabled&&viewer){viewer.resize();updateCameraFrustum()}
-});
-frameObserver.observe($('shot-preview-terrain'));
-document.addEventListener('offset:shot-rendered',syncFrameGuides);
+viewportObserver.observe($('shot-preview-terrain'));
 
 })();

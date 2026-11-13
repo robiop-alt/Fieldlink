@@ -3,7 +3,6 @@
    3D geography, camera tilt, obstacles or an optical video feed. */
 const $=id=>document.getElementById(id);
 const core=()=>window.OFFSETPlanner;
-const ratios={'16:9':16/9,'2.39:1':2.39,'9:16':9/16,'1:1':1};
 const degrees=180/Math.PI;
 function bearing(a,b){
  const p1=a[0]*Math.PI/180,p2=b[0]*Math.PI/180,d=(b[1]-a[1])*Math.PI/180;
@@ -19,11 +18,6 @@ function signedAngle(to,from){return ((to-from+540)%360)-180}
 function display(){
  const api=core(),shot=api?.getShot();
  if(!shot)return;
- const chosen=Object.hasOwn(ratios,shot.previewAspect)?shot.previewAspect:'16:9';
- $('preview-aspect').value=chosen;
- const view=$('shot-preview-view');
- view.style.aspectRatio=String(ratios[chosen]);
- view.classList.toggle('is-portrait',chosen==='9:16');
  const targetNode=$('preview-target'),empty=$('preview-empty'),data=$('preview-data'),note=$('preview-note');
  const active=api.getActiveWaypoint(),waypoint=shot.route?.[active],cone=shot.waypointCones?.[active];
  const valid=api.coordsOk;
@@ -32,7 +26,7 @@ function display(){
  const fov=cone?.lensAuto&&autoFov?autoFov:(Number(cone?.fov)||autoFov||50);
  const angle=Number(api.getBearing())||0;
  const label=$('preview-frame-label');
- label.textContent=chosen+' · CONCEPT';
+ label.textContent='CONCEPT';
  const pts=[Number.isInteger(active)?'WP '+(active+1):'WP —',lens||'Lens not set',
   'HFOV '+Math.round(fov*10)/10+'°','Heading '+Math.round(angle)+'°'];
  data.replaceChildren(...pts.map(v=>{const n=document.createElement('span');n.textContent=v;return n}));
@@ -65,12 +59,6 @@ function display(){
   note.textContent='Target '+distText+' away · '+(behind?'behind camera':amount+'° '+relative+' (outside horizontal frame)')+'. Move the target or adjust the camera cone.';
  }
 }
-$('preview-aspect').addEventListener('change',event=>{
- const shot=core()?.getShot();if(!shot)return;
- const aspect=event.target.value;
- if(!Object.hasOwn(ratios,aspect))return;
- shot.previewAspect=aspect;core().save();display();
-});
 document.addEventListener('offset:shot-lens-changed',display);
 document.addEventListener('offset:shot-rendered',display);
 document.addEventListener('offset:map-rendered',display);
