@@ -388,6 +388,20 @@ function renderRoute(){
    show:overview
   });
  }
+ if(points.length===1){
+  const p=points[0],height=altitude(s,0),ground=groundAt(p,0);
+  flightRadiusCircle=viewer.entities.add({
+   name:'Drone height footprint · radius equals height AGL',
+   position:C.Cartesian3.fromDegrees(p[1],p[0],ground),
+   ellipse:{
+    semiMajorAxis:Math.max(.1,height),semiMinorAxis:Math.max(.1,height),
+    height:ground+.35,
+    material:C.Color.fromCssColorString('#79e8aa').withAlpha(.07),
+    outline:true,outlineColor:C.Color.fromCssColorString('#a9ffd1').withAlpha(.86),
+    outlineWidth:2
+   },show:overview
+  });
+ }
  points.forEach((p,i)=>{
   const entry=viewer.entities.add({
    name:markerLabel(i),
