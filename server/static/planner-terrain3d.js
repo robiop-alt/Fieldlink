@@ -8,6 +8,7 @@ const VERSION='1.135.0',BASE='https://cdn.jsdelivr.net/npm/cesium@'+VERSION+'/Bu
 let viewer=null,buildingTileset=null,enabled=false,loadingSdk=null,epoch=0;
 let terrainProvider=null,terrainHeights=[],terrainSignature='',terrainEpoch=0,terrainReady=false;
 let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=null;
+let activeFlightPlan=null;
 let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
 let currentImageryLayer=null,flightMarker=null,flightRadiusCircle=null;
 let splitMap=null,splitRoute=null,splitDrone=null,splitRadius=null,splitArrow=null,splitMarkers=[];
@@ -833,6 +834,7 @@ function drawFlight(distance,plan=flightData()){
 }
 function stop(reset=true){
  playing=false;cancelAnimationFrame(raf);raf=0;lastTime=0;
+ activeFlightPlan=null;
  if(reset)playElapsed=0;
  updatePlayButton();syncTimeline(flightData().total);
 }
@@ -843,6 +845,7 @@ function play(){
  if(plan.points.length<2||plan.total<=0){status('Add two different waypoints to play a camera flight.');return}
  if(playElapsed>=plan.total)playElapsed=0;
  if(overview){overview=false;$('sim-view').value='camera'}
+ activeFlightPlan=plan;
  playing=true;lastTime=0;updatePlayButton();
  function frame(now){
   if(!playing||!enabled)return;
@@ -1233,6 +1236,18 @@ $('sim-speed').addEventListener('input',event=>{
  syncTimeline(flightData().total);
 });
 document.addEventListener('offset:map-rendered',refresh);
+document.addEventListener('offset:shot-lens-changed',()=>{
+ if(!enabled||!viewer||viewer.isDestroyed())return;
+ const plan=activeFlightPlan;
+ if(plan)plan.prepared=null;
+ if(playing&&plan&&plan.total>0){
+  drawFlight(motionDistance(playElapsed,plan.total),plan);
+ }else if(playElapsed>0&&!overview){
+  const current=flightData();
+  if(current.total>0)drawFlight(motionDistance(playElapsed,current.total),current);
+  else showCamera();
+ }else showCamera();
+});
 document.addEventListener('offset:shot-rendered',refresh);
 document.addEventListener('offset:preview-height-changed',refresh);
 document.addEventListener('offset:planner-layout',()=>{if(enabled&&viewer)viewer.resize()});
