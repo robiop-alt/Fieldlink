@@ -314,8 +314,13 @@ function adaptiveQuality(now,dt){
  }
 }
 // Lightweight Leaflet route map: one Cesium renderer only, preserving iPhone memory.
-function splitAllowed(){return window.innerWidth>=850}
+function splitAllowed(){
+ const view=$('shot-preview-view');
+ return window.innerWidth>=900&&window.innerHeight>=580&&
+  (view?.clientWidth||0)>=680;
+}
 function splitIsActive(){return enabled&&$('sim-layout').value==='split'&&splitAllowed()}
+// Leaflet works in the original preview and in expanded desktop mode.
 function syncSplitMap(lat,lng,agl,heading){
  if(!splitMap||!splitIsActive()||!Number.isFinite(lat)||!Number.isFinite(lng))return;
  const at=[lat,lng];
@@ -385,7 +390,7 @@ function applySplitLayout(){
   if(!playing&&!overview)showCamera();
  });
  if($('sim-layout').value==='split'&&!active&&enabled)
-  status('Map + Camera requires an iPad or wider screen. Camera view stays full size on iPhone.');
+  status('Map + Camera requires a wide preview. Expand the view on iPad or desktop; iPhone stays in Camera mode.');
 }
 function clearSplitMap(){
  if(splitMap){splitMap.remove();splitMap=null}
@@ -1007,7 +1012,6 @@ async function initialise(run){
  });
  currentImageryLayer=layer;
  applyQuality();
- sunSnapshot={light:viewer.scene.light};
  showGoogleControls();
  configureSky(false);
  viewer.scene.globe.depthTestAgainstTerrain=false;
@@ -1035,8 +1039,8 @@ async function initialise(run){
  viewer.scene.light=new C.DirectionalLight({
   direction:lightDirection,intensity:1.25
  });
+ sunSnapshot={light:viewer.scene.light};
  viewer.scene.fog.enabled=false;
- applySun();
  if(!enabled||run!==epoch)return;
  installEditing();
  overlay('');
