@@ -8,3 +8,6 @@ boto3>=1.35,<2
 Pillow>=11.3,<13
 qrcode>=8.0,<9
 reportlab>=4.2,<5
+
+# Encrypt private Cesium ion token in persistent planner DB.
+cryptography>=43,<47
