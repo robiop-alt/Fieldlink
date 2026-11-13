@@ -404,7 +404,7 @@ $('fit-route').onclick=()=>{const shot=getShot();if(!map||!shot)return;const poi
 $('cone-visible').addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s);if(!c)return;c.visible=e.target.checked;renderMap();scheduleSave()});
 $('cone-mode').addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s);if(!c)return;if(c.mode==='target'&&e.target.value==='manual')c.bearing=effectiveBearing(s);c.mode=e.target.value;renderMap();scheduleSave()});
 $('cone-lens-auto').addEventListener('change',e=>{const shot=getShot(),c=shot&&coneData(shot);if(!c)return;c.lensAuto=e.target.checked;renderMap();scheduleSave()});
-$('shot-lens').addEventListener('input',event=>setShotLens(event.target.value));
+$('shot-lens').addEventListener('change',event=>setShotLens(event.target.value));
 $('preview-lens').addEventListener('change',event=>setShotLens(event.target.value));
 $('sim-lens').addEventListener('change',event=>setShotLens(event.target.value));
 for(const key of ['bearing','fov','range'])$('cone-'+key).addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s),value=Number(e.target.value);if(!c||!Number.isFinite(value))return;if(key==='fov')c.lensAuto=false;c[key]=key==='bearing'?((value%360)+360)%360:key==='fov'?Math.max(5,Math.min(170,value)):Math.max(1,Math.min(10000,value));renderMap();scheduleSave()});
