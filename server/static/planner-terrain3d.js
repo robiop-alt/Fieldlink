@@ -233,12 +233,14 @@ function setHud(info){
  if(node.hidden||!info)return;
  $('sim-hud-waypoint').textContent=info.waypoint;
  $('sim-hud-lens').textContent=info.lens||'Lens —';
+ $('sim-hud-fps').textContent=info.fps||'FPS —';
  $('sim-hud-altitude').textContent=Math.round(info.height)+' m AGL';
  $('sim-hud-heading').textContent='HDG '+String(Math.round((info.heading%360+360)%360)).padStart(3,'0')+'°';
  $('sim-hud-tilt').textContent='Tilt '+Math.round(info.tilt)+'°';
  $('sim-hud-fov').textContent='FOV '+Math.round(info.fov)+'°';
 }
 function lensLabel(s){return String(s?.lens||'Lens —').slice(0,28)}
+function fpsLabel(s){const fps=Number(s?.fps);return Number.isFinite(fps)&&fps>0?'FPS '+fps:'FPS —'}
 function updateFlightMarker(position){
  if(!flightMarker||!window.Cesium||!position)return;
  flightMarker.position=window.Cesium.Cartesian3.fromDegrees(position[1],position[0],position[2]);
@@ -310,7 +312,7 @@ function showCamera(){
    orientation:{heading:core().getBearing()*rad,pitch:-58*rad,roll:0}
   });
  }else cameraAt(point,heightAboveEllipsoid(s,point,i),cameraDirection(s,i),pitch(s,i),cameraFov(s,i));
- setHud({waypoint:'WP '+(i+1)+' / '+points.length,lens:lensLabel(s),
+ setHud({waypoint:'WP '+(i+1)+' / '+points.length,lens:lensLabel(s),fps:fpsLabel(s),
   height:altitude(s,i),heading:cameraDirection(s,i),tilt:pitch(s,i),fov:fov(s,i)});
  updateFlightMarker([point[0],point[1],heightAboveEllipsoid(s,point,i)]);
  $('preview-pitch-value').textContent='Tilt '+Math.round(pitch(s,i))+'°';
@@ -593,7 +595,7 @@ function drawFlight(distance,plan=flightData()){
  const tilt=smoothSegment(tilts,legs,index,t,smooth);
  cameraAt(here,ground+h,heading,tilt,horizontalFov);
  updateFlightMarker([here[0],here[1],ground+h]);
- setHud({waypoint:'WP '+(index+1)+' → '+(index+2),lens:lensLabel(s),
+ setHud({waypoint:'WP '+(index+1)+' → '+(index+2),lens:lensLabel(s),fps:fpsLabel(s),
   height:h,heading,tilt,fov:horizontalFov});
  return Math.round(h);
 }
