@@ -3,6 +3,7 @@
 /* Persistent, independent shot-editor panels. DOM wrapping keeps all existing
    control IDs, bindings and state intact, including 2D/3D map instances. */
 const panels=[
+ ['shot-info','.shot-editor > .shot-info-fields','Shot info'],
  ['marshals','.shot-editor > .marshal-panel','Road marshals'],
  ['waypoints','.shot-editor > .cone-settings','Waypoint camera cone'],
  ['preview','.shot-editor > .shot-preview-panel','Shot preview'],
