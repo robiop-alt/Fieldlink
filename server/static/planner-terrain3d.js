@@ -203,14 +203,27 @@ function timeForDistance(distance,total){
  }
  return (lo+hi)*.5*total;
 }
+function prepareFlight(plan){
+ if(plan.prepared)return plan.prepared;
+ const {shot:s,points}=plan;
+ plan.prepared={
+  headings:smoothHeadings(s,points),
+  lats:points.map(p=>p[0]),lons:points.map(p=>p[1]),
+  heights:points.map((p,i)=>altitude(s,i)),
+  groundHeights:points.map((p,i)=>groundAt(p,i)),
+  fovs:points.map((p,i)=>fov(s,i)),
+  tilts:points.map((p,i)=>pitch(s,i))
+ };
+ return plan.prepared;
+}
 function flightPathPoint(plan,index,t){
- const {shot:s,points,legs}=plan,smooth=flightSmoothing();
- const vals=fn=>points.map((p,i)=>fn(p,i));
+ const {legs}=plan,smooth=flightSmoothing();
+ const {lats,lons,heights,groundHeights}=prepareFlight(plan);
  return [
-  smoothSegment(vals(p=>p[0]),legs,index,t,smooth),
-  smoothSegment(vals(p=>p[1]),legs,index,t,smooth),
-  smoothSegment(vals((p,i)=>altitude(s,i)),legs,index,t,smooth)+
-   smoothSegment(vals((p,i)=>groundAt(p,i)),legs,index,t,smooth)
+  smoothSegment(lats,legs,index,t,smooth),
+  smoothSegment(lons,legs,index,t,smooth),
+  smoothSegment(heights,legs,index,t,smooth)+
+   smoothSegment(groundHeights,legs,index,t,smooth)
  ];
 }
 function setHud(info){
@@ -566,13 +579,7 @@ function drawFlight(distance,plan=flightData()){
  while(index<legs.length-1&&remaining>legs[index])remaining-=legs[index++];
  const t=legs[index]>0?Math.max(0,Math.min(1,remaining/legs[index])):1;
  const smooth=flightSmoothing();
- const headings=smoothHeadings(s,points);
- const vals=(fn)=>points.map((p,i)=>fn(p,i));
- const lats=vals(p=>p[0]),lons=vals(p=>p[1]);
- const heights=vals((p,i)=>altitude(s,i));
- const groundHeights=vals((p,i)=>groundAt(p,i));
- const fovs=vals((p,i)=>fov(s,i));
- const tilts=vals((p,i)=>pitch(s,i));
+ const {headings,lats,lons,heights,groundHeights,fovs,tilts}=prepareFlight(plan);
  const here=[
   smoothSegment(lats,legs,index,t,smooth),
   smoothSegment(lons,legs,index,t,smooth)
