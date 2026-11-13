@@ -369,6 +369,48 @@ def planner_document(row):
             'zoom':contents.get('zoom'),
             'updated':row['updated']}
 
+# PRIVATE PREVIEW ONLY: the Cesium ion token is shared exclusively with
+# authenticated OFFSET planner admins. Before any public release, remove this
+# shared-token endpoint, rotate the Cesium token and review quota/billing.
+# The token is encrypted at rest with a key derived from FIELDLINK_SECRET.
+def planner_token_cipher():
+    from cryptography.fernet import Fernet
+    key=base64.urlsafe_b64encode(hashlib.sha256(
+        ('offset-cesium-private-token-v1:'+SECRET).encode()).digest())
+    return Fernet(key)
+
+class PlannerCesiumTokenSave(BaseModel):
+    token: str = Field(min_length=10,max_length=8192)
+
+@app.get('/api/admin/planner/cesium-token')
+def get_planner_cesium_token(request:Request):
+    require_admin('',request)
+    with db() as c:
+        c.execute('CREATE TABLE IF NOT EXISTS planner_private_settings (name TEXT PRIMARY KEY, encrypted_value TEXT NOT NULL)')
+        row=c.execute('SELECT encrypted_value FROM planner_private_settings WHERE name=?',('cesium_ion_token',)).fetchone()
+    token=''
+    if row:
+        try: token=planner_token_cipher().decrypt(row['encrypted_value'].encode()).decode()
+        except Exception: raise HTTPException(503,'Stored Cesium token cannot be decrypted; enter a new token')
+    return JSONResponse({'token':token,'configured':bool(token)},
+        headers={'Cache-Control':'no-store','Pragma':'no-cache','X-Robots-Tag':'noindex'})
+
+@app.put('/api/admin/planner/cesium-token')
+def save_planner_cesium_token(body:PlannerCesiumTokenSave,request:Request):
+    require_admin('',request)
+    # Explicitly restrict to the current authenticated admin and same origin.
+    if not admin_cookie_valid(request) or not same_origin(request):
+        raise HTTPException(403,'Admin login required')
+    token=body.token.strip()
+    if not token or any(ch.isspace() for ch in token):
+        raise HTTPException(422,'Invalid token')
+    encoded=planner_token_cipher().encrypt(token.encode()).decode()
+    with db() as c:
+        c.execute('CREATE TABLE IF NOT EXISTS planner_private_settings (name TEXT PRIMARY KEY, encrypted_value TEXT NOT NULL)')
+        c.execute('INSERT OR REPLACE INTO planner_private_settings (name,encrypted_value) VALUES (?,?)',
+                  ('cesium_ion_token',encoded))
+    return JSONResponse({'configured':True},headers={'Cache-Control':'no-store'})
+
 @app.get('/planner', include_in_schema=False)
 def planner_page(request: Request):
     require_admin('', request)
