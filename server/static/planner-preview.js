@@ -1,68 +1,19 @@
 (()=>{'use strict';
-/* Schematic camera-framing preview. It deliberately does not simulate
-   3D geography, camera tilt, obstacles or an optical video feed. */
-const $=id=>document.getElementById(id);
-const core=()=>window.OFFSETPlanner;
-const degrees=180/Math.PI;
-function bearing(a,b){
- const p1=a[0]*Math.PI/180,p2=b[0]*Math.PI/180,d=(b[1]-a[1])*Math.PI/180;
- return (Math.atan2(Math.sin(d)*Math.cos(p2),
-  Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(d))*degrees+360)%360;
-}
-function distance(a,b){
- const r=Math.PI/180,dLat=(b[0]-a[0])*r,dLng=(b[1]-a[1])*r;
- const h=Math.sin(dLat/2)**2+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dLng/2)**2;
- return 6371008.8*2*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h)));
-}
-function signedAngle(to,from){return ((to-from+540)%360)-180}
+const $=id=>document.getElementById(id),core=()=>window.OFFSETPlanner;
 function display(){
- const api=core(),shot=api?.getShot();
- if(!shot)return;
- const targetNode=$('preview-target'),empty=$('preview-empty'),data=$('preview-data'),note=$('preview-note');
- const active=api.getActiveWaypoint(),waypoint=shot.route?.[active],cone=shot.waypointCones?.[active];
- const valid=api.coordsOk;
- const lens=String(shot.lens||'').trim();
- const autoFov=api.lensFov(shot);
- const fov=cone?.lensAuto&&autoFov?autoFov:(Number(cone?.fov)||autoFov||50);
- const angle=Number(api.getBearing())||0;
- const label=$('preview-frame-label');
- label.textContent='CONCEPT';
- const pts=[Number.isInteger(active)?'WP '+(active+1):'WP —',lens||'Lens not set',
-  'HFOV '+Math.round(fov*10)/10+'°','Heading '+Math.round(angle)+'°'];
- data.replaceChildren(...pts.map(v=>{const n=document.createElement('span');n.textContent=v;return n}));
- const hasWp=valid(waypoint);
- empty.hidden=hasWp;
- targetNode.hidden=true;
- if(!hasWp){
-  note.textContent='2D map: add a waypoint to place and adjust the planned camera position.';
-  return;
- }
- if(!valid(shot.target)){
-  note.textContent='2D map: drag green waypoint markers or add an orange camera target. Height is set independently for each waypoint.';
-  return;
- }
- const delta=signedAngle(bearing(waypoint,shot.target),angle);
- const dist=distance(waypoint,shot.target);
- const behind=Math.abs(delta)>89.9;
- const inside=!behind&&Math.abs(delta)<=fov/2;
- const position=behind?null:320+Math.tan(delta*Math.PI/180)/Math.tan(fov*Math.PI/360)*320;
- const relative=delta>0?'right':'left';
- const amount=Math.abs(delta).toFixed(1);
- const distText=dist>=1000?(dist/1000).toFixed(2)+' km':Math.round(dist)+' m';
- if(inside&&Number.isFinite(position)){
-  const x=Math.max(19,Math.min(621,position));
-  $('preview-target-ring').setAttribute('cx',String(x));
-  $('preview-target-dot').setAttribute('cx',String(x));
-  targetNode.hidden=false;
-  note.textContent='Target '+distText+' away · '+amount+'° '+relative+' of center. 2D map shows the route and camera direction, not an optical preview.';
- }else{
-  note.textContent='Target '+distText+' away · '+(behind?'behind camera':amount+'° '+relative+' (outside horizontal frame)')+'. Move the target or adjust the camera cone.';
- }
+ const api=core(),shot=api?.getShot();if(!shot)return;
+ const active=api.getActiveWaypoint(),cone=shot.waypointCones?.[active];
+ const hasWaypoint=api.coordsOk(shot.route?.[active]);
+ const open=$('preview-3d-toggle').getAttribute('aria-pressed')==='true';
+ const lens=String(shot.lens||'').trim(),autoFov=api.lensFov(shot);
+ const fov=cone?.lensAuto&&autoFov?autoFov:Number(cone?.fov)||autoFov||50;
+ const values=[hasWaypoint?'WP '+(active+1):'WP —',lens||'Lens not set','HFOV '+Math.round(fov*10)/10+'°','Heading '+Math.round(Number(api.getBearing())||0)+'°'];
+ $('preview-data').replaceChildren(...values.map(text=>{const item=document.createElement('span');item.textContent=text;return item}));
+ $('preview-3d-toggle').disabled=!open&&!hasWaypoint;
+ $('preview-3d-toggle').title=hasWaypoint?'':'Add a waypoint on the main map first';
+ $('preview-data').hidden=!open;
+ document.querySelector('.shot-preview-panel .preview-altitude').hidden=!open;
+ $('preview-note').textContent=!hasWaypoint?'Add a waypoint on the main map to preview this shot in 3D.':open?'Use Map + Camera to edit waypoints while viewing the shot.':'Plan the shot on the main map, then open the 3D preview.';
 }
-document.addEventListener('offset:shot-lens-changed',display);
-document.addEventListener('offset:shot-rendered',display);
-document.addEventListener('offset:map-rendered',display);
-$('shot-lens').addEventListener('input',display);
-$('cone-bearing').addEventListener('input',display);
-$('cone-fov').addEventListener('input',display);
+for(const event of ['offset:shot-rendered','offset:map-rendered','offset:shot-lens-changed','offset:preview-mode-changed'])document.addEventListener(event,display);
 })();

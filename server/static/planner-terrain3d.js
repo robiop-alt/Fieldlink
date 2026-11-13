@@ -985,7 +985,7 @@ function installEditing(){
   }
   if(drag.target)core().moveTarget(finalPoint);
   else core().moveWaypoint(drag.index,finalPoint);
-  status('Point moved · saved to 2D map');
+  status('Point moved · saved to main map');
  }
  handler.setInputAction(begin,C.ScreenSpaceEventType.LEFT_DOWN);
  handler.setInputAction(move,C.ScreenSpaceEventType.MOUSE_MOVE);
@@ -1137,7 +1137,7 @@ function setMode(on){
  const run=++epoch;
  $('shot-preview-view').classList.toggle('terrain-enabled',on);
  $('shot-preview-terrain').hidden=!on;
- $('shot-preview-2dmap').hidden=on;
+ $('shot-preview-view').hidden=!on;
  $('preview-pitch-controls').hidden=!on;
  $('shot-simulator-controls').hidden=!on;
  $('preview-terrain-credit').hidden=!on;
@@ -1146,7 +1146,7 @@ function setMode(on){
  if(!on)clearSplitMap();
  if(!on)setExpanded(false);
  $('preview-3d-toggle').setAttribute('aria-pressed',String(on));
- $('preview-3d-toggle').textContent=on?'2D Map':'3D Simulator';
+ $('preview-3d-toggle').textContent=on?'Close preview':'Open 3D preview';
  document.dispatchEvent(new Event('offset:preview-mode-changed'));
  if(!on){
   overlay('');destroy();
@@ -1157,8 +1157,8 @@ function setMode(on){
  initialise(run).catch(error=>{
   if(!enabled||run!==epoch)return;
   console.warn('OFFSET simulator:',error);
-  overlay(error?.message||'3D Simulator unavailable. Switch back to 2D.');
-  status('Could not initialise 3D. The 2D map is still available.');
+  overlay(error?.message||'3D preview unavailable. Close preview to continue on the main map.');
+  status('Could not initialise 3D. Close preview to continue on the main map.');
  });
 }
 function refresh(){
