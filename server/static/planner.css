@@ -1222,9 +1222,9 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 }
 .offset-planner #sim-landscape-settings[hidden]{display:none!important}
 
-/* Expanded landscape: the 3D image occupies the entire viewport.
+/* Expanded preview on every device: the 3D image occupies the entire viewport.
    Important controls float over the picture, others live in Settings. */
-@media screen and (orientation:landscape) and (max-height:600px){
+@media screen{
  .offset-planner .shot-preview-panel.sim-expanded{
   position:fixed!important;inset:0!important;
   width:100vw!important;height:100dvh!important;max-height:100dvh!important;
@@ -1268,7 +1268,7 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
   pointer-events:none;
  }
  .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-controls>.shot-simulator-main{
-  display:flex!important;flex-wrap:nowrap;align-items:center;gap:6px;
+  display:flex!important;flex-wrap:wrap;align-items:center;gap:6px;
   pointer-events:auto;
  }
  .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-main label{
@@ -1341,7 +1341,7 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
  border-radius:50%;background:#4dae72;
 }
 .offset-planner #sim-seek:disabled{opacity:.45}
-@media screen and (orientation:landscape) and (max-height:600px){
+@media screen{
  .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-controls>.sim-timeline{
   display:flex!important;pointer-events:auto;
   margin-top:1px;padding:2px 1px 0;
@@ -1391,7 +1391,7 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 .offset-planner .sim-waypoint-tick:focus-visible{
  outline:2px solid #fff;outline-offset:4px;
 }
-@media screen and (orientation:landscape) and (max-height:600px){
+@media screen{
  .offset-planner .shot-preview-panel.sim-expanded .sim-camera-hud{
   top:max(48px,calc(env(safe-area-inset-top) + 40px));
   right:max(12px,env(safe-area-inset-right));font-size:10px;
@@ -1576,7 +1576,7 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 .offset-planner #sim-sun-time:disabled{opacity:.4}
 
 /* Keep sunlight immediately below playback, including landscape fullscreen. */
-@media screen and (orientation:landscape) and (max-height:600px){
+@media screen{
  .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-controls>.sim-sun-controls{
   display:flex!important;pointer-events:auto;
   flex-wrap:nowrap;gap:10px;margin-top:2px;padding:3px 0 0;border:0;
@@ -1594,5 +1594,25 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
  }
  .offset-planner .shot-preview-panel.sim-expanded.sim-expanded-settings .shot-simulator-controls>.sim-sun-controls{
   flex-wrap:wrap;
+ }
+}
+
+/* Avoid a duplicate lens picker in the expanded header. */
+@media screen{
+ .offset-planner .shot-preview-panel.sim-expanded .preview-actions .preview-lens-label{
+  display:none!important;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .sim-sun-controls{
+  text-shadow:0 1px 4px #000;
+ }
+}
+/* A tablet/desktop settings drawer leaves the 3D image in view. */
+@media screen and (min-width:900px){
+ .offset-planner .shot-preview-panel.sim-expanded.sim-expanded-settings .shot-simulator-controls{
+  left:auto;right:max(12px,env(safe-area-inset-right));
+  top:48px!important;bottom:max(12px,env(safe-area-inset-bottom));
+  width:340px;max-width:42vw;
+  border:1px solid #3c5549;border-radius:8px;
+  box-shadow:0 8px 28px #0006;
  }
 }
