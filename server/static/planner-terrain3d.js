@@ -242,6 +242,11 @@ function lensLabel(s){return String(s?.lens||'Lens —').slice(0,28)}
 function fpsLabel(s){const fps=Number(s?.fps);return Number.isFinite(fps)&&fps>0?'FPS '+fps:'FPS —'}
 function updateFlightMarker(position,aglHeight,terrainHeight){
  if(!window.Cesium||!position)return;
+ if(Number.isFinite(aglHeight)&&aglHeight>=0){
+  document.dispatchEvent(new CustomEvent('offset:flight-position',{
+   detail:{lat:position[0],lng:position[1],radius:aglHeight}
+  }));
+ }
  const C=window.Cesium;
  if(flightMarker){
   flightMarker.position=C.Cartesian3.fromDegrees(position[1],position[0],position[2]);
