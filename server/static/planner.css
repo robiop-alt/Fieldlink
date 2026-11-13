@@ -1417,21 +1417,21 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
    Google/Cesium renderer, keeping the camera view responsive. */
 .offset-planner #sim-split-map{
  position:absolute;z-index:1;top:0;left:0;bottom:0;
- width:43%;min-width:0;background:#182c26;
+ width:var(--sim-split-share,43%);min-width:0;background:#182c26;
  border-right:1px solid #597568;
 }
 .offset-planner #sim-split-map[hidden]{display:none!important}
 .offset-planner .shot-preview-view.terrain-enabled.sim-split #shot-preview-terrain{
- left:43%!important;right:0!important;width:57%!important;
+ left:var(--sim-split-share,43%)!important;right:0!important;width:calc(100% - var(--sim-split-share,43%))!important;
 }
 .offset-planner .shot-preview-view.terrain-enabled.sim-split .sim-camera-hud{
  right:8px;max-width:50%;
 }
 .offset-planner .shot-preview-view.terrain-enabled.sim-split #preview-pitch-controls{
- left:calc(43% + 8px);
+ left:calc(var(--sim-split-share,43%) + 8px);
 }
 .offset-planner .shot-preview-view.terrain-enabled.sim-split .preview-terrain-loading{
- left:43%;
+ left:var(--sim-split-share,43%);
 }
 .offset-planner #sim-split-map .leaflet-control-attribution{
  font-size:8px;background:rgba(17,28,24,.75);color:#b7cbbf;
@@ -1594,7 +1594,7 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 @media screen{
  .offset-planner .shot-preview-view.terrain-enabled.sim-split #sim-split-map{
   display:flex!important;flex-direction:column;
-  top:48px;bottom:143px;left:0;width:43%;height:auto;
+  top:48px;bottom:143px;left:0;width:var(--sim-split-share,43%);height:auto;
   overflow:hidden;border:1px solid #597568;border-left:0;
  }
  .offset-planner #sim-split-map>.map-top-controls{
@@ -1619,23 +1619,23 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 }
 @media screen and (max-width:849px) and (orientation:portrait){
  .offset-planner .shot-preview-view.terrain-enabled.sim-split #sim-split-map{
-  width:100%;top:48px;bottom:auto;height:calc(44% - 48px);
+  width:100%;top:48px;bottom:auto;height:calc(var(--sim-split-share,43%) - 48px);
  }
  .offset-planner #sim-split-map>.map-top-controls{display:none}
  .offset-planner .shot-preview-view.terrain-enabled.sim-split #shot-preview-terrain{
-  left:0!important;top:44%!important;bottom:0!important;
-  width:100%!important;height:56%!important;
+  left:0!important;top:var(--sim-split-share,43%)!important;bottom:0!important;
+  width:100%!important;height:calc(100% - var(--sim-split-share,43%))!important;
  }
  .offset-planner .shot-preview-view.terrain-enabled.sim-split #preview-pitch-controls{
-  left:8px!important;top:calc(44% + 8px)!important;
+  left:8px!important;top:calc(var(--sim-split-share,43%) + 8px)!important;
  }
  .offset-planner .shot-preview-view.terrain-enabled.sim-split .sim-camera-hud{
-  top:calc(44% + 8px);max-width:53%;
+  top:calc(var(--sim-split-share,43%) + 8px);max-width:53%;
  }
 }
 @media screen and (max-width:849px) and (orientation:landscape){
  .offset-planner .shot-preview-view.terrain-enabled.sim-split #shot-preview-terrain{
-  left:43%!important;width:57%!important;
+  left:var(--sim-split-share,43%)!important;width:calc(100% - var(--sim-split-share,43%))!important;
  }
 }
 
@@ -1706,6 +1706,46 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 }
 @media screen and (max-width:849px) and (orientation:portrait){
  .offset-planner .shot-preview-view.terrain-enabled.sim-split #sim-split-map{
-  top:var(--sim-heading-height,48px);bottom:auto;height:calc(44% - var(--sim-heading-height,48px));
+  top:var(--sim-heading-height,48px);bottom:auto;height:calc(var(--sim-split-share,43%) - var(--sim-heading-height,48px));
  }
+}
+
+/* Keep routine controls in one line; show batch actions only in Select mode. */
+.offset-planner .waypoint-edit-actions{gap:7px}
+.offset-planner .waypoint-edit-actions>.waypoint-values{flex:1;margin:0;min-width:0;gap:5px}
+.offset-planner .waypoint-edit-actions>select{flex:0 0 66px;width:66px}
+.offset-planner .waypoint-values label{display:flex;align-items:center;gap:4px;white-space:nowrap}
+.offset-planner .waypoint-values input{margin:0;width:48px;min-width:0;flex:1;height:29px}
+.offset-planner .waypoint-editor:not(.is-selecting)>.waypoint-selection{display:none}
+.offset-planner .waypoint-selection-actions{display:flex;gap:6px;align-items:center;margin-top:5px}
+.offset-planner .waypoint-selection-actions button{min-height:26px;font-size:10px;padding:3px 6px}
+.offset-planner .waypoint-editor.has-waypoint #map-waypoint{color:#ffd39a;border-color:#df9f52;background:#352b1f}
+.offset-planner .waypoint-number[data-active="true"]{background:#edaa58;color:#19271d;border-color:#ffe0ad;box-shadow:0 0 0 2px #edaa5855}
+.offset-planner .shot-preview-panel:not(.sim-expanded-settings) .shot-simulator-controls>:not(.shot-simulator-main):not(.sim-timeline):not(.sim-sun-controls):not(.sim-status){display:none!important}
+.offset-planner .shot-order-menu{min-width:22px}
+.offset-planner .shot-order-menu>summary{cursor:pointer;list-style:none;text-align:center;font-size:18px;padding:0 3px;color:#b8cebf}
+.offset-planner .shot-order-menu>summary::-webkit-details-marker{display:none}
+.offset-planner .shot-order-menu[open]{grid-column:1/-1;border-top:1px solid #334d3d}
+.offset-planner .shot-order-menu[open]>summary{text-align:right}
+.offset-planner .shot-order-buttons{gap:6px;padding:3px 0}
+.offset-planner .shot-order-buttons button{width:auto;padding:5px 8px!important;font-size:10px}
+.offset-planner .shot-count{display:none}
+.offset-planner .shot-item{grid-template-columns:22px 20px minmax(0,1fr) 24px}
+.offset-planner #sim-split-divider{position:absolute;z-index:12;top:var(--sim-heading-height,48px);bottom:var(--sim-controls-height,143px);left:var(--sim-split-share,43%);width:18px;transform:translateX(-50%);cursor:col-resize;touch-action:none}
+.offset-planner #sim-split-divider[hidden]{display:none!important}
+.offset-planner #sim-split-divider::after{content:'';position:absolute;left:7px;top:43%;height:48px;width:4px;border-radius:5px;background:#b8d3bd;box-shadow:0 0 0 3px #14241cd9}
+.offset-planner #sim-split-divider:focus-visible{outline:2px solid #e6b06b;outline-offset:-2px}
+@media screen and (max-width:849px) and (orientation:portrait){
+ .offset-planner #sim-split-divider{top:var(--sim-split-share,43%);bottom:auto;left:0;right:0;width:100%;height:18px;transform:translateY(-50%);cursor:row-resize}
+ .offset-planner #sim-split-divider::after{top:7px;left:43%;width:48px;height:4px}
+}
+@media(max-width:1100px){
+ .offset-planner .waypoint-values label{flex-direction:column;align-items:stretch;font-size:9px;gap:1px}
+ .offset-planner .waypoint-values input{width:100%;height:26px;min-height:26px}
+}
+.offset-planner #sim-split-map .waypoint-values label{flex-direction:column;align-items:stretch;font-size:9px;gap:1px}
+.offset-planner #sim-split-map .waypoint-values input{width:100%;height:26px;min-height:26px}
+/* Keep the camera HUD within its pane when the map is made wider. */
+@media screen and (orientation:landscape){
+ .offset-planner .shot-preview-view.terrain-enabled.sim-split .sim-camera-hud{max-width:calc(100% - var(--sim-split-share,43%) - 16px)}
 }

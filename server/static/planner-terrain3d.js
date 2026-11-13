@@ -357,6 +357,8 @@ function applySplitLayout(){
  const active=splitIsActive();
  $('shot-preview-view').classList.toggle('sim-split',active);
  $('sim-split-map').hidden=!active;
+ $('sim-split-divider').hidden=!active;
+ if(active)setSplitShare(splitShare);
  if(active){
   setupSplitMap();
   requestAnimationFrame(()=>{
@@ -378,6 +380,7 @@ function clearSplitMap(){
  for(const {node,placeholder} of splitMounts)placeholder.replaceWith(node);
  splitMounts=[];
  $('sim-split-map').hidden=true;
+ $('sim-split-divider').hidden=true;
  $('shot-preview-view').classList.remove('sim-split');
  if(main)requestAnimationFrame(()=>main.invalidateSize({pan:false}));
 }
@@ -1075,7 +1078,7 @@ function setExpanded(on){
  if(!on){$('sim-layout').value='camera';clearSplitMap()}
  document.body.classList.toggle('simulator-expanded',on);
  $('sim-expand').textContent=on?'Close':'Expand';
- $('sim-landscape-settings').hidden=!on;
+ $('sim-landscape-settings').hidden=!enabled;
  $('sim-landscape-settings').textContent='Settings';
  $('sim-landscape-settings').setAttribute('aria-expanded','false');
  requestAnimationFrame(()=>requestAnimationFrame(()=>{
@@ -1084,7 +1087,7 @@ function setExpanded(on){
 }
 $('sim-landscape-settings').addEventListener('click',()=>{
  const panel=document.querySelector('.shot-preview-panel');
- if(!panel?.classList.contains('sim-expanded'))return;
+ if(!panel)return;
  const open=panel.classList.toggle('sim-expanded-settings');
  $('sim-landscape-settings').textContent=open?'Hide settings':'Settings';
  $('sim-landscape-settings').setAttribute('aria-expanded',String(open));
@@ -1109,6 +1112,7 @@ function setMode(on){
  $('shot-simulator-controls').hidden=!on;
  $('preview-terrain-credit').hidden=!on;
  $('sim-expand').hidden=!on;
+ $('sim-landscape-settings').hidden=!on;
  if(!on)clearSplitMap();
  if(!on)setExpanded(false);
  $('preview-3d-toggle').setAttribute('aria-pressed',String(on));
@@ -1261,6 +1265,46 @@ function syncExpandedChrome(){
 const chromeObserver=new ResizeObserver(syncExpandedChrome);
 chromeObserver.observe($('shot-simulator-controls'));
 chromeObserver.observe(document.querySelector('.shot-preview-panel .planner-extra-heading'));
+const splitPreference='offset-planner-split-share-v1';
+let splitShare=.43,splitResizeFrame=0;
+try{const saved=Number(localStorage.getItem(splitPreference));if(saved>=.3&&saved<=.7)splitShare=saved}catch{}
+function setSplitShare(value,persist=false){
+ if(!Number.isFinite(value))return;
+ splitShare=Math.min(.7,Math.max(.3,value));
+ $('shot-preview-view').style.setProperty('--sim-split-share',(splitShare*100)+'%');
+ const separator=$('sim-split-divider');separator.setAttribute('aria-valuenow',String(Math.round(splitShare*100)));
+ separator.setAttribute('aria-valuetext',Math.round(splitShare*100)+'% map');
+ separator.setAttribute('aria-orientation',window.matchMedia('(max-width:849px) and (orientation:portrait)').matches?'horizontal':'vertical');
+ if(persist)try{localStorage.setItem(splitPreference,String(splitShare))}catch{}
+ if(splitResizeFrame)cancelAnimationFrame(splitResizeFrame);
+ splitResizeFrame=requestAnimationFrame(()=>{
+  splitResizeFrame=0;if(splitMap)splitMap.invalidateSize({pan:true,animate:false});
+  if(enabled&&viewer){viewer.resize();updateCameraFrustum()}
+ });
+}
+$('sim-split-divider').addEventListener('pointerdown',event=>{
+ if(event.button!==0)return;event.preventDefault();
+ const divider=event.currentTarget;divider.setPointerCapture(event.pointerId);
+ const initial=splitShare;
+ const move=e=>{
+  const box=$('shot-preview-view').getBoundingClientRect();
+  const stacked=window.matchMedia('(max-width:849px) and (orientation:portrait)').matches;
+  setSplitShare(stacked?(e.clientY-box.top)/box.height:(e.clientX-box.left)/box.width);
+ };
+ const finish=e=>{
+  divider.removeEventListener('pointermove',move);divider.removeEventListener('pointerup',finish);divider.removeEventListener('pointercancel',finish);
+  setSplitShare(e.type==='pointercancel'?initial:splitShare,true);
+ };
+ divider.addEventListener('pointermove',move);divider.addEventListener('pointerup',finish);divider.addEventListener('pointercancel',finish);
+});
+$('sim-split-divider').addEventListener('keydown',event=>{
+ const step={ArrowLeft:-.02,ArrowUp:-.02,ArrowRight:.02,ArrowDown:.02}[event.key];
+ if(step!==undefined){event.preventDefault();setSplitShare(splitShare+step,true)}
+ if(event.key==='Home'){event.preventDefault();setSplitShare(.43,true)}
+});
+$('sim-split-divider').addEventListener('dblclick',()=>setSplitShare(.43,true));
+setSplitShare(splitShare);
+
 const viewportObserver=new ResizeObserver(()=>{
  if(enabled&&viewer){viewer.resize();updateCameraFrustum()}
 });

@@ -115,10 +115,21 @@ function addShotOrdering(item,index){
  });
  const actions=document.createElement('span');actions.className='shot-order-buttons';
  for(const [delta,label] of [[-1,'↑'],[1,'↓']]){
-  const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=index+delta<0||index+delta>=current.shots.length;
+  const button=document.createElement('button');button.type='button';button.textContent=delta<0?'Move up':'Move down';button.disabled=index+delta<0||index+delta>=current.shots.length;
   button.setAttribute('aria-label','Move shot '+(index+1)+(delta<0?' up':' down'));button.onclick=()=>moveShot(index,index+delta);actions.append(button);
  }
- item.prepend(handle);item.append(actions);
+ const menu=document.createElement('details');menu.className='shot-order-menu';
+ const summary=document.createElement('summary');summary.textContent='⋯';summary.setAttribute('aria-label','Actions for shot '+(index+1));
+ const remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='Delete shot';remove.onclick=()=>deleteShot(index);actions.append(remove);
+ menu.append(summary,actions);item.prepend(handle);item.append(menu);
+}
+function deleteShot(index){
+ if(!current||!current.shots[index]||!confirm('Delete this shot?'))return;
+ readFields();const activeId=getShot()?.id;
+ current.shots.splice(index,1);if(!current.shots.length)current.shots.push(blankShot('Opening shot'));
+ const keep=current.shots.findIndex(s=>s.id===activeId);
+ activeShot=keep>=0?keep:Math.min(index,current.shots.length-1);activeWaypoint=0;
+ render();renderMap();scheduleSave();
 }
 function ensureWaypointSelection(){
  const id=getShot()?.id;if(id!==selectionShot){selectedWaypoints.clear();selectionShot=id;selectingWaypoints=false}
@@ -142,6 +153,8 @@ function renderWaypointEditor(){
  $('select-waypoints').setAttribute('aria-pressed',String(selectingWaypoints));
  $('select-waypoints').textContent=selectingWaypoints?'Done':'Select';
  $('delete-waypoints').textContent='Delete selected ('+selectedWaypoints.size+')';$('delete-waypoints').disabled=!selectedWaypoints.size;
+ $('waypoint-editor').classList.toggle('is-selecting',selectingWaypoints);
+ $('waypoint-editor').classList.toggle('has-waypoint',!!cone);
  $('waypoint-checks').hidden=!selectingWaypoints;
  $('waypoint-checks').replaceChildren(...(shot?.route||[]).map((_,i)=>{
   const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.checked=selectedWaypoints.has(i);
@@ -531,7 +544,7 @@ $('new-plan').onclick=()=>{const name=prompt('Name the new drone plan','Untitled
 $('rename-plan').onclick=()=>{if(!current)return;const name=prompt('Plan name',current.name);if(name?.trim()){current.name=name.trim().slice(0,120);render();scheduleSave()}};
 $('delete-plan').onclick=async()=>{if(!current||!confirm('Delete the plan "'+current.name+'" and all its shots?'))return;try{await api('/api/admin/planner/'+encodeURIComponent(current.id),{method:'DELETE'});plans=plans.filter(p=>p.id!==current.id);if(plans.length)selectPlan(plans[0].id);else await createPlan('Untitled plan')}catch(e){alert(e.message)}};
 $('add-shot').onclick=()=>{if(!current)return;readFields();current.shots.push(blankShot('Shot '+(current.shots.length+1)));activeShot=current.shots.length-1;render();renderMap();scheduleSave()};
-$('remove-shot').onclick=()=>{if(!current||!confirm('Delete this shot?'))return;current.shots.splice(activeShot,1);if(!current.shots.length)current.shots.push(blankShot('Opening shot'));activeShot=Math.min(activeShot,current.shots.length-1);render();renderMap();scheduleSave()};
+$('remove-shot').onclick=()=>deleteShot(activeShot);
 $('clear-shot').onclick=()=>{$('erase-drawing').click()};
 $('erase-drawing').onclick=()=>{const shot=getShot();if(!shot||!confirm('Clear flight path, sketches and camera target?'))return;shot.route=[];shot.waypointCones=[];activeWaypoint=0;shot.target=null;shot.sketches=[];renderMap();scheduleSave()};
 $('undo-point').onclick=()=>travelHistory('undo');
