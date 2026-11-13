@@ -338,7 +338,7 @@ function setupSplitMap(){
  if(splitMap)return;
  const main=core()?.getMap(),host=$('sim-split-map');
  if(!main)return;
- for(const selector of ['.map-panel .map-top-controls','.map-panel .map-toolbar','#planner-map']){
+ for(const selector of ['.map-panel .map-top-controls','.map-panel .map-toolbar','#waypoint-editor','#planner-map']){
   const node=document.querySelector(selector);if(!node)continue;
   const placeholder=document.createComment('OFFSET main map original position');
   node.parentNode.insertBefore(placeholder,node);
@@ -1079,7 +1079,7 @@ function setExpanded(on){
  $('sim-landscape-settings').textContent='Settings';
  $('sim-landscape-settings').setAttribute('aria-expanded','false');
  requestAnimationFrame(()=>requestAnimationFrame(()=>{
-  if(enabled&&viewer){viewer.resize();applySplitLayout();if(!playing&&!overview)showCamera()}
+  syncExpandedChrome();if(enabled&&viewer){viewer.resize();applySplitLayout();if(!playing&&!overview)showCamera()}
  }));
 }
 $('sim-landscape-settings').addEventListener('click',()=>{
@@ -1251,6 +1251,16 @@ document.addEventListener('offset:shot-rendered',refresh);
 document.addEventListener('offset:preview-height-changed',refresh);
 document.addEventListener('offset:planner-layout',()=>{if(enabled&&viewer)viewer.resize()});
 window.addEventListener('resize',()=>{if(enabled&&viewer){applySplitLayout();viewer.resize()}});
+function syncExpandedChrome(){
+ const panel=document.querySelector('.shot-preview-panel');
+ if(!panel?.classList.contains('sim-expanded')||panel.classList.contains('sim-expanded-settings'))return;
+ const controls=$('shot-simulator-controls'),heading=panel.querySelector('.planner-extra-heading');
+ panel.style.setProperty('--sim-controls-height',Math.ceil(controls.getBoundingClientRect().height+8)+'px');
+ panel.style.setProperty('--sim-heading-height',Math.ceil(heading.getBoundingClientRect().height+6)+'px');
+}
+const chromeObserver=new ResizeObserver(syncExpandedChrome);
+chromeObserver.observe($('shot-simulator-controls'));
+chromeObserver.observe(document.querySelector('.shot-preview-panel .planner-extra-heading'));
 const viewportObserver=new ResizeObserver(()=>{
  if(enabled&&viewer){viewer.resize();updateCameraFrustum()}
 });
