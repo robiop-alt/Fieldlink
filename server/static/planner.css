@@ -110,8 +110,6 @@
  .cone-settings{padding:12px}
  .cone-apex,.cone-aim{width:30px;height:30px;font-size:17px}
  .offset-planner #cone-reset-origin{min-height:40px}
- .map-toolbar button[data-tool="cone"]{color:#f5c798}
- .map-toolbar button[data-tool="cone"].active{color:#17230f}
 }
 
 
