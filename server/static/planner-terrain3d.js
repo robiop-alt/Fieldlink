@@ -1204,6 +1204,8 @@ function setMode(on){
  });
 }
 function refresh(){
+ const mode=core()?.getShot()?.simSmoothing;
+ $('sim-smoothing').value=['direct','smooth','cinematic'].includes(mode)?mode:'cinematic';
  if(!enabled||!viewer)return;
  stop();
  const points=route(core()?.getShot()),run=epoch;
@@ -1284,6 +1286,7 @@ $('sim-hud-toggle').addEventListener('change',()=>{
 });
 $('sim-quality').addEventListener('change',()=>{applyQuality();applySun()});
 $('sim-smoothing').addEventListener('change',()=>{
+ const shot=core()?.getShot();if(shot){shot.simSmoothing=$('sim-smoothing').value;core().save()}
  if(viewer){
   renderRoute();
   if(!playing&&!overview&&playElapsed>0)drawFlight(motionDistance(playElapsed,flightData().total));

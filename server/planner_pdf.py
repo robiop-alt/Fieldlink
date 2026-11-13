@@ -288,7 +288,71 @@ def _sun_summary(c, events, x, y, w):
     c.drawString(x+w/2+8,y-39,"Golden PM: "+evening)
 
 
-def _map(c, route, target, cones, marshals, x, top, w, h, solar=None, sketches=None, text_boxes=None):
+def _closure_path(route, cones, mode='cinematic'):
+    """Sample the same Hermite centerline/AGL interpolation as the 3D preview."""
+    indexed=[(i,p) for i,p in enumerate(route) if _coord(p)]
+    if not indexed:return []
+    points=[p for _,p in indexed]
+    heights=[]
+    for i,_ in indexed:
+        cone=cones[i] if i<len(cones) and isinstance(cones[i],dict) else {}
+        try:h=float(cone.get('altitudeAGL',30))
+        except (TypeError,ValueError):h=30
+        heights.append(min(500,max(2,h)) if math.isfinite(h) else 30)
+    if len(points)==1:return [(points[0],heights[0])]
+    def distance(a,b):
+        lat1,lat2=map(math.radians,(a[0],b[0]));dlat=lat2-lat1;dlon=math.radians(b[1]-a[1])
+        v=math.sin(dlat/2)**2+math.cos(lat1)*math.cos(lat2)*math.sin(dlon/2)**2
+        return 6371008.8*2*math.asin(math.sqrt(min(1,v)))
+    legs=[max(.001,distance(a,b)) for a,b in zip(points,points[1:])]
+    amount=0 if mode=='direct' else .7 if mode=='smooth' else 1
+    def interpolate(values,i,t):
+        a,b=values[i:i+2]
+        if amount==0:return a+(b-a)*t
+        length=legs[i];previous=legs[i-1] if i else length
+        following=legs[i+1] if i+1<len(legs) else length
+        m0=((b-values[i-1])/(previous+length) if i else (b-a)/length)*length*amount
+        m1=((values[i+2]-a)/(length+following) if i+2<len(values) else (b-a)/length)*length*amount
+        return (2*t**3-3*t*t+1)*a+(t**3-2*t*t+t)*m0+(-2*t**3+3*t*t)*b+(t**3-t*t)*m1
+    lats=[p[0] for p in points];lons=[p[1] for p in points];result=[]
+    for i in range(len(legs)):
+        for k in range(32 if amount else 1):
+            t=k/(32 if amount else 1)
+            result.append(([interpolate(lats,i,t),interpolate(lons,i,t)],max(2,interpolate(heights,i,t))))
+    result.append((points[-1],heights[-1]));return result
+
+
+def _closure_bounds(path):
+    bounds=[]
+    for (lat,lon),radius in path:
+        dy=radius/111195;dx=dy/max(.01,math.cos(math.radians(lat)))
+        bounds.extend([[lat-dy,lon-dx],[lat+dy,lon+dx]])
+    return bounds
+
+
+def _closure_overlay(path,zoom,cx,cy,width,height):
+    """Raster union prevents dark overlaps; tangent joins leave no gaps."""
+    from PIL import ImageDraw, ImageFilter, ImageChops
+    mask=Image.new('L',(width,height),0);draw=ImageDraw.Draw(mask)
+    circles=[]
+    for point,radius in path:
+        xp,yp=_mercator(point,zoom)
+        r=radius/(40075016.686*max(.01,math.cos(math.radians(point[0])))/(256*2**zoom))
+        circles.append((xp-cx+width/2,yp-cy+height/2,r))
+    for a,b in zip(circles,circles[1:]):
+        ax,ay,ar=a;bx,by,br=b;dx,dy=bx-ax,by-ay;d=math.hypot(dx,dy)
+        if d<.0001 or abs(br-ar)>=d:continue
+        ux,uy=dx/d,dy/d;q=(ar-br)/d;s=math.sqrt(max(0,1-q*q))
+        nx1,ny1=q*ux-s*uy,q*uy+s*ux;nx2,ny2=q*ux+s*uy,q*uy-s*ux
+        draw.polygon([(ax+ar*nx1,ay+ar*ny1),(bx+br*nx1,by+br*ny1),
+                      (bx+br*nx2,by+br*ny2),(ax+ar*nx2,ay+ar*ny2)],fill=255)
+    for xp,yp,r in circles:draw.ellipse((xp-r,yp-r,xp+r,yp+r),fill=255)
+    edge=ImageChops.subtract(mask.filter(ImageFilter.MaxFilter(3)),mask.filter(ImageFilter.MinFilter(3)))
+    fill=Image.new('RGBA',(width,height),(237,146,61,0));fill.putalpha(mask.point(lambda v:round(v*.20)))
+    outline=Image.new('RGBA',(width,height),(218,113,22,0));outline.putalpha(edge.point(lambda v:round(v*.85)))
+    return Image.alpha_composite(fill,outline)
+
+def _map(c, route, target, cones, marshals, x, top, w, h, solar=None, sketches=None, text_boxes=None, closure_path=None):
     """Render a real street basemap, then precisely aligned vector map annotations."""
     drawings=[[p for p in line if _coord(p)] for line in (sketches or []) if isinstance(line,list)]
     boxes=[box for box in (text_boxes or []) if isinstance(box,dict) and _coord(box.get('position'))]
@@ -296,7 +360,7 @@ def _map(c, route, target, cones, marshals, x, top, w, h, solar=None, sketches=N
     pts=valid+([target] if _coord(target) else [])+[
         m["position"] for m in marshals
         if isinstance(m,dict) and _coord(m.get("position"))
-    ]+[p for line in drawings for p in line]+[box['position'] for box in boxes]
+    ]+[p for line in drawings for p in line]+[box['position'] for box in boxes]+_closure_bounds(closure_path or [])
     c.setFillColor(colors.HexColor("#f5f7f5"))
     c.setStrokeColor(colors.HexColor("#d6e2d9"))
     c.roundRect(x,top-h,w,h,7,stroke=1,fill=1)
@@ -327,6 +391,9 @@ def _map(c, route, target, cones, marshals, x, top, w, h, solar=None, sketches=N
         for i in range(1,5):
             c.line(x+i*w/5,top-h,x+i*w/5,top)
             c.line(x,top-i*h/5,x+w,top-i*h/5)
+
+    if closure_path:
+        c.drawImage(ImageReader(_closure_overlay(closure_path,zoom,cx,cy,width,height)),x,top-h,w,h,mask='auto')
 
     if solar:
         _draw_sun_rays(c,solar,valid[0] if valid else pts[0],project,x,top,w,h)
@@ -451,9 +518,15 @@ def make_planner_pdf(plan):
         if point is None and _coord(shot.get("target")):
             point=shot["target"]
         solar=_sun_events(shot,point)
+        closure=_closure_path(route,cones,shot.get('simSmoothing','cinematic')) if shot.get('pdfClosureArea') is True else []
         map_height=(245 if y>=580 else 205) if solar else (290 if y>=580 else 245)
-        _map(c,route,shot.get("target"),cones,marshals,M,y,PW-2*M,map_height,solar,shot.get("sketches"),shot.get("textBoxes"))
+        if closure:map_height-=24
+        _map(c,route,shot.get("target"),cones,marshals,M,y,PW-2*M,map_height,solar,shot.get("sketches"),shot.get("textBoxes"),closure)
         y-=map_height+8
+        if closure:
+            y=_line(c,'Orange: planned 1:1 exclusion area along the flight path (radius = height AGL).',M,y,8,INK)
+            y=_line(c,'Approximate planning overlay. Verify route, heights and site-specific restrictions before use.',M,y,7,MUTED)
+            y-=5
         if solar:
             _sun_summary(c,solar,M,y,PW-2*M)
             y-=54

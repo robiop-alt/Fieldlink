@@ -571,6 +571,8 @@ def save_drone_plan(plan_id: str, body: DronePlanSave, request: Request, x_admin
                 not -90<=point[0]<=90):
                 raise HTTPException(422,'Invalid map coordinate')
     for shot in body.shots:
+        if 'pdfClosureArea' in shot and not isinstance(shot['pdfClosureArea'],bool):
+            raise HTTPException(422,'Invalid PDF exclusion area option')
         boxes=shot.get('textBoxes',[])
         if not isinstance(boxes,list) or len(boxes)>100:
             raise HTTPException(422,'Maximum 100 text boxes per shot')
