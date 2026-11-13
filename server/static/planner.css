@@ -1550,3 +1550,13 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
   display:none!important;
  }
 }
+
+/* Side-by-side needs a wide preview; keep iPhone landscape transport compact. */
+@media screen and (orientation:landscape) and (max-height:600px) and (max-width:899px){
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-main>.sim-layout-label{
+  display:none!important;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-main .sim-lens-label select{
+  max-width:91px!important;
+ }
+}
