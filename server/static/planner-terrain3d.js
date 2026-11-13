@@ -379,59 +379,101 @@ async function loadBuildings(point,run,force=false){
  }
 }
 
+const PLAY_ICON='<svg class="sim-play-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M8 5.5L18 12 8 18.5Z" fill="currentColor"/></svg>';
+const PAUSE_ICON='<svg class="sim-play-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>';
+function updatePlayButton(){
+ $play.innerHTML=(playing?PAUSE_ICON:PLAY_ICON)+'<span class="sim-play-label">'+(playing?'Pause':'Play')+'</span>';
+ $play.setAttribute('aria-label',playing?'Pause flight':'Play flight');
+ $play.title=playing?'Pause flight':'Play flight';
+}
+function flightData(){
+ const shot=core()?.getShot(),points=route(shot);
+ const legs=points.slice(1).map((p,i)=>distance(points[i],p));
+ const total=legs.reduce((sum,l)=>sum+l,0);
+ return {shot,points,legs,total};
+}
+function clock(seconds){
+ const n=Math.max(0,Math.floor(Number(seconds)||0));
+ return Math.floor(n/60)+':'+String(n%60).padStart(2,'0');
+}
+function syncTimeline(total){
+ const speed=Math.max(1,Number($('sim-speed').value)||3);
+ const distance=Math.min(Math.max(0,playElapsed),total);
+ const current=total>0?distance/speed:0,full=total/speed;
+ const seek=$('sim-seek');
+ seek.value=total>0?String(Math.round(distance/total*1000)):'0';
+ seek.disabled=total<=0;
+ seek.style.setProperty('--seek-progress',seek.value/10+'%');
+ $('sim-time-current').textContent=clock(current);
+ $('sim-time-total').textContent=clock(full);
+ seek.setAttribute('aria-valuetext',clock(current)+' of '+clock(full));
+}
+function drawFlight(distance,plan=flightData()){
+ const {shot:s,points,legs,total}=plan;
+ if(!viewer||points.length<2||total<=0)return;
+ let remaining=Math.min(Math.max(0,distance),total),index=0;
+ while(index<legs.length-1&&remaining>legs[index])remaining-=legs[index++];
+ const t=legs[index]>0?Math.max(0,Math.min(1,remaining/legs[index])):1;
+ const smooth=flightSmoothing();
+ const headings=smoothHeadings(s,points);
+ const vals=(fn)=>points.map((p,i)=>fn(p,i));
+ const lats=vals(p=>p[0]),lons=vals(p=>p[1]);
+ const heights=vals((p,i)=>altitude(s,i));
+ const groundHeights=vals((p,i)=>groundAt(p,i));
+ const fovs=vals((p,i)=>fov(s,i));
+ const tilts=vals((p,i)=>pitch(s,i));
+ const here=[
+  smoothSegment(lats,legs,index,t,smooth),
+  smoothSegment(lons,legs,index,t,smooth)
+ ];
+ const h=smoothSegment(heights,legs,index,t,smooth);
+ const ground=smoothSegment(groundHeights,legs,index,t,smooth);
+ const current=s?.waypointCones?.[index],next=s?.waypointCones?.[index+1];
+ const heading=current?.mode==='target'&&next?.mode==='target'&&valid(s.target)
+  ?bearing(here,s.target):smoothSegment(headings,legs,index,t,smooth);
+ const horizontalFov=Math.max(5,Math.min(150,smoothSegment(fovs,legs,index,t,smooth)));
+ cameraAt(here,ground+h,heading,smoothSegment(tilts,legs,index,t,smooth),horizontalFov);
+ return Math.round(h);
+}
 function stop(reset=true){
- playing=false;cancelAnimationFrame(raf);raf=0;$play.textContent='▶ Play flight';lastTime=0;
+ playing=false;cancelAnimationFrame(raf);raf=0;lastTime=0;
  if(reset)playElapsed=0;
+ updatePlayButton();syncTimeline(flightData().total);
 }
 function play(){
  if(!viewer)return;
- if(playing){stop(false);status('Playback paused. Press Play to resume.');return}
- const s=core()?.getShot(),points=route(s);
- if(points.length<2){status('Add at least two waypoints to play a camera flight.');return}
+ if(playing){stop(false);status('Playback paused · drag the timeline to scrub');return}
+ const plan=flightData();
+ if(plan.points.length<2||plan.total<=0){status('Add two different waypoints to play a camera flight.');return}
+ if(playElapsed>=plan.total)playElapsed=0;
  if(overview){overview=false;$('sim-view').value='camera'}
- const legs=points.slice(1).map((p,i)=>distance(points[i],p));
- const total=legs.reduce((sum,l)=>sum+l,0);
- if(total<.01){status('Waypoints must be in different positions.');return}
- const headings=smoothHeadings(s,points);
- const lats=points.map(p=>p[0]),lons=points.map(p=>p[1]);
- const heights=points.map((p,i)=>altitude(s,i));
- const groundHeights=points.map((p,i)=>groundAt(p,i));
- const fovs=points.map((p,i)=>fov(s,i));
- const tilts=points.map((p,i)=>pitch(s,i));
- let elapsed=playElapsed;
- playing=true;$play.textContent='Ⅱ Pause';
+ playing=true;lastTime=0;updatePlayButton();
  function frame(now){
   if(!playing||!enabled)return;
-  // Speed can be adjusted during playback without restarting the shot.
-  const speed=Number($('sim-speed').value)||3;
-  if(lastTime)elapsed+=Math.min((now-lastTime)/1000,.1)*speed;
-  lastTime=now;playElapsed=elapsed;
-  let remaining=Math.min(elapsed,total),index=0;
-  while(index<legs.length-1&&remaining>legs[index])remaining-=legs[index++];
-  const t=legs[index]>0?Math.max(0,Math.min(1,remaining/legs[index])):1;
-  const smooth=flightSmoothing();
-  const a=points[index],b=points[index+1];
-  const here=[
-   smoothSegment(lats,legs,index,t,smooth),
-   smoothSegment(lons,legs,index,t,smooth)
-  ];
-  const h=smoothSegment(heights,legs,index,t,smooth);
-  const ground=smoothSegment(groundHeights,legs,index,t,smooth);
-  const current=s?.waypointCones?.[index];
-  const next=s?.waypointCones?.[index+1];
-  const heading=current?.mode==='target'&&next?.mode==='target'&&valid(s.target)
-   ?bearing(here,s.target)
-   :smoothSegment(headings,legs,index,t,smooth);
-  const horizontalFov=Math.max(5,Math.min(150,
-   smoothSegment(fovs,legs,index,t,smooth)));
-  cameraAt(here,ground+h,heading,
-   smoothSegment(tilts,legs,index,t,smooth),horizontalFov);
-  const pct=Math.min(100,Math.round(elapsed/total*100));
-  status('Playing shot · '+pct+'% · '+Math.round(h)+' m AGL · '+(smooth?'Smooth camera':'Direct camera'));
-  if(elapsed>=total){stop();status('Shot playback complete.');return}
+  const speed=Math.max(1,Number($('sim-speed').value)||3);
+  if(lastTime)playElapsed+=Math.min((now-lastTime)/1000,.1)*speed;
+  lastTime=now;
+  playElapsed=Math.min(playElapsed,plan.total);
+  const h=drawFlight(playElapsed,plan);
+  syncTimeline(plan.total);
+  const pct=Math.min(100,Math.round(playElapsed/plan.total*100));
+  status('Playing shot · '+pct+'% · '+Math.round(h||0)+' m AGL');
+  if(playElapsed>=plan.total){
+   stop(false);status('Shot playback complete · drag timeline or press Play to replay');return;
+  }
   raf=requestAnimationFrame(frame);
  }
  raf=requestAnimationFrame(frame);
+}
+function scrubFlight(value){
+ const plan=flightData();
+ if(!viewer||plan.total<=0)return;
+ if(overview){overview=false;$('sim-view').value='camera'}
+ playElapsed=plan.total*Math.max(0,Math.min(1000,Number(value)||0))/1000;
+ lastTime=0;
+ drawFlight(playElapsed,plan);
+ syncTimeline(plan.total);
+ if(!playing)status('Preview at '+clock(playElapsed/(Number($('sim-speed').value)||3))+' · press Play to continue');
 }
 
 function setWaypointPitch(value){
@@ -693,11 +735,14 @@ function refresh(){
  sampleRouteTerrain(run);
  loadBuildings(points[core().getActiveWaypoint()]||points[0],run);
 }
+syncTimeline(flightData().total);
 $('preview-3d-toggle').addEventListener('click',()=>setMode(!enabled));
 $('preview-pitch-up').addEventListener('click',()=>movePitch(5));
 $('preview-pitch-down').addEventListener('click',()=>movePitch(-5));
 $('sim-waypoint-tilt').addEventListener('input',event=>setWaypointPitch(event.target.value));
 $play.addEventListener('click',play);
+$('sim-seek').addEventListener('input',event=>scrubFlight(event.target.value));
+
 $('sim-reset').addEventListener('click',resetCamera);
 $('sim-view').addEventListener('change',event=>{
  stop();overview=event.target.value==='overview';showCamera();
@@ -747,6 +792,7 @@ $('sim-imagery-apply').addEventListener('click',()=>{
 });
 $('sim-speed').addEventListener('input',event=>{
  $('sim-speed-value').textContent=event.target.value+' m/s';
+ syncTimeline(flightData().total);
 });
 document.addEventListener('offset:map-rendered',refresh);
 document.addEventListener('offset:shot-rendered',refresh);
