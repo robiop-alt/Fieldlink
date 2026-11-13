@@ -12,7 +12,7 @@ function measurementDistanceLabel(metres){
  return '≈ '+(metres>=1000?(metres/1000).toFixed(2)+' km':metres.toFixed(metres<10?1:0)+' m');
 }
 function syncMeasurementDragging(){
- if(tool==='measure')map?.eachLayer(layer=>{
+ if(tool==='measure'||tool==='sketch')map?.eachLayer(layer=>{
   if(layer.dragging?.enabled()){measurementDraggables.add(layer);layer.dragging.disable()}
  });
  else{measurementDraggables.forEach(layer=>{if(map?.hasLayer(layer))layer.dragging?.enable()});measurementDraggables.clear()}
@@ -487,7 +487,7 @@ function addTextBox(position){
 }
 
 function pointIcon(i){ensureWaypointSelection();return L.divIcon({className:'',html:'<div class="waypoint-number" data-selected="'+selectedWaypoints.has(i)+'" data-active="'+(i===activeWaypoint)+'">'+(i+1)+'</div>',iconSize:[28,28],iconAnchor:[14,14]})}
-function updateStats(){const shot=getShot();const n=shot?.route.length||0;let distance=0;if(map&&shot)for(let i=1;i<n;i++)distance+=map.distance(shot.route[i-1],shot.route[i]);$('route-stats').textContent=n+' waypoint'+(n===1?'':'s')+' · '+(distance>=1000?(distance/1000).toFixed(2)+' km':Math.round(distance)+' m');$('map-help').textContent=tool==='measure'?(measurementPoints.length===0?'Tap the first point to measure a straight-line map distance.':measurementPoints.length===1?'Tap the second point. Distance is approximate and horizontal.':'Approximate horizontal distance. Tap to start a new measurement; tap the ruler to close.'):tool==='route'?'Tap the map to add points. Drag a point to adjust it.':tool==='camera'?'Tap where the camera should point.':tool==='marshal'?'Tap a street to place a red road marshal. Drag to move; tap to edit or remove.':tool==='text'?'Tap the map to place a text box. Tap existing text to edit or delete; drag to move.':tool==='sketch'?'Draw in red. Tap the finished drawing to select and delete it.':'Pan and zoom the map, or choose a drawing tool.'}
+function updateStats(){const shot=getShot();const n=shot?.route.length||0;let distance=0;if(map&&shot)for(let i=1;i<n;i++)distance+=map.distance(shot.route[i-1],shot.route[i]);$('route-stats').textContent=n+' waypoint'+(n===1?'':'s')+' · '+(distance>=1000?(distance/1000).toFixed(2)+' km':Math.round(distance)+' m');$('map-help').textContent=tool==='measure'?(measurementPoints.length===0?'Tap the first point to measure a straight-line map distance.':measurementPoints.length===1?'Tap the second point. Distance is approximate and horizontal.':'Approximate horizontal distance. Tap to start a new measurement; tap the ruler to close.'):tool==='route'?'Tap the map to add points. Drag a point to adjust it.':tool==='camera'?'Tap where the camera should point.':tool==='marshal'?'Tap a street to place a red road marshal. Drag to move; tap to edit or remove.':tool==='text'?'Tap the map to place a text box. Tap existing text to edit or delete; drag to move.':tool==='sketch'?'Draw in red. Choose Move to pan the map or tap a drawing to delete it.':'Pan and zoom the map, or choose a drawing tool.'}
 function renderMap(){if(!map||!current)return;if(droneHeightRing){droneHeightRing.remove();droneHeightRing=null}if(routeLine)routeLine.remove();if(aimLine)aimLine.remove();sketchLayers.forEach(layer=>layer.remove());sketchLayers=[];markers.forEach(x=>x.remove());markers=[];if(targetMarker)targetMarker.remove();targetMarker=null;const shot=getShot();if(!shot)return;ensureWaypointSelection();sketches(shot).forEach(points=>{if(Array.isArray(points)&&points.length>1&&points.every(coordsOk))sketchLayers.push(drawingLayer(shot,points))});routeLine=L.polyline(shot.route,{color:'#2fb474',weight:4,opacity:.95}).addTo(map);shot.route.forEach((p,i)=>{if(!coordsOk(p))return;const m=L.marker(p,{draggable:!selectingWaypoints,icon:pointIcon(i)}).addTo(map);m.bindTooltip('Waypoint '+(i+1));m.on('click',()=>{ensureWaypointSelection();if(selectingWaypoints){if(selectedWaypoints.has(i))selectedWaypoints.delete(i);else selectedWaypoints.add(i);renderMap()}else selectWaypoint(i)});m.on('dragend',()=>{shot.route[i]=[m.getLatLng().lat,m.getLatLng().lng];renderMap();scheduleSave()});markers.push(m)});if(coordsOk(shot.target)){targetMarker=L.marker(shot.target,{draggable:true,icon:L.divIcon({className:'',html:'<div class="camera-target">⌖</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);targetMarker.bindTooltip('Camera target');targetMarker.on('dragend',()=>{shot.target=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];renderMap();scheduleSave()});if(shot.route.length)aimLine=L.polyline([shot.route[shot.route.length-1],shot.target],{color:'#df956d',weight:2,dashArray:'6,7',opacity:.85}).addTo(map)}renderCones(shot);
  const active=shot.route[activeWaypoint];
  if(radiusEnabled()&&coordsOk(active)){
@@ -513,7 +513,7 @@ document.addEventListener('offset:flight-position',event=>{
   droneHeightRing.setRadius(p.radius);
  }
 });
-function setTool(next){if(next!=='measure')clearMeasurement();tool=next;if(next==='measure'){const wasSelecting=selectingWaypoints;selectingWaypoints=false;if(wasSelecting)renderMap();else renderWaypointEditor();map?.closePopup()}syncMeasurementDragging();if(map){if(window.matchMedia('(pointer: coarse)').matches&&next!=='move'&&next!=='measure')map.dragging.disable();else map.dragging.enable();map.touchZoom[ next==='sketch'?'disable':'enable' ]();}document.querySelectorAll('[data-tool]').forEach(b=>{const active=b.dataset.tool===tool;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});if(map){map.getContainer().style.cursor=tool==='move'?'grab':'crosshair';map.doubleClickZoom[tool==='move'?'enable':'disable']()};updateStats()}
+function setTool(next){document.dispatchEvent(new Event('offset:map-tool-changing'));if(next!=='measure')clearMeasurement();tool=next;if(next==='measure'){const wasSelecting=selectingWaypoints;selectingWaypoints=false;if(wasSelecting)renderMap();else renderWaypointEditor();map?.closePopup()}syncMeasurementDragging();if(map){map.getContainer().classList.toggle('map-sketching',next==='sketch');if(next==='sketch'||window.matchMedia('(pointer: coarse)').matches&&next!=='move'&&next!=='measure')map.dragging.disable();else map.dragging.enable();map.touchZoom[ next==='sketch'?'disable':'enable' ]();}document.querySelectorAll('[data-tool]').forEach(b=>{const active=b.dataset.tool===tool;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});if(map){map.getContainer().style.cursor=tool==='move'?'grab':'crosshair';map.doubleClickZoom[tool==='move'?'enable':'disable']()};updateStats()}
 function applyBasemapStyle(value){
  const minimal=value!=='standard';
  const node=$('planner-map');
@@ -526,34 +526,61 @@ applyBasemapStyle('minimal');
 function initMap(){if(!window.L){$('map-help').textContent='Map library unavailable. Check internet connection.';return}map=L.map('planner-map',{zoomControl:true}).setView([59.9139,10.7522],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);map.on('click',e=>{const shot=getShot();if(!shot||selectingWaypoints)return;const p=[e.latlng.lat,e.latlng.lng];if(tool==='route'){shot.route.push(p);activeWaypoint=shot.route.length-1;cones(shot);renderMap();scheduleSave()}else if(tool==='camera'){shot.target=p;renderMap();scheduleSave()}else if(tool==='marshal'){addMarshal(p)}else if(tool==='text'){addTextBox(p)}});setupSketchEvents();setupMeasurement();document.dispatchEvent(new CustomEvent('offset:planner-map-ready',{detail:{map}}));map.on('moveend',()=>{if(current&&!loading)scheduleSave()});window.addEventListener('orientationchange',()=>setTimeout(()=>map.invalidateSize(),350));window.addEventListener('resize',()=>map.invalidateSize());}
 
 function setupSketchEvents(){
-  if(!map)return;
-  const container=map.getContainer();
-  let drawing=null, draft=null, pointerId=null;
-  function fromEvent(e){const rect=container.getBoundingClientRect();return map.containerPointToLatLng([e.clientX-rect.left,e.clientY-rect.top])}
-  container.addEventListener('pointerdown',e=>{
-    if(tool!=='sketch'||!getShot()||!e.isPrimary||e.button>0||e.target.closest('.leaflet-control,.leaflet-popup,.map-text-box,button,input,textarea'))return;
-    pointerId=e.pointerId;
-    drawing=[];const p=fromEvent(e);drawing.push([p.lat,p.lng]);
-    draft=L.polyline(drawing,{color:'#ed4148',weight:3}).addTo(map);
-    try{container.setPointerCapture(e.pointerId)}catch{}
-    e.preventDefault();
-  });
-  container.addEventListener('pointermove',e=>{
-    if(!drawing||pointerId!==e.pointerId||tool!=='sketch')return;
-    const p=fromEvent(e),previous=drawing[drawing.length-1],next=[p.lat,p.lng];
-    if(map.distance(previous,next)>1){drawing.push(next);draft.setLatLngs(drawing)}
-    e.preventDefault();
-  });
-  const finish=e=>{
-    if(!drawing||pointerId!==e.pointerId)return;
-    const points=drawing;drawing=null;pointerId=null;
-    if(draft){draft.remove();draft=null}
-    if(points.length>1){sketches(getShot()).push(points.slice(0,500));setTool('move');renderMap();scheduleSave()}
-  };
-  container.addEventListener('pointerup',finish);
-  container.addEventListener('pointercancel',finish);
-  container.addEventListener('lostpointercapture',finish);
+ if(!map)return;
+ const container=map.getContainer(),options={capture:true,passive:false};
+ let drawing=null,draft=null,pointerId=null,drawingShot=null,lastPixel=null,suppressClickUntil=0;
+ const blocked='.leaflet-control,.leaflet-popup,.map-text-box,button,input,textarea';
+ function fromEvent(e){return map.mouseEventToLatLng(e)}
+ function consume(e){e.preventDefault();e.stopImmediatePropagation()}
+ function cleanup(){
+  const id=pointerId;drawing=null;pointerId=null;drawingShot=null;lastPixel=null;
+  if(draft){draft.remove();draft=null}
+  if(id!==null){
+   suppressClickUntil=Date.now()+400;
+   try{if(container.hasPointerCapture(id))container.releasePointerCapture(id)}catch{}
+  }
+ }
+ container.addEventListener('pointerdown',e=>{
+  if(tool!=='sketch'||!getShot()||e.isPrimary===false||e.button>0||e.target.closest(blocked))return;
+  consume(e);cleanup();
+  // Always lock panning: iPads with a trackpad may report a fine pointer.
+  map.dragging.disable();map.touchZoom.disable();
+  pointerId=e.pointerId;drawingShot=getShot();lastPixel=[e.clientX,e.clientY];
+  const p=fromEvent(e);drawing=[[p.lat,p.lng]];
+  draft=L.polyline(drawing,{color:'#ed4148',weight:3,interactive:false}).addTo(map);
+  try{container.setPointerCapture(pointerId)}catch{}
+ },options);
+ function appendPoint(e){
+  if(Math.hypot(e.clientX-lastPixel[0],e.clientY-lastPixel[1])<2)return;
+  const p=fromEvent(e);drawing.push([p.lat,p.lng]);lastPixel=[e.clientX,e.clientY];draft.setLatLngs(drawing);
+ }
+ container.addEventListener('pointermove',e=>{
+  if(!drawing||pointerId!==e.pointerId)return;
+  consume(e);
+  if(tool!=='sketch'||getShot()!==drawingShot){cleanup();return}
+  appendPoint(e);
+ },options);
+ container.addEventListener('pointerup',e=>{
+  if(!drawing||pointerId!==e.pointerId)return;
+  consume(e);
+  if(tool!=='sketch'||getShot()!==drawingShot){cleanup();return}
+  appendPoint(e);
+  const points=drawing,shot=drawingShot;cleanup();
+  if(points.length>1){
+   const sampled=points.length<=500?points:Array.from({length:500},(_,i)=>points[Math.round(i*(points.length-1)/499)]);
+   sketches(shot).push(sampled);renderMap();scheduleSave();
+  }
+ },options);
+ for(const name of ['pointercancel','lostpointercapture'])container.addEventListener(name,e=>{
+  if(pointerId!==e.pointerId)return;consume(e);cleanup();
+ },options);
+ container.addEventListener('click',e=>{
+  if(!e.target.closest(blocked)&&(tool==='sketch'||Date.now()<suppressClickUntil))consume(e);
+ },options);
+ document.addEventListener('offset:map-tool-changing',cleanup);
+ document.addEventListener('offset:shot-rendered',cleanup);
 }
+
 function locationStatus(message,error=false){
   const node=$('map-location-status');node.textContent=message;node.hidden=!message;node.classList.toggle('error',error);
 }

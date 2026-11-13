@@ -1879,3 +1879,9 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
  top:calc(var(--sim-heading-height,48px) + 8px)!important;max-width:65%;
 }
 .offset-planner .shot-preview-view.terrain-enabled.sim-split.sim-camera-focus .preview-terrain-loading{left:0}
+
+/* Freehand drawing owns the gesture, including iPads with mouse/trackpad. */
+.offset-planner #planner-map.map-sketching,
+.offset-planner #planner-map.map-sketching .leaflet-pane{touch-action:none!important;cursor:crosshair}
+.offset-planner #planner-map.map-sketching .leaflet-marker-pane,
+.offset-planner #planner-map.map-sketching .leaflet-overlay-pane path{pointer-events:none!important}
