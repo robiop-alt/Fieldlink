@@ -11,7 +11,7 @@ let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=nul
 let activeFlightPlan=null;
 let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
 let currentImageryLayer=null,flightMarker=null,flightRadiusCircle=null;
-let splitMap=null,splitRoute=null,splitDrone=null,splitRadius=null,splitArrow=null,splitMarkers=[];
+let splitMap=null,splitDrone=null,splitArrow=null,splitMounts=[];
 let sunSnapshot=null;
 function heightRadiusVisible(){
  try{return localStorage.getItem('offset-planner-drone-radius-visible-v1')!=='off'}
@@ -314,23 +314,13 @@ function adaptiveQuality(now,dt){
   lastQualityChange=now;
  }
 }
-// Lightweight Leaflet route map: one Cesium renderer only, preserving iPhone memory.
-function splitAllowed(){
- const view=$('shot-preview-view');
- return window.innerWidth>=900&&window.innerHeight>=580&&
-  (view?.clientWidth||0)>=680;
-}
-function splitIsActive(){return enabled&&$('sim-layout').value==='split'&&splitAllowed()}
-// Leaflet works in the original preview and in expanded desktop mode.
+// Dock the real planner map and its existing controls, preserving Leaflet's
+// editable waypoint markers, targets, cones, guards and all event bindings.
+function splitIsActive(){return enabled&&$('sim-layout').value==='split'}
 function syncSplitMap(lat,lng,agl,heading){
  if(!splitMap||!splitIsActive()||!Number.isFinite(lat)||!Number.isFinite(lng))return;
  const at=[lat,lng];
  if(splitDrone)splitDrone.setLatLng(at);
- if(splitRadius){
-  splitRadius.setLatLng(at);
-  splitRadius.setRadius(Math.max(0,agl||0));
-  splitRadius.setStyle({opacity:heightRadiusVisible()?1:0,fillOpacity:heightRadiusVisible()?.09:0});
- }
  if(splitArrow){
   const target=[lat+Math.cos((heading||0)*rad)*.00025,
     lng+Math.sin((heading||0)*rad)*.00025/Math.max(.1,Math.cos(lat*rad))];
@@ -339,65 +329,53 @@ function syncSplitMap(lat,lng,agl,heading){
 }
 function redrawSplitMap(){
  if(!splitMap)return;
- if(splitRoute){splitRoute.remove();splitRoute=null}
- for(const marker of splitMarkers)marker.remove();
- splitMarkers=[];
  const s=core()?.getShot(),points=route(s);
  if(!points.length)return;
- if(points.length>=2){
-  const plan=flightData(),samples=[];
-  const perLeg=Math.max(3,Math.min(12,Math.floor(350/plan.legs.length)));
-  for(let i=0;i<plan.legs.length;i++)
-   for(let k=0;k<perLeg;k++){const p=flightPathPoint(plan,i,k/perLeg);samples.push([p[0],p[1]])}
-  samples.push(points[points.length-1]);
-  splitRoute=window.L.polyline(samples,{color:'#58d994',weight:3,opacity:.85}).addTo(splitMap);
- }
- points.forEach((p,i)=>{
-  splitMarkers.push(window.L.circleMarker(p,{radius:4,weight:1.5,color:'#fff',
-   fillColor:'#3ac47c',fillOpacity:1}).addTo(splitMap).bindTooltip('WP '+(i+1)));
- });
- if(points.length>1)splitMap.fitBounds(window.L.latLngBounds(points).pad(.23),{animate:false,maxZoom:19});
- else splitMap.setView(points[0],17,{animate:false});
  const i=Math.min(core()?.getActiveWaypoint()||0,points.length-1);
  syncSplitMap(points[i][0],points[i][1],altitude(s,i),cameraDirection(s,i));
 }
 function setupSplitMap(){
- if(splitMap||!window.L)return;
- splitMap=window.L.map('sim-split-map',{
-  zoomControl:false,attributionControl:true,dragging:true,
-  scrollWheelZoom:false,keyboard:false,tap:false
- });
- window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  maxZoom:19,attribution:'© OpenStreetMap contributors'
- }).addTo(splitMap);
- splitDrone=window.L.circleMarker([0,0],{radius:6,color:'#fff',weight:2,
-  fillColor:'#f4ad54',fillOpacity:1}).addTo(splitMap);
- splitRadius=window.L.circle([0,0],{radius:30,color:'#ff9b38',
-  weight:2,fillColor:'#ff9b38',fillOpacity:.09,interactive:false}).addTo(splitMap);
- splitArrow=window.L.polyline([[0,0],[0,0]],{color:'#ffaf68',weight:2,
-  opacity:.9,interactive:false}).addTo(splitMap);
+ if(splitMap)return;
+ const main=core()?.getMap(),host=$('sim-split-map');
+ if(!main)return;
+ for(const selector of ['.map-panel .map-top-controls','.map-panel .map-toolbar','#planner-map']){
+  const node=document.querySelector(selector);if(!node)continue;
+  const placeholder=document.createComment('OFFSET main map original position');
+  node.parentNode.insertBefore(placeholder,node);
+  splitMounts.push({node,placeholder});host.append(node);
+ }
+ splitMap=main;
+ if(window.L){
+  splitDrone=window.L.circleMarker([0,0],{radius:6,color:'#fff',weight:2,
+   fillColor:'#f4ad54',fillOpacity:1,interactive:false}).addTo(main);
+  splitArrow=window.L.polyline([[0,0],[0,0]],{color:'#ffaf68',weight:2,
+   opacity:.9,interactive:false}).addTo(main);
+ }
  redrawSplitMap();
 }
 function applySplitLayout(){
  const active=splitIsActive();
  $('shot-preview-view').classList.toggle('sim-split',active);
  $('sim-split-map').hidden=!active;
- if(active){setupSplitMap();requestAnimationFrame(()=>{
-  if(!splitMap)return;splitMap.invalidateSize({pan:false});
-  redrawSplitMap();
- })}
+ if(active){
+  setupSplitMap();
+  requestAnimationFrame(()=>{if(splitMap)splitMap.invalidateSize({pan:false})});
+ }else clearSplitMap();
  if(viewer&&!viewer.isDestroyed())requestAnimationFrame(()=>{
-  viewer.resize();
+  viewer.resize();syncFrameGuides();updateCameraFrustum();
   if(!playing&&!overview)showCamera();
  });
- if($('sim-layout').value==='split'&&!active&&enabled)
-  status('Map + Camera requires a wide preview. Expand the view on iPad or desktop; iPhone stays in Camera mode.');
 }
 function clearSplitMap(){
- if(splitMap){splitMap.remove();splitMap=null}
- splitRoute=null;splitDrone=null;splitRadius=null;splitArrow=null;splitMarkers=[];
+ const main=splitMap;
+ if(splitDrone)splitDrone.remove();
+ if(splitArrow)splitArrow.remove();
+ splitDrone=null;splitArrow=null;splitMap=null;
+ for(const {node,placeholder} of splitMounts)placeholder.replaceWith(node);
+ splitMounts=[];
  $('sim-split-map').hidden=true;
  $('shot-preview-view').classList.remove('sim-split');
+ if(main)requestAnimationFrame(()=>main.invalidateSize({pan:false}));
 }
 // Solar geometry using the standard solar orbital approximation (UTC input).
 // This computes approximate geographic solar direction, not surveyed shadows.
@@ -1114,6 +1092,7 @@ function setExpanded(on){
  if(!panel)return;
  panel.classList.toggle('sim-expanded',on);
  panel.classList.remove('sim-expanded-settings');
+ if(!on){$('sim-layout').value='camera';clearSplitMap()}
  document.body.classList.toggle('simulator-expanded',on);
  $('sim-expand').textContent=on?'Close':'Expand';
  $('sim-landscape-settings').hidden=!on;
@@ -1257,6 +1236,7 @@ $('sim-smoothing').addEventListener('change',()=>{
  }
 });
 $('sim-layout').addEventListener('change',()=>{
+ if($('sim-layout').value==='split')setExpanded(true);
  if($('sim-layout').value==='split'&&overview){
   overview=false;$('sim-view').value='camera';
  }
