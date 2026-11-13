@@ -11,8 +11,8 @@ let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=nul
 let activeFlightPlan=null;
 let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
 let currentImageryLayer=null,flightMarker=null,flightRadiusCircle=null;
-let splitMap=null,splitDrone=null,splitArrow=null,splitMounts=[],splitNeedsFit=false;
-let sunSnapshot=null;
+let splitMap=null,splitDrone=null,splitArrow=null,splitFov=null,splitMounts=[],splitNeedsFit=false;
+let sunSnapshot=null,cameraFocus=false,aimPreviewFrame=0;
 function heightRadiusVisible(){
  try{return localStorage.getItem('offset-planner-drone-radius-visible-v1')!=='off'}
  catch{return true}
@@ -201,7 +201,8 @@ function motionDistance(timeDistance,total){
  return total*(u-flightSmoothing()*.11*Math.sin(2*Math.PI*u));
 }
 function timeForDistance(distance,total){
- if(total<=0)return 0;
+ if(total<=0||distance<=0)return 0;
+ if(distance>=total)return total;
  let lo=0,hi=1;
  for(let i=0;i<18;i++){
   const mid=(lo+hi)/2;
@@ -247,7 +248,7 @@ function setHud(info){
 }
 function lensLabel(s){return String(s?.lens||'Lens —').slice(0,28)}
 function fpsLabel(s){const fps=Number(s?.fps);return Number.isFinite(fps)&&fps>0?'FPS '+fps:'FPS —'}
-function updateFlightMarker(position,aglHeight,terrainHeight){
+function updateFlightMarker(position,aglHeight,terrainHeight,cameraHeading=viewer?.camera?.heading*deg,horizontalFov=fov(core()?.getShot())){
  if(!window.Cesium||!position)return;
  if(Number.isFinite(aglHeight)&&aglHeight>=0){
   document.dispatchEvent(new CustomEvent('offset:flight-position',{
@@ -255,7 +256,7 @@ function updateFlightMarker(position,aglHeight,terrainHeight){
   }));
  }
  const C=window.Cesium;
- syncSplitMap(position[0],position[1],aglHeight,viewer?.camera?.heading*deg);
+ syncSplitMap(position[0],position[1],aglHeight,cameraHeading,horizontalFov);
  if(flightMarker){
   flightMarker.position=C.Cartesian3.fromDegrees(position[1],position[0],position[2]);
   flightMarker.show=overview;
@@ -289,7 +290,7 @@ function renderWaypointTicks(plan=flightData()){
   mark.setAttribute('aria-label','Jump to waypoint '+(i+1));
   mark.addEventListener('click',event=>{
    event.preventDefault();event.stopPropagation();
-   scrubFlight(String(10*percent));
+   core()?.setActiveWaypoint(i);
   });
   layer.append(mark);
  }
@@ -350,7 +351,7 @@ function adaptiveQuality(now,dt){
 // Dock the real planner map and its existing controls, preserving Leaflet's
 // editable waypoint markers, targets, cones, guards and all event bindings.
 function splitIsActive(){return enabled&&$('sim-layout').value==='split'}
-function syncSplitMap(lat,lng,agl,heading){
+function syncSplitMap(lat,lng,agl,heading,horizontalFov=fov(core()?.getShot())){
  if(!splitMap||!splitIsActive()||!Number.isFinite(lat)||!Number.isFinite(lng))return;
  const at=[lat,lng];
  if(splitDrone)splitDrone.setLatLng(at);
@@ -359,6 +360,39 @@ function syncSplitMap(lat,lng,agl,heading){
     lng+Math.sin((heading||0)*rad)*.00025/Math.max(.1,Math.cos(lat*rad))];
   splitArrow.setLatLngs([at,target]);
  }
+ if(splitFov){
+  // Horizontal viewing angle only; the fan's display range is schematic.
+  const range=Math.max(30,Math.min(500,(Number(agl)||30)*3));
+  const angle=Math.max(5,Math.min(150,Number(horizontalFov)||50)),edge=[];
+  for(let k=0;k<=24;k++)edge.push(mapDestination(at,(heading||0)-angle/2+angle*k/24,range));
+  splitFov.setLatLngs([at,...edge,at]);
+ }
+
+}
+function mapDestination(start,heading,metres){
+ const d=metres/6371008.8,p=start[0]*rad,l=start[1]*rad,a=heading*rad;
+ const lat=Math.asin(Math.sin(p)*Math.cos(d)+Math.cos(p)*Math.sin(d)*Math.cos(a));
+ return [lat*deg,(l+Math.atan2(Math.sin(a)*Math.sin(d)*Math.cos(p),Math.cos(d)-Math.sin(p)*Math.sin(lat)))*deg];
+}
+function restorePreviewFrame(){
+ const plan=flightData();
+ if(!overview&&plan.total>0)drawFlight(motionDistance(playElapsed,plan.total),plan);
+ else showCamera();
+}
+function syncCameraFocus(){
+ const active=splitIsActive();
+ $('shot-preview-view').classList.toggle('sim-camera-focus',active&&cameraFocus);
+ const button=$('sim-camera-focus');button.hidden=!active;
+ button.textContent=cameraFocus?'Show map':'Larger preview';
+ button.setAttribute('aria-pressed',String(active&&cameraFocus));
+}
+function toggleCameraFocus(){
+ if(!splitIsActive())return;
+ cameraFocus=!cameraFocus;syncCameraFocus();
+ requestAnimationFrame(()=>{
+  if(splitMap&&!cameraFocus)splitMap.invalidateSize({pan:false});
+  if(viewer&&!viewer.isDestroyed()){viewer.resize();updateCameraFrustum();if(!playing)restorePreviewFrame()}
+ });
 }
 function redrawSplitMap(){
  if(!splitMap)return;
@@ -379,6 +413,7 @@ function setupSplitMap(){
  }
  splitMap=main;splitNeedsFit=true;
  if(window.L){
+  splitFov=window.L.polygon([],{color:'#75bff2',weight:1.2,fillColor:'#75bff2',fillOpacity:.12,interactive:false}).addTo(main);
   splitDrone=window.L.circleMarker([0,0],{radius:6,color:'#fff',weight:2,
    fillColor:'#f4ad54',fillOpacity:1,interactive:false}).addTo(main);
   splitArrow=window.L.polyline([[0,0],[0,0]],{color:'#ffaf68',weight:2,
@@ -388,6 +423,7 @@ function setupSplitMap(){
 }
 function applySplitLayout(){
  const active=splitIsActive();
+ syncCameraFocus();
  $('shot-preview-view').classList.toggle('sim-split',active);
  $('sim-split-map').hidden=!active;
  $('sim-split-divider').hidden=!active;
@@ -402,13 +438,15 @@ function applySplitLayout(){
  }else clearSplitMap();
  if(viewer&&!viewer.isDestroyed())requestAnimationFrame(()=>{
   viewer.resize();updateCameraFrustum();
-  if(!playing&&!overview)showCamera();
+  if(!playing&&!overview)restorePreviewFrame();
  });
 }
 function clearSplitMap(){
  const main=splitMap;
  if(splitDrone)splitDrone.remove();
  if(splitArrow)splitArrow.remove();
+ if(splitFov)splitFov.remove();splitFov=null;
+ cameraFocus=false;syncCameraFocus();
  splitDrone=null;splitArrow=null;splitMap=null;splitNeedsFit=false;
  for(const {node,placeholder} of splitMounts)placeholder.replaceWith(node);
  splitMounts=[];
@@ -533,6 +571,7 @@ function cameraAt(position,height,heading,tilt,horizontalFov){
 function showCamera(){
  const s=core()?.getShot(),points=route(s);if(!viewer||!points.length)return;
  const i=Math.min(core().getActiveWaypoint(),points.length-1),point=points[i];
+ if(!playing){const plan=flightData(),at=plan.legs.slice(0,i).reduce((sum,n)=>sum+n,0);playElapsed=timeForDistance(at,plan.total);syncTimeline(plan.total)}
  if(overview){
   const C=window.Cesium;
   viewer.camera.setView({
@@ -542,7 +581,7 @@ function showCamera(){
  }else cameraAt(point,heightAboveEllipsoid(s,point,i),cameraDirection(s,i),pitch(s,i),cameraFov(s,i));
  setHud({waypoint:'WP '+(i+1)+' / '+points.length,lens:lensLabel(s),fps:fpsLabel(s),
   height:altitude(s,i),heading:cameraDirection(s,i),tilt:pitch(s,i),fov:fov(s,i)});
- updateFlightMarker([point[0],point[1],heightAboveEllipsoid(s,point,i)],altitude(s,i),groundAt(point,i));
+ updateFlightMarker([point[0],point[1],heightAboveEllipsoid(s,point,i)],altitude(s,i),groundAt(point,i),cameraDirection(s,i),fov(s,i));
  $('preview-pitch-value').textContent='Tilt '+Math.round(pitch(s,i))+'°';
  if($('sim-waypoint-tilt')){
   $('sim-waypoint-tilt').value=String(Math.round(pitch(s,i)));
@@ -853,7 +892,7 @@ function drawFlight(distance,plan=flightData()){
  const horizontalFov=Math.max(5,Math.min(150,smoothSegment(fovs,legs,index,t,smooth)));
  const tilt=smoothSegment(tilts,legs,index,t,smooth);
  cameraAt(here,ground+h,heading,tilt,horizontalFov);
- updateFlightMarker([here[0],here[1],ground+h],h,ground);
+ updateFlightMarker([here[0],here[1],ground+h],h,ground,heading,horizontalFov);
  setHud({waypoint:'WP '+(index+1)+' → '+(index+2),lens:lensLabel(s),fps:fpsLabel(s),
   height:h,heading,tilt,fov:horizontalFov});
  return Math.round(h);
@@ -1293,7 +1332,9 @@ $('sim-smoothing').addEventListener('change',()=>{
   else if(!playing)showCamera();
  }
 });
+$('sim-camera-focus').addEventListener('click',toggleCameraFocus);
 $('sim-layout').addEventListener('change',()=>{
+ cameraFocus=false;
  if($('sim-layout').value==='split')setExpanded(true);
  if($('sim-layout').value==='split'&&overview){
   overview=false;$('sim-view').value='camera';
@@ -1314,6 +1355,18 @@ $('sim-speed').addEventListener('input',event=>{
  syncTimeline(flightData().total);
 });
 document.addEventListener('offset:map-rendered',refresh);
+document.addEventListener('offset:waypoint-selected',()=>{
+ if(!enabled||!viewer)return;
+ stop(false);overview=false;$('sim-view').value='camera';showCamera();
+ status('Waypoint '+(core().getActiveWaypoint()+1)+' · adjust height, tilt or drag the aim handle');
+});
+document.addEventListener('offset:waypoint-aimed',()=>{
+ if(!enabled||!viewer)return;
+ if(playing)stop(false);
+ overview=false;$('sim-view').value='camera';
+ if(aimPreviewFrame)return;
+ aimPreviewFrame=requestAnimationFrame(()=>{aimPreviewFrame=0;if(enabled&&viewer)showCamera()});
+});
 document.addEventListener('offset:shot-lens-changed',()=>{
  if(!enabled||!viewer||viewer.isDestroyed())return;
  const plan=activeFlightPlan;

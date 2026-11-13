@@ -321,6 +321,7 @@ function effectiveBearing(shot,index=activeWaypoint){
 function selectWaypoint(index){
  const shot=getShot();if(!shot||!shot.route.length)return;
  activeWaypoint=Math.max(0,Math.min(shot.route.length-1,index));renderMap();
+ document.dispatchEvent(new CustomEvent('offset:waypoint-selected',{detail:{index:activeWaypoint}}));
 }
 function updateConeControls(){
  const shot=getShot();if(!shot)return;
@@ -343,7 +344,9 @@ function renderCones(shot){
  coneLayers.forEach(layer=>layer.remove());coneLayers=[];
  if(coneHeadingMarker)coneHeadingMarker.remove();coneHeadingMarker=null;
  cones(shot).forEach((c,i)=>{
-  const origin=coneOrigin(shot,i);if(!c.visible||!origin)return;
+  const origin=coneOrigin(shot,i);
+  const splitEditing=document.querySelector('.shot-preview-view.sim-split');
+  if((!c.visible&&!(splitEditing&&i===activeWaypoint))||!origin)return;
   const bearing=effectiveBearing(shot,i),edge=[];
   for(let k=0;k<=24;k++)edge.push(destination(origin,bearing-c.fov/2+c.fov*k/24,c.range));
   const selected=i===activeWaypoint;
@@ -361,13 +364,22 @@ function renderCones(shot){
   }).addTo(map));
   if(!selected)return;
   const follow=c.mode==='target'&&coordsOk(shot.target);
-  coneHeadingMarker=L.marker(destination(origin,bearing,c.range),{draggable:!follow,icon:L.divIcon({className:'',html:'<div class="cone-aim" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></div>',iconSize:[26,26],iconAnchor:[13,13]})}).addTo(map);
-  coneHeadingMarker.bindTooltip(follow?'Following camera target':'Drag to aim waypoint '+(i+1));
-  if(!follow)coneHeadingMarker.on('dragend',()=>{
+  coneHeadingMarker=L.marker(destination(origin,bearing,c.range),{draggable:!selectingWaypoints,icon:L.divIcon({className:'cone-aim-hit',html:'<div class="cone-aim" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></div>',iconSize:[44,44],iconAnchor:[22,22]})}).addTo(map);
+  coneHeadingMarker.bindTooltip(follow?'Following target · drag to switch to manual aim':'Drag to aim waypoint '+(i+1));
+  const shape=coneLayers[coneLayers.length-1];
+  coneHeadingMarker.on('dragstart',()=>{
+   c.bearing=effectiveBearing(shot,i);c.mode='manual';
+   document.dispatchEvent(new Event('offset:waypoint-aimed'));
+  });
+  coneHeadingMarker.on('drag',()=>{
    const p=coneHeadingMarker.getLatLng(),aim=[p.lat,p.lng];
    c.bearing=headingBetween(origin,aim);c.range=Math.min(10000,Math.max(1,Math.round(map.distance(origin,aim))));
-   renderMap();scheduleSave();
+   const edge=[];
+   for(let k=0;k<=24;k++)edge.push(destination(origin,c.bearing-c.fov/2+c.fov*k/24,c.range));
+   shape.setLatLngs([origin,...edge,origin]);updateConeControls();renderWaypointEditor();
+   document.dispatchEvent(new Event('offset:waypoint-aimed'));
   });
+  coneHeadingMarker.on('dragend',()=>{renderMap();scheduleSave()});
  });
 }
 
