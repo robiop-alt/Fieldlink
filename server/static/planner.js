@@ -21,15 +21,25 @@ $('drone-radius-map').addEventListener('change',e=>setRadiusEnabled(e.target.che
 $('sim-radius-toggle').addEventListener('change',e=>setRadiusEnabled(e.target.checked));
 const coordsOk=p=>Array.isArray(p)&&p.length===2&&p.every(v=>typeof v==='number'&&Number.isFinite(v)&&Math.abs(v)<=180)&&Math.abs(p[0])<=90;
 function syncDateDisplay(){const input=$('shot-date'),face=$('shot-date-display');if(!input||!face)return;const value=input.value;if(!/^\d{4}-\d{2}-\d{2}$/.test(value)){face.textContent='Select date';face.classList.add('is-empty');return}const [year,month,day]=value.split('-');face.textContent=day+'.'+month+'.'+year;face.classList.remove('is-empty')}
-const blankShot=(name='New shot')=>({id:crypto.randomUUID(),name,description:'',drone:'',lens:'',date:'',time:'',sunHour:12,referenceImage:'',route:[],sketches:[],target:null,waypointCones:[]});
+const blankShot=(name='New shot')=>({id:crypto.randomUUID(),name,description:'',drone:'',lens:'',date:'',time:'',sunHour:12,referenceImage:'',route:[],sketches:[],marshals:[],target:null,waypointCones:[]});
 const api=async(path,opt={})=>{const r=await fetch(path,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...opt});if(!r.ok){let message='Request failed ('+r.status+')';try{const d=await r.json();message=typeof d.detail==='string'?d.detail:message}catch{}throw Error(message)}return r.json()};
 function state(message){$('save-state').textContent=message}
 function getShot(){return current?.shots?.[activeShot]}
 function sketches(shot){if(!Array.isArray(shot.sketches))shot.sketches=[];return shot.sketches}
-function normalized(data){return {...data,shots:Array.isArray(data.shots)?data.shots:[],marshals:Array.isArray(data.marshals)?data.marshals:[]}}
+function normalized(data){
+ const shots=Array.isArray(data.shots)?data.shots:[];
+ const legacy=Array.isArray(data.marshals)?data.marshals:[];
+ for(const shot of shots)if(!Array.isArray(shot.marshals))shot.marshals=[];
+ // Older plans had no shot ownership. Keep those guards on the first shot only.
+ if(shots.length&&legacy.length){
+  const ids=new Set(shots[0].marshals.map(guard=>guard.id));
+  shots[0].marshals.push(...legacy.filter(guard=>!ids.has(guard.id)));
+ }
+ return {...data,shots,marshals:shots.length?[]:legacy};
+}
 async function load(){try{const data=await api('/api/admin/planner');plans=data.plans.map(normalized);current=plans[0]||null;if(!current){await createPlan('Untitled plan');return}selectPlan(current.id)}catch(e){state('Load error');alert(e.message)}}
 async function createPlan(name){try{const result=await api('/api/admin/planner',{method:'POST',body:JSON.stringify({name})});plans.unshift(normalized(result));selectPlan(result.id);state('Saved')}catch(e){alert(e.message)}}
-function selectPlan(id){if(saveTimer){clearTimeout(saveTimer);saveTimer=null;const pending=current;saveNow(pending)}current=plans.find(p=>p.id===id);activeShot=0;activeWaypoint=0;if(map&&current?.center&&Number.isFinite(current.center.lat)&&Number.isFinite(current.center.lng)){map.setView([current.center.lat,current.center.lng],current.zoom||12)}if(current&&!current.shots.length){current.shots.push(blankShot('Opening shot'));scheduleSave()}render();renderMap()}
+function selectPlan(id){if(saveTimer){clearTimeout(saveTimer);saveTimer=null;const pending=current;saveNow(pending)}current=plans.find(p=>p.id===id);activeShot=0;activeWaypoint=0;if(map&&current?.center&&Number.isFinite(current.center.lat)&&Number.isFinite(current.center.lng)){map.setView([current.center.lat,current.center.lng],current.zoom||12)}if(current&&!current.shots.length){const shot=blankShot('Opening shot');shot.marshals=current.marshals||[];current.marshals=[];current.shots.push(shot);scheduleSave()}render();renderMap()}
 function render(){const select=$('plan-select');select.replaceChildren(...plans.map(p=>{const el=document.createElement('option');el.value=p.id;el.textContent=p.name;return el}));select.value=current?.id||'';const mobile=$('mobile-shot');mobile.replaceChildren(...(current?.shots||[]).map((shot,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=(i+1)+'. '+(shot.name||'Untitled shot');return option}));mobile.value=String(activeShot);const list=$('shot-list');list.replaceChildren();current?.shots.forEach((shot,i)=>{const item=document.createElement('div');item.className='shot-item'+(i===activeShot?' active':'');const count=document.createElement('span');count.className='shot-count';count.textContent=shot.route.length+' pts';const n=document.createElement('span');n.className='shot-number';n.textContent=String(i+1).padStart(2,'0');const b=document.createElement('button');b.textContent=shot.name||'Untitled shot';b.onclick=()=>{readFields();activeShot=i;activeWaypoint=0;render();renderMap()};item.append(n,b,count);list.append(item)});const shot=getShot();loading=true;for(const key of ['name','description','drone','lens','date','time'])$('shot-'+key).value=shot?.[key]??'';$('shot-time').value=shotTime(shot);loading=false;syncDateDisplay();syncLensControls();updateConeControls();updateStats();document.dispatchEvent(new Event('offset:shot-rendered'))}
 // Older plans used named periods; retain their existing preview clock values.
 function shotTime(shot=getShot()){
@@ -169,7 +179,7 @@ function renderCones(shot){
  });
 }
 
-function roadMarshals(){return Array.isArray(current?.marshals)?current.marshals:[]}
+function roadMarshals(shot=getShot()){return Array.isArray(shot?.marshals)?shot.marshals:[]}
 function marshalIcon(){
  return L.divIcon({
   className:'marshal-marker-wrap',
@@ -181,7 +191,7 @@ function removeMarshal(id){
  if(!current)return;
  const index=roadMarshals().findIndex(item=>item.id===id);
  if(index<0)return;
- current.marshals.splice(index,1);
+ roadMarshals().splice(index,1);
  renderMarshals();scheduleSave();
 }
 function editMarshal(item){
@@ -230,10 +240,10 @@ function renderMarshals(){
  });
 }
 function addMarshal(position){
- if(!current||!coordsOk(position))return;
- if(!Array.isArray(current.marshals))current.marshals=[];
- if(current.marshals.length>=200){alert('Maximum 200 road marshals per plan.');return}
- current.marshals.push({id:crypto.randomUUID(),position,label:'Road marshal '+(current.marshals.length+1)});
+ const shot=getShot();if(!shot||!coordsOk(position))return;
+ if(!Array.isArray(shot.marshals))shot.marshals=[];
+ if(shot.marshals.length>=200){alert('Maximum 200 road marshals per shot.');return}
+ shot.marshals.push({id:crypto.randomUUID(),position,label:'Road marshal '+(shot.marshals.length+1)});
  renderMarshals();scheduleSave();
 }
 
@@ -375,7 +385,7 @@ function setupLocationTools(){
   });
 }
 
-function buildPrint(){const root=$('print-summary');root.replaceChildren();const h=document.createElement('h1');h.textContent='OFFSET · '+current.name;root.append(h);const sub=document.createElement('p');sub.textContent='Drone shot plan · '+new Date().toLocaleDateString('en-GB');root.append(sub);current.shots.forEach((s,i)=>{const article=document.createElement('article');const heading=document.createElement('h2');heading.textContent=(i+1)+'. '+s.name;article.append(heading);const meta=document.createElement('p');meta.textContent=[s.drone,s.lens,s.date,s.time].filter(Boolean).join(' · ');article.append(meta);const desc=document.createElement('p');desc.textContent=s.description;article.append(desc);const pt=document.createElement('p');pt.textContent='Flight path (latitude, longitude):';article.append(pt);const ol=document.createElement('ol');s.route.forEach(c=>{const li=document.createElement('li');li.textContent=c.map(v=>v.toFixed(6)).join(', ');ol.append(li)});article.append(ol);if(s.target){const tar=document.createElement('p');tar.textContent='Camera target: '+s.target.map(v=>v.toFixed(6)).join(', ');article.append(tar)}cones(s).forEach((c,i)=>{if(!c.visible)return;const p=document.createElement('p');p.textContent='Waypoint '+(i+1)+' camera cone: '+c.mode+' · '+Math.round(effectiveBearing(s,i))+'° · FOV '+c.fov+'° · '+c.range+' m';article.append(p)});root.append(article)});if(roadMarshals().length){const h=document.createElement('h2');h.textContent='Road marshals / Sperrevakter';root.append(h);const ol=document.createElement('ol');roadMarshals().forEach((guard,i)=>{const li=document.createElement('li');li.textContent=(guard.label||'Road marshal '+(i+1))+' — '+guard.position.map(v=>Number(v).toFixed(6)).join(', ');ol.append(li)});root.append(ol)}}
+function buildPrint(){const root=$('print-summary');root.replaceChildren();const h=document.createElement('h1');h.textContent='OFFSET · '+current.name;root.append(h);const sub=document.createElement('p');sub.textContent='Drone shot plan · '+new Date().toLocaleDateString('en-GB');root.append(sub);current.shots.forEach((s,i)=>{const article=document.createElement('article');const heading=document.createElement('h2');heading.textContent=(i+1)+'. '+s.name;article.append(heading);const meta=document.createElement('p');meta.textContent=[s.drone,s.lens,s.date,s.time].filter(Boolean).join(' · ');article.append(meta);const desc=document.createElement('p');desc.textContent=s.description;article.append(desc);const pt=document.createElement('p');pt.textContent='Flight path (latitude, longitude):';article.append(pt);const ol=document.createElement('ol');s.route.forEach(c=>{const li=document.createElement('li');li.textContent=c.map(v=>v.toFixed(6)).join(', ');ol.append(li)});article.append(ol);if(s.target){const tar=document.createElement('p');tar.textContent='Camera target: '+s.target.map(v=>v.toFixed(6)).join(', ');article.append(tar)}cones(s).forEach((c,i)=>{if(!c.visible)return;const p=document.createElement('p');p.textContent='Waypoint '+(i+1)+' camera cone: '+c.mode+' · '+Math.round(effectiveBearing(s,i))+'° · FOV '+c.fov+'° · '+c.range+' m';article.append(p)});if(roadMarshals(s).length){const h=document.createElement('h3');h.textContent='Road marshals / Sperrevakter';article.append(h);const guards=document.createElement('ol');roadMarshals(s).forEach((guard,i)=>{const li=document.createElement('li');li.textContent=(guard.label||'Road marshal '+(i+1))+' — '+guard.position.map(v=>Number(v).toFixed(6)).join(', ');guards.append(li)});article.append(guards)}root.append(article)})}
 async function start(){try{await api('/api/admin/me')}catch{$('auth-warning').hidden=false;return}$('planner-app').hidden=false;for(let tries=0;!window.L&&tries<40;tries++)await new Promise(resolve=>setTimeout(resolve,150));initMap();setupLocationTools();await load();setTool('move');setTimeout(()=>map?.invalidateSize(),150)}
 $('planner-refresh').addEventListener('click',async event=>{
  event.preventDefault();
@@ -410,7 +420,7 @@ $('add-shot').onclick=()=>{if(!current)return;readFields();current.shots.push(bl
 $('remove-shot').onclick=()=>{if(!current||!confirm('Delete this shot?'))return;current.shots.splice(activeShot,1);if(!current.shots.length)current.shots.push(blankShot('Opening shot'));activeShot=Math.min(activeShot,current.shots.length-1);render();renderMap();scheduleSave()};
 $('clear-shot').onclick=()=>{$('erase-drawing').click()};
 $('erase-drawing').onclick=()=>{const shot=getShot();if(!shot||!confirm('Clear flight path, sketches and camera target?'))return;shot.route=[];shot.waypointCones=[];activeWaypoint=0;shot.target=null;shot.sketches=[];renderMap();scheduleSave()};
-$('undo-point').onclick=()=>{const shot=getShot();if(!shot)return;if(tool==='marshal'&&roadMarshals().length){current.marshals.pop();renderMarshals();scheduleSave();return;}if(tool==='sketch'&&sketches(shot).length)shot.sketches.pop();else if(tool==='camera'&&shot.target)shot.target=null;else if(shot.route.length){shot.route.pop();cones(shot);activeWaypoint=Math.min(activeWaypoint,Math.max(0,shot.route.length-1));}else if(sketches(shot).length)shot.sketches.pop();else if(shot.target)shot.target=null;else return;renderMap();scheduleSave()};
+$('undo-point').onclick=()=>{const shot=getShot();if(!shot)return;if(tool==='marshal'&&roadMarshals().length){roadMarshals().pop();renderMarshals();scheduleSave();return;}if(tool==='sketch'&&sketches(shot).length)shot.sketches.pop();else if(tool==='camera'&&shot.target)shot.target=null;else if(shot.route.length){shot.route.pop();cones(shot);activeWaypoint=Math.min(activeWaypoint,Math.max(0,shot.route.length-1));}else if(sketches(shot).length)shot.sketches.pop();else if(shot.target)shot.target=null;else return;renderMap();scheduleSave()};
 $('fit-route').onclick=()=>{const shot=getShot();if(!map||!shot)return;const points=[...shot.route,...sketches(shot).flat(),...(shot.target?[shot.target]:[]),...roadMarshals().map(x=>x.position).filter(coordsOk)];if(points.length)map.fitBounds(L.latLngBounds(points).pad(.25),{maxZoom:16})};
 
 $('cone-visible').addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s);if(!c)return;c.visible=e.target.checked;renderMap();scheduleSave()});

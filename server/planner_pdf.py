@@ -399,13 +399,13 @@ def make_planner_pdf(plan):
     c.setAuthor("OFFSET")
     name=_safe(plan.get("name"),90) or "Untitled plan"
     shots=[shot for shot in (plan.get("shots") or []) if isinstance(shot,dict)]
-    marshals=[g for g in (plan.get("marshals") or [])
-              if isinstance(g,dict) and _coord(g.get("position"))]
     if not shots:
         y=_page(c,name,"DRONE SHOT PLAN")
         _line(c,"No shots in this plan yet.",M,y,11,MUTED)
         c.showPage()
     for index,shot in enumerate(shots):
+        marshals=[g for g in (shot.get("marshals") or [])
+                  if isinstance(g,dict) and _coord(g.get("position"))]
         y=_page(c,name,f"SHOT {index+1:02d} / {len(shots):02d}")
         y=_line(c,_safe(shot.get("name"),100) or f"Shot {index+1}",M,y,14,INK,True)
         details=[_safe(shot.get(k),60) for k in ("drone","lens","date","time")]

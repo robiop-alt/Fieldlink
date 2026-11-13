@@ -358,13 +358,40 @@ class DronePlanSave(BaseModel):
     center: dict | None = None
     zoom: int | None = Field(default=None, ge=0, le=22)
 
+def validate_planner_marshals(guards):
+    for guard in guards:
+        if not isinstance(guard,dict): raise HTTPException(422,'Invalid road marshal')
+        point=guard.get('position')
+        if (not isinstance(point,list) or len(point)!=2 or
+            not all(isinstance(v,(int,float)) and not isinstance(v,bool) for v in point) or
+            not -90 <= point[0] <= 90 or not -180 <= point[1] <= 180):
+            raise HTTPException(422,'Invalid road marshal coordinates')
+        if not isinstance(guard.get('id'),str) or len(guard['id'])>100:
+            raise HTTPException(422,'Invalid road marshal ID')
+        if not isinstance(guard.get('label',''),str) or len(guard.get('label',''))>100:
+            raise HTTPException(422,'Invalid road marshal label')
+
+def planner_shot_marshals(shots, legacy):
+    """Assign pre-shot guard data to the first shot without duplicating it."""
+    shots=[{**shot, 'marshals':shot.get('marshals',[])} if isinstance(shot,dict) else shot
+           for shot in shots]
+    if legacy and shots and isinstance(shots[0],dict):
+        guards=shots[0]['marshals']
+        if isinstance(guards,list):
+            ids={guard.get('id') for guard in guards if isinstance(guard,dict)}
+            shots[0]['marshals']=guards+[
+                guard for guard in legacy
+                if not isinstance(guard,dict) or guard.get('id') not in ids]
+    return shots
+
 def planner_document(row):
     import json
     try: contents=json.loads(row['data_json'])
     except (ValueError, TypeError): contents={}
+    shots=planner_shot_marshals(contents.get('shots',[]),contents.get('marshals',[]))
     return {'id':row['id'],'name':row['name'],
-            'shots':contents.get('shots',[]),
-            'marshals':contents.get('marshals',[]),
+            'shots':shots,
+            'marshals':[] if shots else contents.get('marshals',[]),
             'center':contents.get('center'),
             'zoom':contents.get('zoom'),
             'updated':row['updated']}
@@ -549,20 +576,17 @@ def save_drone_plan(plan_id: str, body: DronePlanSave, request: Request, x_admin
         if image and (not isinstance(image,str) or len(image)>250000
                       or not image.startswith('data:image/jpeg;base64,')):
             raise HTTPException(422,'Reference image must be an optimised JPEG under 185 KB')
-    # Road marshals belong to the plan (not an individual shot).
-    # Their positions are planning annotations, not traffic closure permissions.
-    for guard in body.marshals:
-        if not isinstance(guard,dict): raise HTTPException(422,'Invalid road marshal')
-        point=guard.get('position')
-        if (not isinstance(point,list) or len(point)!=2 or
-            not all(isinstance(v,(int,float)) and not isinstance(v,bool) for v in point) or
-            not -90 <= point[0] <= 90 or not -180 <= point[1] <= 180):
-            raise HTTPException(422,'Invalid road marshal coordinates')
-        if not isinstance(guard.get('id'),str) or len(guard['id'])>100:
-            raise HTTPException(422,'Invalid road marshal ID')
-        if not isinstance(guard.get('label',''),str) or len(guard.get('label',''))>100:
-            raise HTTPException(422,'Invalid road marshal label')
-    payload=json.dumps({'shots':body.shots,'marshals':body.marshals,'center':body.center,'zoom':body.zoom})
+    # Guard positions belong to their shot. Accept older clients' plan-level guards
+    # as first-shot data so saved plans survive the transition without spreading.
+    shots=planner_shot_marshals(body.shots,body.marshals)
+    guard_groups=[shot['marshals'] for shot in shots]
+    if not shots:
+        guard_groups.append(body.marshals)
+    for guards in guard_groups:
+        if not isinstance(guards,list) or len(guards)>200:
+            raise HTTPException(422,'Maximum 200 road marshals per shot')
+        validate_planner_marshals(guards)
+    payload=json.dumps({'shots':shots,'marshals':[] if shots else body.marshals,'center':body.center,'zoom':body.zoom})
     if len(payload)>1_000_000: raise HTTPException(413,'Plan is too large')
     updated=int(time.time())
     with db() as c:
