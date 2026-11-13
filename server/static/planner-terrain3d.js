@@ -9,7 +9,7 @@ let viewer=null,buildingTileset=null,enabled=false,loadingSdk=null,epoch=0;
 let terrainProvider=null,terrainHeights=[],terrainSignature='',terrainEpoch=0,terrainReady=false;
 let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=null;
 let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
-let currentImageryLayer=null,flightMarker=null;
+let currentImageryLayer=null,flightMarker=null,flightRadiusCircle=null;
 let lastQualityChange=0,frameInterval=16;
 const imageryKeyStore='offset-planner-maptiler-key-v1';
 let maptilerKey='';
@@ -36,7 +36,6 @@ async function loadSharedIonToken(){
     await saveSharedIonToken(ionReadToken);
    }
    $('sim-cesium-key').value=ionReadToken;
-loadSharedIonToken();
   }catch(error){
    console.warn('OFFSET private Cesium key sync unavailable:',error?.message);
    $('sim-cesium-hint').textContent=ionReadToken
@@ -241,10 +240,25 @@ function setHud(info){
 }
 function lensLabel(s){return String(s?.lens||'Lens —').slice(0,28)}
 function fpsLabel(s){const fps=Number(s?.fps);return Number.isFinite(fps)&&fps>0?'FPS '+fps:'FPS —'}
-function updateFlightMarker(position){
- if(!flightMarker||!window.Cesium||!position)return;
- flightMarker.position=window.Cesium.Cartesian3.fromDegrees(position[1],position[0],position[2]);
- flightMarker.show=overview;
+function updateFlightMarker(position,aglHeight,terrainHeight){
+ if(!window.Cesium||!position)return;
+ const C=window.Cesium;
+ if(flightMarker){
+  flightMarker.position=C.Cartesian3.fromDegrees(position[1],position[0],position[2]);
+  flightMarker.show=overview;
+ }
+ // One real-world metre horizontally per metre of height above local ground.
+ // The ellipse dimensions are radii in metres, never pixel sizes or diameters.
+ if(flightRadiusCircle){
+  const radius=Number(aglHeight);
+  if(!Number.isFinite(radius)||radius<0){flightRadiusCircle.show=false;return}
+  const ground=Number.isFinite(terrainHeight)?terrainHeight:position[2]-radius;
+  flightRadiusCircle.position=C.Cartesian3.fromDegrees(position[1],position[0],ground);
+  flightRadiusCircle.ellipse.semiMajorAxis=Math.max(.1,radius);
+  flightRadiusCircle.ellipse.semiMinorAxis=Math.max(.1,radius);
+  flightRadiusCircle.ellipse.height=ground+.35;
+  flightRadiusCircle.show=overview;
+ }
 }
 function renderWaypointTicks(plan=flightData()){
  const layer=$('sim-timeline-waypoints');
@@ -314,7 +328,7 @@ function showCamera(){
  }else cameraAt(point,heightAboveEllipsoid(s,point,i),cameraDirection(s,i),pitch(s,i),cameraFov(s,i));
  setHud({waypoint:'WP '+(i+1)+' / '+points.length,lens:lensLabel(s),fps:fpsLabel(s),
   height:altitude(s,i),heading:cameraDirection(s,i),tilt:pitch(s,i),fov:fov(s,i)});
- updateFlightMarker([point[0],point[1],heightAboveEllipsoid(s,point,i)]);
+ updateFlightMarker([point[0],point[1],heightAboveEllipsoid(s,point,i)],altitude(s,i),groundAt(point,i));
  $('preview-pitch-value').textContent='Tilt '+Math.round(pitch(s,i))+'°';
  if($('sim-waypoint-tilt')){
   $('sim-waypoint-tilt').value=String(Math.round(pitch(s,i)));
@@ -326,7 +340,7 @@ function markerLabel(index){return 'WP '+(index+1)}
 function renderRoute(){
  if(!viewer)return;
  const C=window.Cesium,s=core()?.getShot(),points=route(s);
- viewer.entities.removeAll();flightMarker=null;
+ viewer.entities.removeAll();flightMarker=null;flightRadiusCircle=null;
  if(!points.length)return;
  if(points.length>1){
   const plan=flightData(),samples=[];
@@ -342,6 +356,21 @@ function renderRoute(){
   viewer.entities.add({polyline:{positions:samples,width:3,
    material:C.Color.fromCssColorString('#58eb99').withAlpha(.78),clampToGround:false}});
   const first=points[0];
+  // Footprint ring stays on the approximate ground plane beneath the drone.
+  // Radius = current AGL altitude (10 m -> 10 m, 100 m -> 100 m).
+  flightRadiusCircle=viewer.entities.add({
+   name:'Drone height footprint · radius equals height AGL',
+   position:C.Cartesian3.fromDegrees(first[1],first[0],groundAt(first,0)),
+   ellipse:{
+    semiMajorAxis:Math.max(.1,altitude(s,0)),
+    semiMinorAxis:Math.max(.1,altitude(s,0)),
+    height:groundAt(first,0)+.35,
+    material:C.Color.fromCssColorString('#79e8aa').withAlpha(.07),
+    outline:true,outlineColor:C.Color.fromCssColorString('#a9ffd1').withAlpha(.86),
+    outlineWidth:2
+   },
+   show:overview
+  });
   flightMarker=viewer.entities.add({
    name:'Drone position',
    position:C.Cartesian3.fromDegrees(first[1],first[0],heightAboveEllipsoid(s,first,0)),
@@ -594,7 +623,7 @@ function drawFlight(distance,plan=flightData()){
  const horizontalFov=Math.max(5,Math.min(150,smoothSegment(fovs,legs,index,t,smooth)));
  const tilt=smoothSegment(tilts,legs,index,t,smooth);
  cameraAt(here,ground+h,heading,tilt,horizontalFov);
- updateFlightMarker([here[0],here[1],ground+h]);
+ updateFlightMarker([here[0],here[1],ground+h],h,ground);
  setHud({waypoint:'WP '+(index+1)+' → '+(index+2),lens:lensLabel(s),fps:fpsLabel(s),
   height:h,heading,tilt,fov:horizontalFov});
  return Math.round(h);
@@ -835,7 +864,7 @@ function destroy(){
  terrainEpoch++;terrainHeights=[];terrainSignature='';terrainProvider=null;terrainReady=false;
  if(dragHandler){dragHandler.destroy();dragHandler=null}
  if(viewer){viewer.destroy();viewer=null}
- currentImageryLayer=null;flightMarker=null;
+ currentImageryLayer=null;flightMarker=null;flightRadiusCircle=null;
  activeDrag=null;
 }
 function setExpanded(on){
@@ -940,6 +969,7 @@ $('sim-reload-buildings').addEventListener('click',()=>{
 });
 $('sim-3d-source').addEventListener('change',switch3dSource);
 $('sim-cesium-key').value=ionReadToken;
+loadSharedIonToken();
 $('sim-cesium-apply').addEventListener('click',async()=>{
  const token=$('sim-cesium-key').value.trim();
  if(!token){
