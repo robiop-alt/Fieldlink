@@ -1749,3 +1749,39 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 @media screen and (orientation:landscape){
  .offset-planner .shot-preview-view.terrain-enabled.sim-split .sim-camera-hud{max-width:calc(100% - var(--sim-split-share,43%) - 16px)}
 }
+/* Touch transport: separate the sliders from buttons and the home gesture. */
+@media screen and (pointer:coarse){
+ .offset-planner #sim-seek,
+ .offset-planner #sim-sun-time{
+  height:44px;min-height:44px;touch-action:none;
+ }
+ .offset-planner #sim-seek::-webkit-slider-thumb{
+  width:22px;height:22px;margin-top:-9px;
+ }
+ .offset-planner #sim-seek::-moz-range-thumb{width:22px;height:22px}
+ .offset-planner .sim-waypoint-tick{top:18px}
+ .offset-planner #sim-sun-time{
+  appearance:none;-webkit-appearance:none;background:transparent;border:0;
+ }
+ .offset-planner #sim-sun-time::-webkit-slider-runnable-track{
+  height:4px;border-radius:5px;background:#e7ad66;
+ }
+ .offset-planner #sim-sun-time::-webkit-slider-thumb{
+  appearance:none;-webkit-appearance:none;width:22px;height:22px;
+  margin-top:-9px;border:2px solid #ffe6c1;border-radius:50%;
+  background:#d99843;box-shadow:0 1px 5px #0007;
+ }
+ .offset-planner #sim-sun-time::-moz-range-track{height:4px;border-radius:5px;background:#e7ad66}
+ .offset-planner #sim-sun-time::-moz-range-thumb{
+  width:22px;height:22px;border:2px solid #ffe6c1;border-radius:50%;background:#d99843;
+ }
+ .offset-planner .shot-preview-panel .shot-simulator-controls>.sim-timeline{
+  margin-top:14px;padding-top:0;padding-bottom:0;
+ }
+ .offset-planner .shot-preview-panel .shot-simulator-controls>.sim-sun-controls{
+  margin-top:12px;padding-top:0;padding-bottom:0;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded .shot-simulator-controls{
+  padding-bottom:calc(28px + env(safe-area-inset-bottom,0px))!important;
+ }
+}
