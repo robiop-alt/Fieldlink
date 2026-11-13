@@ -1560,3 +1560,17 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
   max-width:91px!important;
  }
 }
+
+/* Sun time follows the shot date; one touch-friendly track on every screen. */
+.offset-planner .sim-sun-date{font:10px 'DM Mono',monospace;color:#bcd4c4}
+.offset-planner .sim-sun-controls>.sim-sun-time{
+ flex:1 1 100%;display:flex;align-items:center;gap:8px;
+}
+.offset-planner .sim-sun-time output{
+ font:11px 'DM Mono',monospace;color:#ffce8d;min-width:36px;
+}
+.offset-planner #sim-sun-time{
+ flex:1;min-width:50px;width:100%;height:28px;min-height:28px;
+ padding:0;margin:0;accent-color:#ffb761;cursor:pointer;
+}
+.offset-planner #sim-sun-time:disabled{opacity:.4}

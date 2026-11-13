@@ -414,13 +414,14 @@ function solarAngles(date,latitude,longitude){
  return {azimuth:(azimuth+2*Math.PI)%(2*Math.PI),elevation};
 }
 function shotSunDate(){
- const value=$('sim-sun-datetime').value;
+ const shot=core()?.getShot();
+ const value=shot?.date?shot.date+'T'+$('sim-sun-time-label').textContent:'';
  if(!value)return null;
  const millis=Date.parse(value.length===16?value+':00Z':value+'Z');
  const hours=Number($('sim-sun-utc').value);
  return Number.isFinite(millis)&&Number.isFinite(hours)?new Date(millis-hours*3600000):null;
 }
-let sunShotSignature='',sunManualDate=false,sunManualTimezone=false;
+let sunShotSignature='',sunManualTimezone=false;
 function defaultSunControls(){
  const timezone=$('sim-sun-utc');
  if(!timezone.options.length){
@@ -434,28 +435,24 @@ function defaultSunControls(){
  const shot=core()?.getShot();
  const signature=[shot?.id||'',shot?.date||'',shot?.time||''].join('|');
  if(sunShotSignature===signature)return;
- const newShot=sunShotSignature.split('|')[0]!==String(shot?.id||'');
- if(newShot){sunManualDate=false}
  sunShotSignature=signature;
- if(sunManualDate)return;
- const now=new Date();
- const localDate=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
- const date=/^\d{4}-\d{2}-\d{2}$/.test(shot?.date||'')
-  ?shot.date:localDate;
- const timeOfDay=String(shot?.time||'').toLowerCase();
- const hour=timeOfDay.includes('sunrise')?'06':timeOfDay.includes('morning')?'09':
-  timeOfDay.includes('sunset')?'19':timeOfDay.includes('golden')?'18':
-  timeOfDay.includes('afternoon')?'16':timeOfDay.includes('night')?'22':'12';
- $('sim-sun-datetime').value=date+'T'+hour+':00';
- if(!sunManualTimezone){
+ const date=/^\d{4}-\d{2}-\d{2}$/.test(shot?.date||'')?shot.date:'';
+ const time=core()?.shotTime(shot)||'12:00';
+ const slider=$('sim-sun-time');
+ slider.value=Number(time.slice(0,2))*60+Number(time.slice(3));
+ slider.disabled=!shot||!date;
+ slider.setAttribute('aria-valuetext',time);
+ $('sim-sun-time-label').textContent=time;
+ $('sim-sun-date').textContent=date?'Shot date · '+date.split('-').reverse().join('.'):'Set Shot date';
+ if(date&&!sunManualTimezone){
   const guess=new Date(date+'T12:00:00');
   const offset=Math.round(-guess.getTimezoneOffset()/30)/2;
   timezone.value=String(offset);
  }
 }
 function applySun(){
- if(!viewer||viewer.isDestroyed()||!window.Cesium)return;
  defaultSunControls();
+ if(!viewer||viewer.isDestroyed()||!window.Cesium)return;
  const C=window.Cesium,active=$('sim-sun-toggle').checked;
  const points=route(core()?.getShot()),p=points[core()?.getActiveWaypoint()||0]||points[0];
  if(!active||!p){
@@ -469,7 +466,11 @@ function applySun(){
  }
  const date=shotSunDate();
  if(!date||!Number.isFinite(date.getTime())){
-  $('sim-sun-status').textContent='Choose a valid date and time';return;
+  viewer.shadows=false;viewer.scene.shadowMap.enabled=false;
+  viewer.scene.globe.enableLighting=false;
+  if(buildingTileset)buildingTileset.shadows=C.ShadowMode.DISABLED;
+  if(sunSnapshot?.light)viewer.scene.light=sunSnapshot.light;
+  $('sim-sun-status').textContent='Set Shot date to preview sunlight';return;
  }
  const solar=solarAngles(date,p[0],p[1]);
  const az=solar.azimuth,elev=solar.elevation;
@@ -1229,7 +1230,13 @@ $('sim-layout').addEventListener('change',()=>{
  applySplitLayout();
 });
 $('sim-sun-toggle').addEventListener('change',applySun);
-$('sim-sun-datetime').addEventListener('change',()=>{sunManualDate=true;applySun()});
+$('sim-sun-time').addEventListener('input',()=>{
+ const minutes=Number($('sim-sun-time').value);
+ const time=String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');
+ core()?.setShotTime(time);
+});
+document.addEventListener('offset:shot-time-changed',applySun);
+$('shot-date').addEventListener('change',applySun);
 $('sim-sun-utc').addEventListener('change',()=>{sunManualTimezone=true;applySun()});
 $('sim-speed').addEventListener('input',event=>{
  $('sim-speed-value').textContent=event.target.value+' m/s';

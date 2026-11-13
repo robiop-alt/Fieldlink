@@ -13,7 +13,7 @@ function saved(){core()?.save()}
 function valid(p){return core()?.coordsOk(p)}
 function place(){const s=shot(),m=map();return s?.route?.find(valid)|| (m?[m.getCenter().lat,m.getCenter().lng]:null)}
 function dateForShot(){if(shot()?.date)return shot().date;const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
-function hours(){const h=Number(shot()?.sunHour);return Number.isFinite(h)?Math.min(23.75,Math.max(0,h)):12}
+function hours(){const time=core()?.shotTime(shot());if(time)return Number(time.slice(0,2))+Number(time.slice(3))/60;const h=Number(shot()?.sunHour);return Number.isFinite(h)?Math.min(1439/60,Math.max(0,h)):12}
 function solar(pos,day,hour){
  // NOAA GML approximation for solar coordinates. Civil time is the browser
  // timezone (explicitly stated in the UI), not a location-derived timezone.
@@ -222,8 +222,9 @@ function showPanels(){
 }
 $('sun-hour').addEventListener('input',()=>{
  const s=shot();if(!s)return;
- s.sunHour=Number($('sun-hour').value);
- sunDisplay();saved();
+ const minutes=Math.round(Number($('sun-hour').value)*60);
+ core()?.setShotTime(String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0'));
+ sunDisplay();
 });
 $('terrain-refresh').addEventListener('click',()=>{terrainKey='';loadTerrain(true)});
 $('reference-upload').addEventListener('click',()=>$('reference-file').click());
@@ -246,6 +247,7 @@ document.addEventListener('offset:planner-map-ready',()=>sunDisplay());
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',sunDisplay,{once:true})}
 else sunDisplay();
 document.addEventListener('offset:shot-rendered',showPanels);
+document.addEventListener('offset:shot-time-changed',sunDisplay);
 document.addEventListener('offset:map-rendered',()=>{sunDisplay();queueTerrain()});
 document.addEventListener('offset:planner-map-ready',e=>{
  e.detail.map.on('moveend',()=>{if(!shot()?.route?.length)sunDisplay()});
