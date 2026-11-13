@@ -1070,9 +1070,39 @@ function destroy(){
  currentImageryLayer=null;flightMarker=null;flightRadiusCircle=null;
  activeDrag=null;
 }
+let expandedPlaceholder=null,expandedScrollY=0,viewportLayoutFrame=0;
+function mountExpandedPanel(panel,on){
+ if(on&&!expandedPlaceholder){
+  expandedScrollY=window.scrollY;
+  expandedPlaceholder=document.createComment('OFFSET preview return position');
+  panel.parentNode.insertBefore(expandedPlaceholder,panel);
+  document.body.append(panel);
+ }else if(!on&&expandedPlaceholder){
+  expandedPlaceholder.replaceWith(panel);expandedPlaceholder=null;
+  window.scrollTo({top:expandedScrollY,behavior:'instant'});
+ }
+}
+function syncExpandedViewport(){
+ const panel=document.querySelector('.shot-preview-panel');
+ if(!panel?.classList.contains('sim-expanded'))return;
+ const viewport=window.visualViewport;
+ panel.style.setProperty('--sim-viewport-width',(viewport?.width||window.innerWidth)+'px');
+ panel.style.setProperty('--sim-viewport-height',(viewport?.height||window.innerHeight)+'px');
+ syncExpandedChrome();
+ if(splitMap)splitMap.invalidateSize({pan:false});
+ if(viewer&&!viewer.isDestroyed()){viewer.resize();updateCameraFrustum()}
+}
+function scheduleExpandedViewport(){
+ if(viewportLayoutFrame)cancelAnimationFrame(viewportLayoutFrame);
+ viewportLayoutFrame=requestAnimationFrame(()=>{viewportLayoutFrame=0;syncExpandedViewport()});
+}
+window.visualViewport?.addEventListener('resize',scheduleExpandedViewport,{passive:true});
+window.visualViewport?.addEventListener('scroll',scheduleExpandedViewport,{passive:true});
+window.addEventListener('orientationchange',scheduleExpandedViewport,{passive:true});
 function setExpanded(on){
  const panel=document.querySelector('.shot-preview-panel');
  if(!panel)return;
+ mountExpandedPanel(panel,on);
  panel.classList.toggle('sim-expanded',on);
  panel.classList.remove('sim-expanded-settings');
  if(!on){$('sim-layout').value='camera';clearSplitMap()}
@@ -1082,7 +1112,7 @@ function setExpanded(on){
  $('sim-landscape-settings').textContent='Settings';
  $('sim-landscape-settings').setAttribute('aria-expanded','false');
  requestAnimationFrame(()=>requestAnimationFrame(()=>{
-  syncExpandedChrome();if(enabled&&viewer){viewer.resize();applySplitLayout();if(!playing&&!overview)showCamera()}
+  syncExpandedViewport();syncExpandedChrome();if(enabled&&viewer){viewer.resize();applySplitLayout();if(!playing&&!overview)showCamera()}
  }));
 }
 $('sim-landscape-settings').addEventListener('click',()=>{
@@ -1254,7 +1284,7 @@ document.addEventListener('offset:shot-lens-changed',()=>{
 document.addEventListener('offset:shot-rendered',refresh);
 document.addEventListener('offset:preview-height-changed',refresh);
 document.addEventListener('offset:planner-layout',()=>{if(enabled&&viewer)viewer.resize()});
-window.addEventListener('resize',()=>{if(enabled&&viewer){applySplitLayout();viewer.resize()}});
+window.addEventListener('resize',()=>{scheduleExpandedViewport();if(enabled&&viewer){applySplitLayout();viewer.resize()}});
 function syncExpandedChrome(){
  const panel=document.querySelector('.shot-preview-panel');
  if(!panel?.classList.contains('sim-expanded')||panel.classList.contains('sim-expanded-settings'))return;

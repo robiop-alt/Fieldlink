@@ -1785,3 +1785,23 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
   padding-bottom:calc(28px + env(safe-area-inset-bottom,0px))!important;
  }
 }
+
+/* Isolate fullscreen hit testing from the scrolling planner and iPad auto-zoom. */
+@media screen{
+ body.offset-planner>.shot-preview-panel.sim-expanded{
+  width:var(--sim-viewport-width,100vw)!important;
+  height:var(--sim-viewport-height,100dvh)!important;
+  max-height:var(--sim-viewport-height,100dvh)!important;
+  right:auto!important;bottom:auto!important;
+  transform:none!important;isolation:isolate;overscroll-behavior:none;
+ }
+ .offset-planner .shot-preview-panel.sim-expanded button,
+ .offset-planner .shot-preview-panel.sim-expanded select{touch-action:manipulation}
+}
+@media screen and (pointer:coarse){
+ .offset-planner .shot-preview-panel.sim-expanded input:not([type=range]):not([type=checkbox]),
+ .offset-planner .shot-preview-panel.sim-expanded select,
+ .offset-planner .shot-preview-panel.sim-expanded textarea{
+  font-size:16px!important;
+ }
+}
