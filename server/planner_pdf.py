@@ -361,6 +361,9 @@ def _closure_overlay(path,zoom,cx,cy,width,height):
 def _draw_marshal(c,x,y,number):
     """Vector map pin: exact position at tip, high-visibility vest and list number."""
     c.saveState();c.translate(x,y)
+    # Compact symbol, anchored at the same map coordinate. Keep the number
+    # independently sized so it remains readable on the printed A4 map.
+    c.saveState();c.scale(.5,.5)
     path=c.beginPath();path.moveTo(0,0);path.lineTo(-9,10)
     path.curveTo(-16,19,-10,31,0,31)
     path.curveTo(10,31,16,19,9,10);path.close()
@@ -376,11 +379,12 @@ def _draw_marshal(c,x,y,number):
     c.drawPath(vest,fill=1,stroke=0)
     c.setStrokeColor(colors.white);c.setLineWidth(.8);c.line(-3.3,14.2,3.3,14.2)
     c.setStrokeColor(colors.HexColor('#b92f3d'));c.setLineWidth(.6);c.line(0,19.8,0,12)
+    c.restoreState()
     # Number ties the symbol to the road-marshal list on the same page.
     c.setFillColor(colors.white);c.setStrokeColor(RED);c.setLineWidth(1)
-    c.circle(11,27,6.6,fill=1,stroke=1)
-    c.setFillColor(RED);c.setFont('Helvetica-Bold',6.5 if number<100 else 5.5)
-    c.drawCentredString(11,24.8,str(number).zfill(2))
+    c.circle(7,13.5,5,fill=1,stroke=1)
+    c.setFillColor(RED);c.setFont('Helvetica-Bold',6 if number<100 else 5)
+    c.drawCentredString(7,11.5,str(number).zfill(2))
     c.restoreState()
 
 
