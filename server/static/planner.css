@@ -1835,3 +1835,12 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
  .offset-planner .waypoint-values input[type=range],
  .offset-planner #sim-split-map .waypoint-values input[type=range]{height:44px;min-height:44px}
 }
+
+/* Shot-specific red markup and movable text annotations. */
+.offset-planner .map-text-marker{width:auto!important;height:auto!important}
+.offset-planner .map-text-box{width:max-content;max-width:190px;padding:6px 9px;border:1px solid #d33b43;border-radius:4px;background:#fff9f3f2;color:#a31e28;font:600 12px/1.35 sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 2px 6px #0003;cursor:move}
+.offset-planner .map-text-editor{display:flex;flex-wrap:wrap;gap:6px;min-width:180px}
+.offset-planner .map-text-editor textarea{flex:1 1 100%;font-size:16px;color:#e6eee7}
+.offset-planner .leaflet-popup-content button{font-size:11px;min-height:32px;margin:4px 0 0;padding:5px 8px}
+.offset-planner .leaflet-popup-content .annotation-delete{display:block;background:#802e34;border-color:#b65258;color:#fff}
+.offset-planner .map-toolbar button[data-tool="sketch"]{color:#ff777d}

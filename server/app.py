@@ -570,6 +570,20 @@ def save_drone_plan(plan_id: str, body: DronePlanSave, request: Request, x_admin
                 not all(isinstance(v,(int,float)) and -180<=v<=180 for v in point) or
                 not -90<=point[0]<=90):
                 raise HTTPException(422,'Invalid map coordinate')
+    for shot in body.shots:
+        boxes=shot.get('textBoxes',[])
+        if not isinstance(boxes,list) or len(boxes)>100:
+            raise HTTPException(422,'Maximum 100 text boxes per shot')
+        for box in boxes:
+            if (not isinstance(box,dict) or not isinstance(box.get('id'),str)
+                or len(box['id'])>100 or not isinstance(box.get('text'),str)
+                or not box['text'].strip() or len(box['text'])>300):
+                raise HTTPException(422,'Invalid map text box')
+            point=box.get('position')
+            if (not isinstance(point,list) or len(point)!=2
+                or not all(isinstance(v,(int,float)) and not isinstance(v,bool) for v in point)
+                or not -90<=point[0]<=90 or not -180<=point[1]<=180):
+                raise HTTPException(422,'Invalid text box coordinate')
     # Keep inline shot references small so the SQLite plan store and PDF stay fast.
     for shot in body.shots:
         image=shot.get('referenceImage','')

@@ -1,7 +1,7 @@
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
 const clone=x=>JSON.parse(JSON.stringify(x));
-let plans=[],current=null,activeShot=0,activeWaypoint=0,map,routeLine,aimLine,markers=[],marshalMarkers=[],sketchLayers=[],targetMarker,coneLayers=[],coneHeadingMarker,searchPin,locationPin,tool='move',saveTimer=null,saveEpoch=0,loading=false;
+let plans=[],current=null,activeShot=0,activeWaypoint=0,map,routeLine,aimLine,markers=[],marshalMarkers=[],sketchLayers=[],textMarkers=[],targetMarker,coneLayers=[],coneHeadingMarker,searchPin,locationPin,tool='move',saveTimer=null,saveEpoch=0,loading=false;
 let droneHeightRing=null;
 const radiusPreferenceKey='offset-planner-drone-radius-visible-v1';
 function radiusEnabled(){
@@ -21,7 +21,7 @@ $('drone-radius-map').addEventListener('change',e=>setRadiusEnabled(e.target.che
 $('sim-radius-toggle').addEventListener('change',e=>setRadiusEnabled(e.target.checked));
 const coordsOk=p=>Array.isArray(p)&&p.length===2&&p.every(v=>typeof v==='number'&&Number.isFinite(v)&&Math.abs(v)<=180)&&Math.abs(p[0])<=90;
 function syncDateDisplay(){const input=$('shot-date'),face=$('shot-date-display');if(!input||!face)return;const value=input.value;if(!/^\d{4}-\d{2}-\d{2}$/.test(value)){face.textContent='Select date';face.classList.add('is-empty');return}const [year,month,day]=value.split('-');face.textContent=day+'.'+month+'.'+year;face.classList.remove('is-empty')}
-const blankShot=(name='New shot')=>({id:crypto.randomUUID(),name,description:'',drone:'',lens:'',date:'',time:'',sunHour:12,referenceImage:'',route:[],sketches:[],marshals:[],target:null,waypointCones:[]});
+const blankShot=(name='New shot')=>({id:crypto.randomUUID(),name,description:'',drone:'',lens:'',date:'',time:'',sunHour:12,referenceImage:'',route:[],sketches:[],textBoxes:[],marshals:[],target:null,waypointCones:[]});
 const api=async(path,opt={})=>{const r=await fetch(path,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...opt});if(!r.ok){let message='Request failed ('+r.status+')';try{const d=await r.json();message=typeof d.detail==='string'?d.detail:message}catch{}throw Error(message)}return r.json()};
 function state(message){$('save-state').textContent=message}
 function getShot(){return current?.shots?.[activeShot]}
@@ -392,9 +392,44 @@ function addMarshal(position){
  renderMarshals();scheduleSave();
 }
 
+function textBoxes(shot){if(!Array.isArray(shot.textBoxes))shot.textBoxes=[];return shot.textBoxes}
+function drawingLayer(shot,points){
+ const line=L.polyline(points,{color:'#ed4148',weight:3,opacity:1,bubblingMouseEvents:false}).addTo(map);
+ const popup=document.createElement('div'),title=document.createElement('strong'),remove=document.createElement('button');
+ title.textContent='Map drawing';remove.type='button';remove.className='annotation-delete';remove.textContent='Delete drawing';
+ popup.append(title,remove);
+ remove.onclick=()=>{if(getShot()!==shot)return;const i=sketches(shot).indexOf(points);if(i<0)return;shot.sketches.splice(i,1);map.closePopup();renderMap();scheduleSave()};
+ line.bindPopup(popup);line.on('click',()=>{if(tool==='sketch')return;line.setStyle({weight:6});line.openPopup()});
+ line.on('popupclose',()=>line.setStyle({weight:3}));
+ return line;
+}
+function renderTextBoxes(shot){
+ textMarkers.forEach(marker=>marker.remove());textMarkers=[];
+ textBoxes(shot).forEach(box=>{
+  if(!coordsOk(box.position))return;
+  const content=document.createElement('div');content.className='map-text-box';content.textContent=box.text;
+  const marker=L.marker(box.position,{draggable:true,bubblingMouseEvents:false,icon:L.divIcon({className:'map-text-marker',html:content,iconSize:null,iconAnchor:[0,0]})}).addTo(map);
+  marker.on('dragend',()=>{if(getShot()!==shot)return;const point=marker.getLatLng();box.position=[point.lat,point.lng];scheduleSave()});
+  const popup=document.createElement('div');popup.className='map-text-editor';
+  const input=document.createElement('textarea');input.value=box.text;input.maxLength=300;input.rows=3;input.setAttribute('aria-label','Map text');
+  const save=document.createElement('button');save.type='button';save.textContent='Save text';
+  save.onclick=()=>{if(getShot()!==shot)return;const value=input.value.trim();if(!value){input.focus();return}box.text=value;map.closePopup();renderMap();scheduleSave()};
+  const remove=document.createElement('button');remove.type='button';remove.className='annotation-delete';remove.textContent='Delete text box';
+  remove.onclick=()=>{if(getShot()!==shot)return;const i=textBoxes(shot).indexOf(box);if(i<0)return;shot.textBoxes.splice(i,1);map.closePopup();renderMap();scheduleSave()};
+  popup.append(input,save,remove);marker.bindPopup(popup,{maxWidth:260});textMarkers.push(marker);
+ });
+}
+function addTextBox(position){
+ const shot=getShot();if(!shot)return;
+ if(textBoxes(shot).length>=100){alert('Maximum 100 text boxes per shot.');return}
+ const value=prompt('Text to place on the map','');if(!value?.trim())return;
+ textBoxes(shot).push({id:crypto.randomUUID(),position,text:value.trim().slice(0,300)});
+ setTool('move');renderMap();scheduleSave();
+}
+
 function pointIcon(i){ensureWaypointSelection();return L.divIcon({className:'',html:'<div class="waypoint-number" data-selected="'+selectedWaypoints.has(i)+'" data-active="'+(i===activeWaypoint)+'">'+(i+1)+'</div>',iconSize:[28,28],iconAnchor:[14,14]})}
-function updateStats(){const shot=getShot();const n=shot?.route.length||0;let distance=0;if(map&&shot)for(let i=1;i<n;i++)distance+=map.distance(shot.route[i-1],shot.route[i]);$('route-stats').textContent=n+' waypoint'+(n===1?'':'s')+' · '+(distance>=1000?(distance/1000).toFixed(2)+' km':Math.round(distance)+' m');$('map-help').textContent=tool==='route'?'Tap the map to add points. Drag a point to adjust it.':tool==='camera'?'Tap where the camera should point.':tool==='cone'?'Tap to add a waypoint with its attached camera cone.':tool==='marshal'?'Tap a street to place a red road marshal. Drag to move; tap to edit or remove.':tool==='sketch'?'Drag a finger or mouse to draw freely.':'Pan and zoom the map, or choose a drawing tool.'}
-function renderMap(){if(!map||!current)return;if(droneHeightRing){droneHeightRing.remove();droneHeightRing=null}if(routeLine)routeLine.remove();if(aimLine)aimLine.remove();sketchLayers.forEach(layer=>layer.remove());sketchLayers=[];markers.forEach(x=>x.remove());markers=[];if(targetMarker)targetMarker.remove();targetMarker=null;const shot=getShot();if(!shot)return;ensureWaypointSelection();sketches(shot).forEach(points=>{if(Array.isArray(points)&&points.length>1&&points.every(coordsOk))sketchLayers.push(L.polyline(points,{color:'#efaf67',weight:3,opacity:.95}).addTo(map))});routeLine=L.polyline(shot.route,{color:'#2fb474',weight:4,opacity:.95}).addTo(map);shot.route.forEach((p,i)=>{if(!coordsOk(p))return;const m=L.marker(p,{draggable:!selectingWaypoints,icon:pointIcon(i)}).addTo(map);m.bindTooltip('Waypoint '+(i+1));m.on('click',()=>{ensureWaypointSelection();if(selectingWaypoints){if(selectedWaypoints.has(i))selectedWaypoints.delete(i);else selectedWaypoints.add(i);renderMap()}else selectWaypoint(i)});m.on('dragend',()=>{shot.route[i]=[m.getLatLng().lat,m.getLatLng().lng];renderMap();scheduleSave()});markers.push(m)});if(coordsOk(shot.target)){targetMarker=L.marker(shot.target,{draggable:true,icon:L.divIcon({className:'',html:'<div class="camera-target">⌖</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);targetMarker.bindTooltip('Camera target');targetMarker.on('dragend',()=>{shot.target=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];renderMap();scheduleSave()});if(shot.route.length)aimLine=L.polyline([shot.route[shot.route.length-1],shot.target],{color:'#df956d',weight:2,dashArray:'6,7',opacity:.85}).addTo(map)}renderCones(shot);
+function updateStats(){const shot=getShot();const n=shot?.route.length||0;let distance=0;if(map&&shot)for(let i=1;i<n;i++)distance+=map.distance(shot.route[i-1],shot.route[i]);$('route-stats').textContent=n+' waypoint'+(n===1?'':'s')+' · '+(distance>=1000?(distance/1000).toFixed(2)+' km':Math.round(distance)+' m');$('map-help').textContent=tool==='route'?'Tap the map to add points. Drag a point to adjust it.':tool==='camera'?'Tap where the camera should point.':tool==='cone'?'Tap to add a waypoint with its attached camera cone.':tool==='marshal'?'Tap a street to place a red road marshal. Drag to move; tap to edit or remove.':tool==='text'?'Tap the map to place a text box. Tap existing text to edit or delete; drag to move.':tool==='sketch'?'Draw in red. Tap the finished drawing to select and delete it.':'Pan and zoom the map, or choose a drawing tool.'}
+function renderMap(){if(!map||!current)return;if(droneHeightRing){droneHeightRing.remove();droneHeightRing=null}if(routeLine)routeLine.remove();if(aimLine)aimLine.remove();sketchLayers.forEach(layer=>layer.remove());sketchLayers=[];markers.forEach(x=>x.remove());markers=[];if(targetMarker)targetMarker.remove();targetMarker=null;const shot=getShot();if(!shot)return;ensureWaypointSelection();sketches(shot).forEach(points=>{if(Array.isArray(points)&&points.length>1&&points.every(coordsOk))sketchLayers.push(drawingLayer(shot,points))});routeLine=L.polyline(shot.route,{color:'#2fb474',weight:4,opacity:.95}).addTo(map);shot.route.forEach((p,i)=>{if(!coordsOk(p))return;const m=L.marker(p,{draggable:!selectingWaypoints,icon:pointIcon(i)}).addTo(map);m.bindTooltip('Waypoint '+(i+1));m.on('click',()=>{ensureWaypointSelection();if(selectingWaypoints){if(selectedWaypoints.has(i))selectedWaypoints.delete(i);else selectedWaypoints.add(i);renderMap()}else selectWaypoint(i)});m.on('dragend',()=>{shot.route[i]=[m.getLatLng().lat,m.getLatLng().lng];renderMap();scheduleSave()});markers.push(m)});if(coordsOk(shot.target)){targetMarker=L.marker(shot.target,{draggable:true,icon:L.divIcon({className:'',html:'<div class="camera-target">⌖</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);targetMarker.bindTooltip('Camera target');targetMarker.on('dragend',()=>{shot.target=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];renderMap();scheduleSave()});if(shot.route.length)aimLine=L.polyline([shot.route[shot.route.length-1],shot.target],{color:'#df956d',weight:2,dashArray:'6,7',opacity:.85}).addTo(map)}renderCones(shot);
  const active=shot.route[activeWaypoint];
  if(radiusEnabled()&&coordsOk(active)){
   const raw=Number(shot.waypointCones?.[activeWaypoint]?.altitudeAGL);
@@ -404,7 +439,7 @@ function renderMap(){if(!map||!current)return;if(droneHeightRing){droneHeightRin
    fillColor:'#f58a29',fillOpacity:.14,interactive:false
   }).addTo(map);
  }
- renderMarshals();updateConeControls();updateStats();document.dispatchEvent(new Event('offset:map-rendered'))}
+ renderTextBoxes(shot);renderMarshals();updateConeControls();updateStats();document.dispatchEvent(new Event('offset:map-rendered'))}
 // Follow the simulated drone footprint on the main map while previewing a flight.
 document.addEventListener('offset:flight-position',event=>{
  const p=event.detail;
@@ -429,7 +464,7 @@ function applyBasemapStyle(value){
 }
 $('basemap-style').onchange=e=>applyBasemapStyle(e.target.value);
 applyBasemapStyle('minimal');
-function initMap(){if(!window.L){$('map-help').textContent='Map library unavailable. Check internet connection.';return}map=L.map('planner-map',{zoomControl:true}).setView([59.9139,10.7522],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);map.on('click',e=>{const shot=getShot();if(!shot||selectingWaypoints)return;const p=[e.latlng.lat,e.latlng.lng];if(tool==='route'){shot.route.push(p);activeWaypoint=shot.route.length-1;cones(shot);renderMap();scheduleSave()}else if(tool==='camera'){shot.target=p;renderMap();scheduleSave()}else if(tool==='cone'){shot.route.push(p);activeWaypoint=shot.route.length-1;cones(shot);renderMap();scheduleSave()}else if(tool==='marshal'){addMarshal(p)}});setupSketchEvents();document.dispatchEvent(new CustomEvent('offset:planner-map-ready',{detail:{map}}));map.on('moveend',()=>{if(current&&!loading)scheduleSave()});window.addEventListener('orientationchange',()=>setTimeout(()=>map.invalidateSize(),350));window.addEventListener('resize',()=>map.invalidateSize());}
+function initMap(){if(!window.L){$('map-help').textContent='Map library unavailable. Check internet connection.';return}map=L.map('planner-map',{zoomControl:true}).setView([59.9139,10.7522],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);map.on('click',e=>{const shot=getShot();if(!shot||selectingWaypoints)return;const p=[e.latlng.lat,e.latlng.lng];if(tool==='route'){shot.route.push(p);activeWaypoint=shot.route.length-1;cones(shot);renderMap();scheduleSave()}else if(tool==='camera'){shot.target=p;renderMap();scheduleSave()}else if(tool==='cone'){shot.route.push(p);activeWaypoint=shot.route.length-1;cones(shot);renderMap();scheduleSave()}else if(tool==='marshal'){addMarshal(p)}else if(tool==='text'){addTextBox(p)}});setupSketchEvents();document.dispatchEvent(new CustomEvent('offset:planner-map-ready',{detail:{map}}));map.on('moveend',()=>{if(current&&!loading)scheduleSave()});window.addEventListener('orientationchange',()=>setTimeout(()=>map.invalidateSize(),350));window.addEventListener('resize',()=>map.invalidateSize());}
 
 function setupSketchEvents(){
   if(!map)return;
@@ -437,10 +472,10 @@ function setupSketchEvents(){
   let drawing=null, draft=null, pointerId=null;
   function fromEvent(e){const rect=container.getBoundingClientRect();return map.containerPointToLatLng([e.clientX-rect.left,e.clientY-rect.top])}
   container.addEventListener('pointerdown',e=>{
-    if(tool!=='sketch'||!getShot()||!e.isPrimary||e.button>0||e.target.closest('.leaflet-control,button,input'))return;
+    if(tool!=='sketch'||!getShot()||!e.isPrimary||e.button>0||e.target.closest('.leaflet-control,.leaflet-popup,.map-text-box,button,input,textarea'))return;
     pointerId=e.pointerId;
     drawing=[];const p=fromEvent(e);drawing.push([p.lat,p.lng]);
-    draft=L.polyline(drawing,{color:'#efaf67',weight:3}).addTo(map);
+    draft=L.polyline(drawing,{color:'#ed4148',weight:3}).addTo(map);
     try{container.setPointerCapture(e.pointerId)}catch{}
     e.preventDefault();
   });
@@ -454,7 +489,7 @@ function setupSketchEvents(){
     if(!drawing||pointerId!==e.pointerId)return;
     const points=drawing;drawing=null;pointerId=null;
     if(draft){draft.remove();draft=null}
-    if(points.length>1){sketches(getShot()).push(points.slice(0,500));renderMap();scheduleSave()}
+    if(points.length>1){sketches(getShot()).push(points.slice(0,500));setTool('move');renderMap();scheduleSave()}
   };
   container.addEventListener('pointerup',finish);
   container.addEventListener('pointercancel',finish);
@@ -564,9 +599,9 @@ $('delete-plan').onclick=async()=>{if(!current||!confirm('Delete the plan "'+cur
 $('add-shot').onclick=()=>{if(!current)return;readFields();current.shots.push(blankShot('Shot '+(current.shots.length+1)));activeShot=current.shots.length-1;render();renderMap();scheduleSave()};
 $('remove-shot').onclick=()=>deleteShot(activeShot);
 $('clear-shot').onclick=()=>{$('erase-drawing').click()};
-$('erase-drawing').onclick=()=>{const shot=getShot();if(!shot||!confirm('Clear flight path, sketches and camera target?'))return;shot.route=[];shot.waypointCones=[];activeWaypoint=0;shot.target=null;shot.sketches=[];renderMap();scheduleSave()};
+$('erase-drawing').onclick=()=>{const shot=getShot();if(!shot||!confirm('Clear flight path, sketches, text boxes and camera target?'))return;shot.route=[];shot.waypointCones=[];activeWaypoint=0;shot.target=null;shot.sketches=[];shot.textBoxes=[];renderMap();scheduleSave()};
 $('undo-point').onclick=()=>travelHistory('undo');
-$('fit-route').onclick=()=>{const shot=getShot();if(!map||!shot)return;const points=[...shot.route,...sketches(shot).flat(),...(shot.target?[shot.target]:[]),...roadMarshals().map(x=>x.position).filter(coordsOk)];if(points.length)map.fitBounds(L.latLngBounds(points).pad(.25),{maxZoom:16})};
+$('fit-route').onclick=()=>{const shot=getShot();if(!map||!shot)return;const points=[...shot.route,...sketches(shot).flat(),...textBoxes(shot).map(box=>box.position).filter(coordsOk),...(shot.target?[shot.target]:[]),...roadMarshals().map(x=>x.position).filter(coordsOk)];if(points.length)map.fitBounds(L.latLngBounds(points).pad(.25),{maxZoom:16})};
 
 $('cone-visible').addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s);if(!c)return;c.visible=e.target.checked;renderMap();scheduleSave()});
 $('cone-mode').addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s);if(!c)return;if(c.mode==='target'&&e.target.value==='manual')c.bearing=effectiveBearing(s);c.mode=e.target.value;renderMap();scheduleSave()});

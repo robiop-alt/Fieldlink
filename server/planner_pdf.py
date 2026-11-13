@@ -288,13 +288,15 @@ def _sun_summary(c, events, x, y, w):
     c.drawString(x+w/2+8,y-39,"Golden PM: "+evening)
 
 
-def _map(c, route, target, cones, marshals, x, top, w, h, solar=None):
+def _map(c, route, target, cones, marshals, x, top, w, h, solar=None, sketches=None, text_boxes=None):
     """Render a real street basemap, then precisely aligned vector map annotations."""
+    drawings=[[p for p in line if _coord(p)] for line in (sketches or []) if isinstance(line,list)]
+    boxes=[box for box in (text_boxes or []) if isinstance(box,dict) and _coord(box.get('position'))]
     valid=[p for p in route if _coord(p)]
     pts=valid+([target] if _coord(target) else [])+[
         m["position"] for m in marshals
         if isinstance(m,dict) and _coord(m.get("position"))
-    ]
+    ]+[p for line in drawings for p in line]+[box['position'] for box in boxes]
     c.setFillColor(colors.HexColor("#f5f7f5"))
     c.setStrokeColor(colors.HexColor("#d6e2d9"))
     c.roundRect(x,top-h,w,h,7,stroke=1,fill=1)
@@ -328,6 +330,22 @@ def _map(c, route, target, cones, marshals, x, top, w, h, solar=None):
 
     if solar:
         _draw_sun_rays(c,solar,valid[0] if valid else pts[0],project,x,top,w,h)
+
+    c.setStrokeColor(RED);c.setLineWidth(2)
+    for line in drawings:
+        if len(line)<2:continue
+        path=c.beginPath();path.moveTo(*project(line[0]))
+        for point in line[1:]:path.lineTo(*project(point))
+        c.drawPath(path)
+    for box in boxes:
+        lines=simpleSplit(_safe(box.get('text'),300),'Helvetica',8,140)[:8]
+        if not lines:continue
+        xp,yp=project(box['position']);bw=150;bh=10+10*len(lines)
+        xp=max(x+3,min(x+w-bw-3,xp));yp=max(top-h+bh+20,min(top-3,yp))
+        c.setFillColor(colors.white);c.setStrokeColor(RED);c.setLineWidth(.7)
+        c.roundRect(xp,yp-bh,bw,bh,3,fill=1,stroke=1)
+        c.setFillColor(RED);c.setFont('Helvetica',8)
+        for i,line in enumerate(lines):c.drawString(xp+5,yp-12-i*10,line)
 
     if len(valid)>1:
         c.setStrokeColor(GREEN);c.setLineWidth(2.5)
@@ -434,7 +452,7 @@ def make_planner_pdf(plan):
             point=shot["target"]
         solar=_sun_events(shot,point)
         map_height=(245 if y>=580 else 205) if solar else (290 if y>=580 else 245)
-        _map(c,route,shot.get("target"),cones,marshals,M,y,PW-2*M,map_height,solar)
+        _map(c,route,shot.get("target"),cones,marshals,M,y,PW-2*M,map_height,solar,shot.get("sketches"),shot.get("textBoxes"))
         y-=map_height+8
         if solar:
             _sun_summary(c,solar,M,y,PW-2*M)
