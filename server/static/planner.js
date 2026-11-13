@@ -30,12 +30,38 @@ function normalized(data){return {...data,shots:Array.isArray(data.shots)?data.s
 async function load(){try{const data=await api('/api/admin/planner');plans=data.plans.map(normalized);current=plans[0]||null;if(!current){await createPlan('Untitled plan');return}selectPlan(current.id)}catch(e){state('Load error');alert(e.message)}}
 async function createPlan(name){try{const result=await api('/api/admin/planner',{method:'POST',body:JSON.stringify({name})});plans.unshift(normalized(result));selectPlan(result.id);state('Saved')}catch(e){alert(e.message)}}
 function selectPlan(id){if(saveTimer){clearTimeout(saveTimer);saveTimer=null;const pending=current;saveNow(pending)}current=plans.find(p=>p.id===id);activeShot=0;activeWaypoint=0;if(map&&current?.center&&Number.isFinite(current.center.lat)&&Number.isFinite(current.center.lng)){map.setView([current.center.lat,current.center.lng],current.zoom||12)}if(current&&!current.shots.length){current.shots.push(blankShot('Opening shot'));scheduleSave()}render();renderMap()}
-function render(){const select=$('plan-select');select.replaceChildren(...plans.map(p=>{const el=document.createElement('option');el.value=p.id;el.textContent=p.name;return el}));select.value=current?.id||'';const mobile=$('mobile-shot');mobile.replaceChildren(...(current?.shots||[]).map((shot,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=(i+1)+'. '+(shot.name||'Untitled shot');return option}));mobile.value=String(activeShot);const list=$('shot-list');list.replaceChildren();current?.shots.forEach((shot,i)=>{const item=document.createElement('div');item.className='shot-item'+(i===activeShot?' active':'');const count=document.createElement('span');count.className='shot-count';count.textContent=shot.route.length+' pts';const n=document.createElement('span');n.className='shot-number';n.textContent=String(i+1).padStart(2,'0');const b=document.createElement('button');b.textContent=shot.name||'Untitled shot';b.onclick=()=>{readFields();activeShot=i;activeWaypoint=0;render();renderMap()};item.append(n,b,count);list.append(item)});const shot=getShot();loading=true;for(const key of ['name','description','drone','lens','date','time'])$('shot-'+key).value=shot?.[key]??'';loading=false;syncDateDisplay();updateConeControls();updateStats();document.dispatchEvent(new Event('offset:shot-rendered'))}
+function render(){const select=$('plan-select');select.replaceChildren(...plans.map(p=>{const el=document.createElement('option');el.value=p.id;el.textContent=p.name;return el}));select.value=current?.id||'';const mobile=$('mobile-shot');mobile.replaceChildren(...(current?.shots||[]).map((shot,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=(i+1)+'. '+(shot.name||'Untitled shot');return option}));mobile.value=String(activeShot);const list=$('shot-list');list.replaceChildren();current?.shots.forEach((shot,i)=>{const item=document.createElement('div');item.className='shot-item'+(i===activeShot?' active':'');const count=document.createElement('span');count.className='shot-count';count.textContent=shot.route.length+' pts';const n=document.createElement('span');n.className='shot-number';n.textContent=String(i+1).padStart(2,'0');const b=document.createElement('button');b.textContent=shot.name||'Untitled shot';b.onclick=()=>{readFields();activeShot=i;activeWaypoint=0;render();renderMap()};item.append(n,b,count);list.append(item)});const shot=getShot();loading=true;for(const key of ['name','description','drone','lens','date','time'])$('shot-'+key).value=shot?.[key]??'';loading=false;syncDateDisplay();syncLensControls();updateConeControls();updateStats();document.dispatchEvent(new Event('offset:shot-rendered'))}
 function readFields(){const shot=getShot();if(!shot||loading)return;syncDateDisplay();for(const key of ['name','description','drone','lens','date','time'])shot[key]=$('shot-'+key).value;const active=$('shot-list').querySelector('.active button');if(active)active.textContent=shot.name||'Untitled shot';const selected=$('mobile-shot').options[activeShot];if(selected)selected.textContent=(activeShot+1)+'. '+(shot.name||'Untitled shot');scheduleSave()}
 function scheduleSave(){if(!current)return;state('Unsaved…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveTimer=null;saveNow(current)},650)}
 async function saveNow(plan){if(!plan)return false;const epoch=++saveEpoch;state('Saving…');try{const res=await api('/api/admin/planner/'+encodeURIComponent(plan.id),{method:'PUT',body:JSON.stringify({name:plan.name,shots:clone(plan.shots),marshals:clone(plan.marshals||[]),center:map?map.getCenter():plan.center,zoom:map?map.getZoom():plan.zoom})});if(epoch===saveEpoch)state('Saved');plan.updated=res.updated;return true}catch(e){if(epoch===saveEpoch)state('Save failed');console.error(e);return false}}
 
 
+function syncLensControls(){
+ const lens=String(getShot()?.lens||'').trim();
+ const matched=lens.match(/^(18|24|35|50)(?:\s*mm)?$/i);
+ const value=matched?matched[1]+' mm':'';
+ for(const id of ['preview-lens','sim-lens']){
+  const field=$(id);if(field)field.value=value;
+ }
+}
+function setShotLens(value){
+ const shot=getShot();if(!shot)return;
+ const next=String(value||'').trim();
+ const matched=next.match(/^(18|24|35|50)(?:\s*mm)?$/i);
+ shot.lens=matched?matched[1]+' mm':next;
+ $('shot-lens').value=shot.lens;
+ // Explicitly choosing a lens links every waypoint to the X9 full-frame FOV.
+ // Manual custom FOV remains possible afterwards via the waypoint controls.
+ if(matched){
+  for(const cone of cones(shot))cone.lensAuto=true;
+  cones(shot);
+ }
+ syncLensControls();
+ if(map&&shot.route.length)renderCones(shot);
+ updateConeControls();
+ scheduleSave();
+ document.dispatchEvent(new Event('offset:shot-lens-changed'));
+}
 function lensFov(shot){const match=String(shot?.lens||'').match(/(?:^|\D)(18|24|35|50)(?:\D|$)/);return match?Math.round(2*Math.atan(35.95/(2*Number(match[1])))*180/Math.PI*10)/10:null}
 function defaultCone(bearing=0){return {visible:true,mode:'manual',bearing,fov:50,range:30,lensAuto:true}}
 function cones(shot){
@@ -378,7 +404,9 @@ $('fit-route').onclick=()=>{const shot=getShot();if(!map||!shot)return;const poi
 $('cone-visible').addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s);if(!c)return;c.visible=e.target.checked;renderMap();scheduleSave()});
 $('cone-mode').addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s);if(!c)return;if(c.mode==='target'&&e.target.value==='manual')c.bearing=effectiveBearing(s);c.mode=e.target.value;renderMap();scheduleSave()});
 $('cone-lens-auto').addEventListener('change',e=>{const shot=getShot(),c=shot&&coneData(shot);if(!c)return;c.lensAuto=e.target.checked;renderMap();scheduleSave()});
-$('shot-lens').addEventListener('change',()=>{const shot=getShot();if(shot&&shot.route.length){renderMap();scheduleSave()}});
+$('shot-lens').addEventListener('input',event=>setShotLens(event.target.value));
+$('preview-lens').addEventListener('change',event=>setShotLens(event.target.value));
+$('sim-lens').addEventListener('change',event=>setShotLens(event.target.value));
 for(const key of ['bearing','fov','range'])$('cone-'+key).addEventListener('change',e=>{const s=getShot();if(!s)return;const c=coneData(s),value=Number(e.target.value);if(!c||!Number.isFinite(value))return;if(key==='fov')c.lensAuto=false;c[key]=key==='bearing'?((value%360)+360)%360:key==='fov'?Math.max(5,Math.min(170,value)):Math.max(1,Math.min(10000,value));renderMap();scheduleSave()});
 $('cone-tilt').addEventListener('change',e=>{
  const shot=getShot(),c=shot&&coneData(shot);if(!c)return;
@@ -422,6 +450,6 @@ function moveTargetFromPreview(point){
 }
 window.OFFSETPlanner={getShot,getMap:()=>map,getActiveWaypoint:()=>activeWaypoint,
  setActiveWaypoint:selectWaypoint,moveWaypoint:moveWaypointFromPreview,moveTarget:moveTargetFromPreview,
- getBearing:()=>{const shot=getShot();return shot?effectiveBearing(shot):0},save:scheduleSave,renderMap,render,coordsOk,lensFov};
+ getBearing:()=>{const shot=getShot();return shot?effectiveBearing(shot):0},save:scheduleSave,renderMap,render,coordsOk,lensFov,setShotLens};
 window.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&saveTimer){clearTimeout(saveTimer);saveTimer=null;saveNow(current)}});start();
 })();
