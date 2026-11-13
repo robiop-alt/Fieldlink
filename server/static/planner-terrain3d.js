@@ -419,25 +419,36 @@ function shotSunDate(){
  const hours=Number($('sim-sun-utc').value);
  return Number.isFinite(millis)&&Number.isFinite(hours)?new Date(millis-hours*3600000):null;
 }
+let sunShotSignature='',sunManualDate=false,sunManualTimezone=false;
 function defaultSunControls(){
  const timezone=$('sim-sun-utc');
- if(timezone.options.length)return;
- for(let half=-24;half<=28;half++){
-  const h=half/2,opt=document.createElement('option');
-  opt.value=String(h);
-  opt.textContent='UTC'+(h>=0?'+':'')+h;
-  timezone.append(opt);
+ if(!timezone.options.length){
+  for(let half=-24;half<=28;half++){
+   const h=half/2,opt=document.createElement('option');
+   opt.value=String(h);
+   opt.textContent='UTC'+(h>=0?'+':'')+h;
+   timezone.append(opt);
+  }
  }
- const shot=core()?.getShot(),date=/^\d{4}-\d{2}-\d{2}$/.test(shot?.date||'')
-  ?shot.date:new Date().toISOString().slice(0,10);
+ const shot=core()?.getShot();
+ const signature=[shot?.id||'',shot?.date||'',shot?.time||''].join('|');
+ if(sunShotSignature===signature)return;
+ const newShot=sunShotSignature.split('|')[0]!==String(shot?.id||'');
+ if(newShot){sunManualDate=false}
+ sunShotSignature=signature;
+ if(sunManualDate)return;
+ const date=/^\d{4}-\d{2}-\d{2}$/.test(shot?.date||'')
+  ?shot.date:new Date().toLocaleDateString('en-CA');
  const timeOfDay=String(shot?.time||'').toLowerCase();
  const hour=timeOfDay.includes('sunrise')?'06':timeOfDay.includes('morning')?'09':
   timeOfDay.includes('sunset')?'19':timeOfDay.includes('golden')?'18':
   timeOfDay.includes('afternoon')?'16':timeOfDay.includes('night')?'22':'12';
  $('sim-sun-datetime').value=date+'T'+hour+':00';
- const guess=new Date(date+'T12:00:00');
- const offset=Math.round(-guess.getTimezoneOffset()/30)/2;
- timezone.value=String(offset);
+ if(!sunManualTimezone){
+  const guess=new Date(date+'T12:00:00');
+  const offset=Math.round(-guess.getTimezoneOffset()/30)/2;
+  timezone.value=String(offset);
+ }
 }
 function applySun(){
  if(!viewer||viewer.isDestroyed()||!window.Cesium)return;
@@ -1213,8 +1224,8 @@ $('sim-layout').addEventListener('change',()=>{
  applySplitLayout();
 });
 $('sim-sun-toggle').addEventListener('change',applySun);
-$('sim-sun-datetime').addEventListener('change',applySun);
-$('sim-sun-utc').addEventListener('change',applySun);
+$('sim-sun-datetime').addEventListener('change',()=>{sunManualDate=true;applySun()});
+$('sim-sun-utc').addEventListener('change',()=>{sunManualTimezone=true;applySun()});
 $('sim-speed').addEventListener('input',event=>{
  $('sim-speed-value').textContent=event.target.value+' m/s';
  syncTimeline(flightData().total);
