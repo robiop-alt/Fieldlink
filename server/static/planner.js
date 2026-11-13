@@ -642,6 +642,11 @@ $('print-plan').onclick=()=>{
 for(const [id,mode] of [['pdf-select-all','all'],['pdf-select-none','none'],['pdf-select-current','current']]){
  $(id).onclick=()=>{$('pdf-shot-list').querySelectorAll('input').forEach(input=>input.checked=mode==='all'||mode==='current'&&Number(input.value)===activeShot);invalidatePreparedPDF();updatePDFSelection()};
 }
+function pdfFileName(name){
+ let clean=String(name||'').normalize('NFC').replace(/[\x00-\x1f\x7f/\\:*?"<>|]/g,'-').replace(/\s+/g,' ').replace(/^[. ]+|[. ]+$/g,'');
+ clean=Array.from(clean).slice(0,100).join('').replace(/[. ]+$/g,'').replace(/\.pdf$/i,'').replace(/[. ]+$/g,'');
+ return (clean||'OFFSET-plan')+'.pdf';
+}
 function invalidatePreparedPDF(){
  preparedPDF=null;$('pdf-shot-download').textContent='Download PDF';$('pdf-download-status').textContent='';
 }
@@ -682,7 +687,7 @@ $('pdf-shot-download').onclick=async()=>{
   if(!response.ok)throw Error('PDF generation failed ('+response.status+')');
   if(!response.headers.get('content-type')?.includes('application/pdf'))throw Error('Please sign in again and retry.');
   const blob=await response.blob();
-  const name=(pdfExportPlan.name.replace(/[^a-z0-9_-]+/gi,'-')||'offset-plan')+'.pdf';
+  const name=pdfFileName(pdfExportPlan.name);
   preparedPDF=new File([blob],name,{type:'application/pdf'});
   $('pdf-shot-download').textContent='Save / Share PDF';
   status.textContent='PDF ready. Tap Save / Share PDF, then choose Save to Files.';

@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
 import os, sqlite3, secrets, hashlib, hmac, time, uuid, re, mimetypes, subprocess, threading, base64
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, quote
 from db_persistence import DurableConnection, restore
 
 DATA = Path(os.getenv('FIELDLINK_DATA', './data')).resolve()
@@ -444,6 +444,23 @@ def planner_page(request: Request):
     return FileResponse('static/planner.html', media_type='text/html',
                         headers={'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'})
 
+def planner_pdf_filename(name):
+    import unicodedata
+    name=unicodedata.normalize('NFC',str(name or ''))
+    name=re.sub(r'[\x00-\x1f\x7f/\\:*?"<>|]','-',name)
+    name=re.sub(r'\s+',' ',name).strip(' .')[:100].rstrip(' .')
+    if name.lower().endswith('.pdf'):name=name[:-4].rstrip(' .')
+    return (name or 'OFFSET-plan')+'.pdf'
+
+
+def planner_pdf_disposition(name):
+    import unicodedata
+    filename=planner_pdf_filename(name)
+    ascii_name=filename.translate(str.maketrans({'æ':'ae','Æ':'Ae','ø':'o','Ø':'O'}))
+    ascii_name=unicodedata.normalize('NFKD',ascii_name).encode('ascii','ignore').decode()
+    ascii_name=re.sub(r'[^A-Za-z0-9 ._-]','-',ascii_name) or 'OFFSET-plan.pdf'
+    return f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename,safe='')}"
+
 def selected_pdf_plan(plan, selection):
     if selection is None:return plan
     parts=selection.split(',')
@@ -473,9 +490,8 @@ def export_drone_plan_pdf(plan_id: str, request: Request,
         import logging
         logging.getLogger('offset.planner_pdf').exception('Planner PDF rendering failed')
         raise HTTPException(500, 'Could not generate PDF')
-    safe=re.sub(r'[^A-Za-z0-9_-]+','-',row['name']).strip('-')[:60] or 'drone-plan'
     return Response(pdf, media_type='application/pdf',
-                    headers={'Content-Disposition': f'inline; filename="{safe}.pdf"',
+                    headers={'Content-Disposition': planner_pdf_disposition(row['name']),
                              'Cache-Control': 'private, no-store',
                              'X-Content-Type-Options': 'nosniff'})
 

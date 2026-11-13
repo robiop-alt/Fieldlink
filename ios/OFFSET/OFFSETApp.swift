@@ -209,7 +209,7 @@ struct ReviewWebView: UIViewRepresentable {
             while let presented = presenter.presentedViewController { presenter = presented }
             let rawName = (body["name"] ?? "OFFSET-plan.pdf") as NSString
             var name = rawName.lastPathComponent.replacingOccurrences(
-                of: "[^A-Za-z0-9._-]", with: "-", options: .regularExpression)
+                of: #"[\x00-\x1f\x7f/\\:*?"<>|]"#, with: "-", options: .regularExpression)
             if !name.lowercased().hasSuffix(".pdf") { name += ".pdf" }
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
             let file = directory.appendingPathComponent(name)
