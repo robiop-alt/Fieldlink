@@ -17,6 +17,47 @@ const GOOGLE_ASSET_ID=2275207;
 let ionReadToken='';
 try{ionReadToken=localStorage.getItem(ionKeyStore)||''}catch{}
 try{maptilerKey=localStorage.getItem(imageryKeyStore)||''}catch{}
+let sharedIonTokenPromise=null;
+async function loadSharedIonToken(){
+ if(sharedIonTokenPromise)return sharedIonTokenPromise;
+ sharedIonTokenPromise=(async()=>{
+  try{
+   const res=await fetch('/api/admin/planner/cesium-token',{
+    credentials:'same-origin',cache:'no-store'
+   });
+   if(!res.ok)throw Error('Shared token not available');
+   const data=await res.json();
+   if(data.token){
+    ionReadToken=data.token;
+    $('sim-cesium-hint').textContent='Cesium token available on all your signed-in devices.';
+   }else if(ionReadToken){
+    // First private device already has a token: securely migrate it once.
+    await saveSharedIonToken(ionReadToken);
+   }
+   $('sim-cesium-key').value=ionReadToken;
+loadSharedIonToken();
+  }catch(error){
+   console.warn('OFFSET private Cesium key sync unavailable:',error?.message);
+   $('sim-cesium-hint').textContent=ionReadToken
+    ?'Using local token · shared sync unavailable.'
+    :'Enter an ion assets:read token and press Apply to share across devices.';
+  }
+  return ionReadToken;
+ })();
+ return sharedIonTokenPromise;
+}
+async function saveSharedIonToken(token){
+ const res=await fetch('/api/admin/planner/cesium-token',{
+  method:'PUT',credentials:'same-origin',cache:'no-store',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({token})
+ });
+ if(!res.ok)throw Error('Could not save token on OFFSET server ('+res.status+')');
+ try{localStorage.removeItem(ionKeyStore)}catch{}
+ $('sim-cesium-hint').textContent='Saved for all your signed-in devices · private preview only.';
+ return true;
+}
+
 const $status=$('sim-status'),$overlay=$('shot-preview-terrain-loading'),$play=$('sim-play');
 const rad=Math.PI/180,deg=180/Math.PI;
 const valid=p=>core()?.coordsOk(p);
@@ -281,8 +322,9 @@ function showGoogleControls(){
  $('sim-building-style').disabled=google;
  $('sim-imagery-key-row').hidden=google||$('sim-imagery').value!=='satellite';
 }
-function switch3dSource(){
+async function switch3dSource(){
  showGoogleControls();
+ if($('sim-3d-source').value==='google')await loadSharedIonToken();
  if(!viewer||!enabled)return;
  const points=route(core()?.getShot()),at=points[core()?.getActiveWaypoint()]||points[0];
  if(!at)return;
@@ -602,6 +644,8 @@ function installEditing(){
 }
 
 async function initialise(run){
+ await loadSharedIonToken();
+ if(!enabled||run!==epoch)return;
  const C=await loadSDK();
  if(!enabled||run!==epoch)return;
  if(typeof C.FeatureDetection?.supportsWebgl==='function'&&!C.FeatureDetection.supportsWebgl())throw Error('3D WebGL is unavailable in this browser');
@@ -769,16 +813,21 @@ $('sim-reload-buildings').addEventListener('click',()=>{
 });
 $('sim-3d-source').addEventListener('change',switch3dSource);
 $('sim-cesium-key').value=ionReadToken;
-$('sim-cesium-apply').addEventListener('click',()=>{
- ionReadToken=$('sim-cesium-key').value.trim();
- try{
-  if(ionReadToken)localStorage.setItem(ionKeyStore,ionReadToken);
-  else localStorage.removeItem(ionKeyStore);
- }catch{}
- if(!ionReadToken){
+$('sim-cesium-apply').addEventListener('click',async()=>{
+ const token=$('sim-cesium-key').value.trim();
+ if(!token){
   $('sim-cesium-hint').textContent='Enter an assets:read token from ion.cesium.com';return;
  }
- $('sim-cesium-hint').textContent='Token set on this device. Connecting to Google 3D…';
+ const btn=$('sim-cesium-apply');btn.disabled=true;
+ ionReadToken=token;
+ try{
+  await saveSharedIonToken(token);
+  sharedIonTokenPromise=Promise.resolve(token);
+ }catch(error){
+  // Even if the server is unavailable, keep this device functional.
+  try{localStorage.setItem(ionKeyStore,token)}catch{}
+  $('sim-cesium-hint').textContent='Token saved on this device only · server sync failed.';
+ }finally{btn.disabled=false}
  switch3dSource();
 });
 $('sim-imagery').addEventListener('change',setImageryMode);
