@@ -9,7 +9,8 @@ let viewer=null,buildingTileset=null,enabled=false,loadingSdk=null,epoch=0;
 let terrainProvider=null,terrainHeights=[],terrainSignature='',terrainEpoch=0,terrainReady=false;
 let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=null;
 let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
-let currentImageryLayer=null;
+let currentImageryLayer=null,flightMarker=null;
+let lastQualityChange=0,frameInterval=16;
 const imageryKeyStore='offset-planner-maptiler-key-v1';
 let maptilerKey='';
 const ionKeyStore='offset-planner-cesium-ion-read-token-v1';
@@ -188,6 +189,89 @@ function flightSmoothing(){
  return $('sim-smoothing')?.value==='direct'?0:
   $('sim-smoothing')?.value==='smooth'?.7:1;
 }
+function motionDistance(timeDistance,total){
+ if(total<=0)return 0;
+ const u=Math.max(0,Math.min(1,timeDistance/total));
+ return total*(u-flightSmoothing()*.11*Math.sin(2*Math.PI*u));
+}
+function timeForDistance(distance,total){
+ if(total<=0)return 0;
+ let lo=0,hi=1;
+ for(let i=0;i<18;i++){
+  const mid=(lo+hi)/2;
+  if(motionDistance(mid*total,total)<distance)lo=mid;else hi=mid;
+ }
+ return (lo+hi)*.5*total;
+}
+function flightPathPoint(plan,index,t){
+ const {shot:s,points,legs}=plan,smooth=flightSmoothing();
+ const vals=fn=>points.map((p,i)=>fn(p,i));
+ return [
+  smoothSegment(vals(p=>p[0]),legs,index,t,smooth),
+  smoothSegment(vals(p=>p[1]),legs,index,t,smooth),
+  smoothSegment(vals((p,i)=>altitude(s,i)),legs,index,t,smooth)+
+   smoothSegment(vals((p,i)=>groundAt(p,i)),legs,index,t,smooth)
+ ];
+}
+function setHud(info){
+ const node=$('sim-camera-hud');
+ if(!node)return;
+ node.hidden=!enabled||!$('sim-hud-toggle').checked||overview;
+ if(node.hidden||!info)return;
+ $('sim-hud-waypoint').textContent=info.waypoint;
+ $('sim-hud-lens').textContent=info.lens||'Lens —';
+ $('sim-hud-altitude').textContent=Math.round(info.height)+' m AGL';
+ $('sim-hud-heading').textContent='HDG '+String(Math.round((info.heading%360+360)%360)).padStart(3,'0')+'°';
+ $('sim-hud-tilt').textContent='Tilt '+Math.round(info.tilt)+'°';
+ $('sim-hud-fov').textContent='FOV '+Math.round(info.fov)+'°';
+}
+function lensLabel(s){return String(s?.lens||'Lens —').slice(0,28)}
+function updateFlightMarker(position){
+ if(!flightMarker||!window.Cesium||!position)return;
+ flightMarker.position=window.Cesium.Cartesian3.fromDegrees(position[1],position[0],position[2]);
+ flightMarker.show=overview;
+}
+function renderWaypointTicks(plan=flightData()){
+ const layer=$('sim-timeline-waypoints');
+ if(!layer)return;
+ layer.replaceChildren();
+ if(!plan?.total||plan.points.length<2)return;
+ let distance=0;
+ for(let i=0;i<plan.points.length;i++){
+  if(i>0)distance+=plan.legs[i-1]||0;
+  const percent=100*timeForDistance(distance,plan.total)/plan.total;
+  const mark=document.createElement('button');
+  mark.type='button';mark.className='sim-waypoint-tick';
+  mark.style.left=percent.toFixed(3)+'%';
+  mark.title='Waypoint '+(i+1);
+  mark.setAttribute('aria-label','Jump to waypoint '+(i+1));
+  mark.addEventListener('click',event=>{
+   event.preventDefault();event.stopPropagation();
+   scrubFlight(String(10*percent));
+  });
+  layer.append(mark);
+ }
+}
+function applyQuality(){
+ if(!viewer||viewer.isDestroyed())return;
+ const setting=$('sim-quality')?.value||'auto';
+ const mobile=window.matchMedia('(pointer:coarse)').matches||
+  window.matchMedia('(max-width:900px)').matches;
+ viewer.resolutionScale=setting==='quality'?1.05:setting==='performance'?.68:mobile?.82:1;
+ if(buildingTileset){
+  buildingTileset.maximumScreenSpaceError=setting==='quality'?11:setting==='performance'?27:mobile?19:14;
+ }
+ lastQualityChange=performance.now();frameInterval=16;
+}
+function adaptiveQuality(now,dt){
+ if($('sim-quality').value!=='auto'||!viewer||now-lastQualityChange<3200)return;
+ frameInterval=frameInterval*.92+dt*.08;
+ if(frameInterval>38&&viewer.resolutionScale>.64){
+  viewer.resolutionScale=Math.max(.64,viewer.resolutionScale-.09);
+  if(buildingTileset)buildingTileset.maximumScreenSpaceError=22;
+  lastQualityChange=now;
+ }
+}
 function cameraAt(position,height,heading,tilt,horizontalFov){
  if(!viewer||!position)return;
  const C=window.Cesium,canvas=viewer.scene.canvas;
@@ -213,6 +297,9 @@ function showCamera(){
    orientation:{heading:core().getBearing()*rad,pitch:-58*rad,roll:0}
   });
  }else cameraAt(point,heightAboveEllipsoid(s,point,i),cameraDirection(s,i),pitch(s,i),cameraFov(s,i));
+ setHud({waypoint:'WP '+(i+1)+' / '+points.length,lens:lensLabel(s),
+  height:altitude(s,i),heading:cameraDirection(s,i),tilt:pitch(s,i),fov:fov(s,i)});
+ updateFlightMarker([point[0],point[1],heightAboveEllipsoid(s,point,i)]);
  $('preview-pitch-value').textContent='Tilt '+Math.round(pitch(s,i))+'°';
  if($('sim-waypoint-tilt')){
   $('sim-waypoint-tilt').value=String(Math.round(pitch(s,i)));
@@ -224,15 +311,34 @@ function markerLabel(index){return 'WP '+(index+1)}
 function renderRoute(){
  if(!viewer)return;
  const C=window.Cesium,s=core()?.getShot(),points=route(s);
- viewer.entities.removeAll();
+ viewer.entities.removeAll();flightMarker=null;
  if(!points.length)return;
- if(points.length>1)viewer.entities.add({
-  polyline:{
-   positions:points.map((p,i)=>C.Cartesian3.fromDegrees(p[1],p[0],heightAboveEllipsoid(s,p,i))),
-   width:3,material:C.Color.fromCssColorString('#58eb99'),
-   clampToGround:false
+ if(points.length>1){
+  const plan=flightData(),samples=[];
+  const perLeg=Math.max(3,Math.min(14,Math.floor(400/plan.legs.length)));
+  for(let i=0;i<plan.legs.length;i++){
+   for(let k=0;k<perLeg;k++){
+    const p=flightPathPoint(plan,i,k/perLeg);
+    samples.push(C.Cartesian3.fromDegrees(p[1],p[0],p[2]));
+   }
   }
- });
+  const last=points.length-1,p=points[last];
+  samples.push(C.Cartesian3.fromDegrees(p[1],p[0],heightAboveEllipsoid(s,p,last)));
+  viewer.entities.add({polyline:{positions:samples,width:3,
+   material:C.Color.fromCssColorString('#58eb99').withAlpha(.78),clampToGround:false}});
+  const first=points[0];
+  flightMarker=viewer.entities.add({
+   name:'Drone position',
+   position:C.Cartesian3.fromDegrees(first[1],first[0],heightAboveEllipsoid(s,first,0)),
+   point:{pixelSize:13,color:C.Color.fromCssColorString('#f5e5a4'),
+    outlineColor:C.Color.fromCssColorString('#183d30'),outlineWidth:3,
+    disableDepthTestDistance:Number.POSITIVE_INFINITY},
+   label:{text:'DRONE',font:'bold 10px sans-serif',
+    pixelOffset:new C.Cartesian2(0,-24),fillColor:C.Color.WHITE,
+    disableDepthTestDistance:Number.POSITIVE_INFINITY},
+   show:overview
+  });
+ }
  points.forEach((p,i)=>{
   const entry=viewer.entities.add({
    name:markerLabel(i),
@@ -254,7 +360,9 @@ function renderRoute(){
   label:{text:'TARGET',font:'11px sans-serif',pixelOffset:new C.Cartesian2(0,-22),
     fillColor:C.Color.WHITE,disableDepthTestDistance:Number.POSITIVE_INFINITY}
  })._offsetTarget=true;
+ renderWaypointTicks(flightData());
 }
+
 /* Re:Earth Buildings streams open Overture/OSM 3D Tiles directly into
    Cesium. The former Overpass proxy failed because Render lacked outbound
    network access and browsers encountered CORS failures. */
@@ -386,6 +494,7 @@ async function loadBuildings(point,run,force=false){
   }
   buildingTileset=tileset;
   viewer.scene.primitives.add(tileset);
+  applyQuality();
   if(google){
    // The Google mesh contains its own terrain and textures.
    viewer.scene.globe.show=false;
@@ -474,7 +583,11 @@ function drawFlight(distance,plan=flightData()){
  const heading=current?.mode==='target'&&next?.mode==='target'&&valid(s.target)
   ?bearing(here,s.target):smoothSegment(headings,legs,index,t,smooth);
  const horizontalFov=Math.max(5,Math.min(150,smoothSegment(fovs,legs,index,t,smooth)));
- cameraAt(here,ground+h,heading,smoothSegment(tilts,legs,index,t,smooth),horizontalFov);
+ const tilt=smoothSegment(tilts,legs,index,t,smooth);
+ cameraAt(here,ground+h,heading,tilt,horizontalFov);
+ updateFlightMarker([here[0],here[1],ground+h]);
+ setHud({waypoint:'WP '+(index+1)+' → '+(index+2),lens:lensLabel(s),
+  height:h,heading,tilt,fov:horizontalFov});
  return Math.round(h);
 }
 function stop(reset=true){
@@ -493,10 +606,14 @@ function play(){
  function frame(now){
   if(!playing||!enabled)return;
   const speed=Math.max(1,Number($('sim-speed').value)||3);
-  if(lastTime)playElapsed+=Math.min((now-lastTime)/1000,.1)*speed;
+  if(lastTime){
+   const dt=Math.min((now-lastTime),100);
+   playElapsed+=dt/1000*speed;
+   adaptiveQuality(now,dt);
+  }
   lastTime=now;
   playElapsed=Math.min(playElapsed,plan.total);
-  const h=drawFlight(playElapsed,plan);
+  const h=drawFlight(motionDistance(playElapsed,plan.total),plan);
   syncTimeline(plan.total);
   const pct=Math.min(100,Math.round(playElapsed/plan.total*100));
   status('Playing shot · '+pct+'% · '+Math.round(h||0)+' m AGL');
@@ -513,7 +630,7 @@ function scrubFlight(value){
  if(overview){overview=false;$('sim-view').value='camera'}
  playElapsed=plan.total*Math.max(0,Math.min(1000,Number(value)||0))/1000;
  lastTime=0;
- drawFlight(playElapsed,plan);
+ drawFlight(motionDistance(playElapsed,plan.total),plan);
  syncTimeline(plan.total);
  if(!playing)status('Preview at '+clock(playElapsed/(Number($('sim-speed').value)||3))+' · press Play to continue');
 }
@@ -666,6 +783,7 @@ async function initialise(run){
   scene3DOnly:true,requestRenderMode:false
  });
  currentImageryLayer=layer;
+ applyQuality();
  showGoogleControls();
  configureSky(false);
  viewer.scene.globe.depthTestAgainstTerrain=false;
@@ -708,7 +826,7 @@ function destroy(){
  terrainEpoch++;terrainHeights=[];terrainSignature='';terrainProvider=null;terrainReady=false;
  if(dragHandler){dragHandler.destroy();dragHandler=null}
  if(viewer){viewer.destroy();viewer=null}
- currentImageryLayer=null;
+ currentImageryLayer=null;flightMarker=null;
  activeDrag=null;
 }
 function setExpanded(on){
@@ -838,6 +956,18 @@ $('sim-imagery-apply').addEventListener('click',()=>{
  try{if(maptilerKey)localStorage.setItem(imageryKeyStore,maptilerKey);else localStorage.removeItem(imageryKeyStore)}catch{}
  if(!maptilerKey){$('sim-imagery-hint').textContent='Enter a MapTiler key to use satellite imagery.';return}
  setImageryMode();
+});
+$('sim-hud-toggle').addEventListener('change',()=>{
+ if(viewer&&!playing)showCamera();
+ else if(viewer)setHud(null);
+});
+$('sim-quality').addEventListener('change',applyQuality);
+$('sim-smoothing').addEventListener('change',()=>{
+ if(viewer){
+  renderRoute();
+  if(!playing&&!overview&&playElapsed>0)drawFlight(motionDistance(playElapsed,flightData().total));
+  else if(!playing)showCamera();
+ }
 });
 $('sim-speed').addEventListener('input',event=>{
  $('sim-speed-value').textContent=event.target.value+' m/s';
