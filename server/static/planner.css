@@ -1511,3 +1511,42 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
   gap:9px;
  }
 }
+
+
+/* Folded shot metadata. The real inputs remain mounted so no edits are lost. */
+.offset-planner .planner-fold>.shot-info-fields{
+ display:block;min-width:0;padding:3px 11px 12px;
+ background:transparent;
+}
+.offset-planner .planner-fold>.shot-info-fields>label:first-child{margin-top:8px}
+.offset-planner .planner-fold>.shot-info-fields .fields-two{
+ grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.offset-planner .planner-fold>.shot-info-fields input,
+.offset-planner .planner-fold>.shot-info-fields select,
+.offset-planner .planner-fold>.shot-info-fields textarea{max-width:100%;min-width:0}
+
+/* Lens accessible immediately above the preview, without opening Shot info. */
+.offset-planner .shot-preview-panel .preview-actions label.preview-lens-label{
+ display:inline-flex;flex-direction:row;align-items:center;
+ gap:5px;margin:0;white-space:nowrap;
+ font-size:10px;color:#aabfaf;
+}
+.offset-planner #preview-lens{
+ width:90px;min-width:0;height:31px;min-height:31px;
+ margin:0;padding:5px 19px 5px 6px;
+ font-size:11px;background:#101b1a;
+ border:1px solid #3e5b50;color:#e0f0e4;border-radius:6px;
+}
+.offset-planner .shot-simulator-main .sim-lens-label select{
+ width:92px;min-width:0;
+}
+@media(max-width:600px){
+ .offset-planner #preview-lens{width:79px;font-size:10px}
+ .offset-planner .shot-simulator-main .sim-lens-label select{width:87px}
+}
+@media screen and (orientation:landscape) and (max-height:600px){
+ .offset-planner .shot-preview-panel.sim-expanded .preview-actions .preview-lens-label{
+  display:none!important;
+ }
+}
