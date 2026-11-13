@@ -1477,3 +1477,37 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
  .offset-planner .shot-preview-panel.sim-expanded
  .shot-simulator-main select{max-width:125px}
 }
+
+
+/* iPad landscape: give Shot Preview the full row below the planning map.
+   Move the folded preview as a unit to preserve Leaflet/Cesium and controls. */
+@media screen{
+ body.offset-planner.planner-preview-below .planner-workspace{
+  display:grid!important;
+  grid-template-columns:minmax(205px, min(29%, 325px)) minmax(0,1fr)!important;
+  align-items:start!important;
+ }
+ body.offset-planner.planner-preview-below .planner-workspace>.planner-fold[data-panel="preview"]{
+  grid-column:1/-1!important;grid-row:auto!important;
+  min-width:0;width:100%;max-width:none;margin:3px 0 0;
+  order:3;overflow:visible;
+  scroll-margin-top:12px;
+ }
+ body.offset-planner.planner-preview-below .planner-workspace>.planner-fold[data-panel="preview"]>.shot-preview-panel{
+  width:100%;max-width:none;min-width:0;margin:0;
+  padding:12px 14px 15px;
+ }
+ body.offset-planner.planner-preview-below .shot-preview-panel:not(.sim-expanded) .shot-preview-view{
+  width:100%;max-width:none;max-height:670px;min-height:320px;
+  margin:8px 0 0;
+ }
+ body.offset-planner.planner-preview-below .shot-preview-panel:not(.sim-expanded) .shot-simulator-controls{
+  max-width:none;
+ }
+ body.offset-planner.planner-preview-below .shot-preview-panel:not(.sim-expanded) .preview-altitude{
+  max-width:none;
+ }
+ body.offset-planner.planner-preview-below .shot-preview-panel:not(.sim-expanded) .planner-extra-heading{
+  gap:9px;
+ }
+}
