@@ -288,6 +288,12 @@ def _sun_summary(c, events, x, y, w):
     c.drawString(x+w/2+8,y-39,"Golden PM: "+evening)
 
 
+def _waypoint_height(cone):
+    try:value=float(cone.get('altitudeAGL',30))
+    except (TypeError,ValueError,AttributeError):return 30
+    return min(500,value) if math.isfinite(value) and value>=2 else 30
+
+
 def _closure_path(route, cones, mode='cinematic'):
     """Sample the same Hermite centerline/AGL interpolation as the 3D preview."""
     indexed=[(i,p) for i,p in enumerate(route) if _coord(p)]
@@ -484,6 +490,15 @@ def _map(c, route, target, cones, marshals, x, top, w, h, solar=None, sketches=N
         c.setFillColor(colors.white);c.setStrokeColor(GREEN)
         c.setLineWidth(1.5);c.circle(xp,yp,7,stroke=1,fill=1)
         c.setFillColor(INK);c.setFont("Helvetica-Bold",8);c.drawCentredString(xp,yp-2.5,str(i+1))
+        data=cones[i] if i<len(cones) and isinstance(cones[i],dict) else {}
+        height_label=f"{_waypoint_height(data):g} m AGL"
+        label_width=stringWidth(height_label,'Helvetica-Bold',6.5)+8
+        label_x=max(x+3,min(x+w-label_width-3,xp-label_width/2))
+        label_y=max(top-h+24,min(top-14,yp-22))
+        c.setFillColor(colors.white);c.setStrokeColor(GREEN);c.setLineWidth(.5)
+        c.roundRect(label_x,label_y,label_width,11,3,fill=1,stroke=1)
+        c.setFillColor(INK);c.setFont('Helvetica-Bold',6.5)
+        c.drawCentredString(label_x+label_width/2,label_y+3,height_label)
     if _coord(target):
         xp,yp=project(target);c.setStrokeColor(colors.HexColor("#ce9d4d"))
         c.setLineWidth(1);c.line(xp-6,yp,xp+6,yp);c.line(xp,yp-6,xp,yp+6)
@@ -561,14 +576,14 @@ def make_planner_pdf(plan):
         left_x=M
         right_x=M+col_width+16
         bottom=56
-        y_left=_line(c,"WAYPOINTS",left_x,y,10,GREEN,True)
+        y_left=_line(c,"WAYPOINTS (HEIGHT AGL)",left_x,y,10,GREEN,True)
         for i,p in enumerate(route):
             if not _coord(p):continue
             if y_left<bottom+15:
                 y_left=_line(c,f"+ {len(route)-i} more waypoints in Planner",left_x,y_left,8,MUTED)
                 break
             data=cones[i] if i<len(cones) and isinstance(cones[i],dict) else {}
-            y_left=_line(c,f"{i+1:02d}  {p[0]:.5f}, {p[1]:.5f}",left_x,y_left,8,INK)
+            y_left=_line(c,f"{i+1:02d}  {_waypoint_height(data):g} m AGL · {p[0]:.5f}, {p[1]:.5f}",left_x,y_left,8,INK)
             if data.get("visible",True):
                 y_left=_line(c,f"     {data.get('mode','manual')} camera · FOV {data.get('fov',50)} deg",left_x,y_left,7,MUTED)
 
