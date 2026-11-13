@@ -1856,3 +1856,11 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 .offset-planner #pdf-shot-list input{width:18px;height:18px;min-height:18px;flex:0 0 18px;margin:0;accent-color:#80bd85}
 .offset-planner #pdf-shot-list span{min-width:0;overflow-wrap:anywhere}
 .offset-planner .pdf-shot-actions{justify-content:flex-end}
+
+/* Readable distance overlay on the main map, including Map + Camera. */
+.offset-planner .leaflet-tooltip.map-distance-label{
+ background:#17251e;color:#ffe0a9;border:1px solid #f4b45e;border-radius:6px;
+ padding:5px 8px;font:600 13px/1.2 'DM Sans',sans-serif;white-space:nowrap;
+ box-shadow:0 2px 8px #0005;pointer-events:none;
+}
+.offset-planner .leaflet-tooltip.map-distance-label::before{display:none}
