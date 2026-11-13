@@ -666,7 +666,7 @@
  margin-right:auto;
  max-height:none;
 }
-.shot-preview-view svg{
+.shot-preview-view > #shot-preview-svg{
  display:block;
  width:100%;
  height:100%;
@@ -1637,4 +1637,33 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
  .offset-planner .shot-preview-view.terrain-enabled.sim-split #shot-preview-terrain{
   left:43%!important;width:57%!important;
  }
+}
+
+/* Preview artwork must never stretch the main map's control or credit icons. */
+.offset-planner #sim-split-map .map-top-controls{
+ align-items:center;min-width:0;max-height:46px;
+}
+.offset-planner #sim-split-map .search-field{
+ height:34px;min-height:34px;min-width:0;gap:5px;padding:2px 4px 2px 7px;
+}
+.offset-planner #sim-split-map .search-field>svg{
+ width:18px;height:18px;flex:0 0 18px;
+}
+.offset-planner #sim-split-map #map-search{
+ flex:1 1 0;width:0;min-width:0;height:28px;min-height:28px;margin:0;
+}
+.offset-planner #sim-split-map #map-search-submit{
+ flex:0 0 auto;min-height:28px;padding:4px 7px;font-size:10px;
+}
+.offset-planner #sim-split-map #locate-me{
+ flex:0 0 30px;width:30px;height:32px;min-width:30px;min-height:32px;padding:5px;
+}
+.offset-planner #sim-split-map #locate-me svg{width:18px;height:18px}
+.offset-planner #sim-split-map #locate-me span,
+.offset-planner #sim-split-map .basemap-switch span{display:none}
+.offset-planner #sim-split-map .basemap-switch select{
+ width:76px;height:32px;min-height:32px;margin:0;padding:4px;font-size:10px;
+}
+.offset-planner #sim-split-map .leaflet-attribution-flag{
+ width:1em;height:.6667em;
 }

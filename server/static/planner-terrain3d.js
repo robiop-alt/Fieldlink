@@ -11,7 +11,7 @@ let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=nul
 let activeFlightPlan=null;
 let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
 let currentImageryLayer=null,flightMarker=null,flightRadiusCircle=null;
-let splitMap=null,splitDrone=null,splitArrow=null,splitMounts=[];
+let splitMap=null,splitDrone=null,splitArrow=null,splitMounts=[],splitNeedsFit=false;
 let sunSnapshot=null;
 function heightRadiusVisible(){
  try{return localStorage.getItem('offset-planner-drone-radius-visible-v1')!=='off'}
@@ -344,7 +344,7 @@ function setupSplitMap(){
   node.parentNode.insertBefore(placeholder,node);
   splitMounts.push({node,placeholder});host.append(node);
  }
- splitMap=main;
+ splitMap=main;splitNeedsFit=true;
  if(window.L){
   splitDrone=window.L.circleMarker([0,0],{radius:6,color:'#fff',weight:2,
    fillColor:'#f4ad54',fillOpacity:1,interactive:false}).addTo(main);
@@ -359,7 +359,11 @@ function applySplitLayout(){
  $('sim-split-map').hidden=!active;
  if(active){
   setupSplitMap();
-  requestAnimationFrame(()=>{if(splitMap)splitMap.invalidateSize({pan:false})});
+  requestAnimationFrame(()=>{
+   if(!splitMap)return;
+   splitMap.invalidateSize({pan:false});
+   if(splitNeedsFit){splitNeedsFit=false;$('fit-route').click()}
+  });
  }else clearSplitMap();
  if(viewer&&!viewer.isDestroyed())requestAnimationFrame(()=>{
   viewer.resize();updateCameraFrustum();
@@ -370,7 +374,7 @@ function clearSplitMap(){
  const main=splitMap;
  if(splitDrone)splitDrone.remove();
  if(splitArrow)splitArrow.remove();
- splitDrone=null;splitArrow=null;splitMap=null;
+ splitDrone=null;splitArrow=null;splitMap=null;splitNeedsFit=false;
  for(const {node,placeholder} of splitMounts)placeholder.replaceWith(node);
  splitMounts=[];
  $('sim-split-map').hidden=true;
