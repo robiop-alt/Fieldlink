@@ -163,6 +163,7 @@ function renderWaypointEditor(){
  for(const id of ['map-wp-height','map-wp-tilt','map-wp-bearing'])$(id).disabled=!cone;
  $('map-wp-height').value=cone?.altitudeAGL??30;
  $('map-wp-tilt').value=cone?.tilt??shot?.simPitch??-10;
+ syncWaypointSliderValues();
  $('map-wp-bearing').value=cone?Math.round(effectiveBearing(shot)):0;
  $('map-wp-bearing').disabled=!cone||cone.mode==='target';
 }
@@ -170,9 +171,26 @@ $('select-waypoints').onclick=()=>{ensureWaypointSelection();selectingWaypoints=
 $('select-all-waypoints').onclick=()=>{ensureWaypointSelection();getShot()?.route.forEach((_,i)=>selectedWaypoints.add(i));renderMap()};
 $('delete-waypoints').onclick=deleteSelectedWaypoints;
 $('map-waypoint').onchange=e=>selectWaypoint(Number(e.target.value));
-for(const [id,key,min,max] of [['map-wp-height','altitudeAGL',2,500],['map-wp-tilt','tilt',-85,35],['map-wp-bearing','bearing',0,359]]){
- $(id).onchange=e=>{const shot=getShot(),cone=shot&&coneData(shot),value=Number(e.target.value);if(!cone||!Number.isFinite(value))return;cone[key]=Math.min(max,Math.max(min,value));renderMap();scheduleSave();document.dispatchEvent(new Event('offset:preview-height-changed'))};
+let waypointPreviewTimer=null;
+function syncWaypointSliderValues(){
+ $('map-wp-height-value').textContent=$('map-wp-height').value+' m';
+ $('map-wp-tilt-value').textContent=$('map-wp-tilt').value+'°';
 }
+function flushWaypointPreview(){
+ clearTimeout(waypointPreviewTimer);waypointPreviewTimer=null;renderMap();
+}
+function updateWaypointValue(id,key,min,max){
+ const shot=getShot(),cone=shot&&coneData(shot),value=Number($(id).value);
+ if(!cone||!Number.isFinite(value))return;
+ cone[key]=Math.round(Math.min(max,Math.max(min,value)));
+ syncWaypointSliderValues();scheduleSave();
+ if(!waypointPreviewTimer)waypointPreviewTimer=setTimeout(flushWaypointPreview,60);
+}
+for(const [id,key,min,max] of [['map-wp-height','altitudeAGL',2,500],['map-wp-tilt','tilt',-85,35]]){
+ $(id).oninput=()=>updateWaypointValue(id,key,min,max);
+ $(id).onchange=flushWaypointPreview;
+}
+$('map-wp-bearing').onchange=()=>{updateWaypointValue('map-wp-bearing','bearing',0,359);flushWaypointPreview()};
 $('redo-edit').onclick=()=>travelHistory('redo');
 document.addEventListener('keydown',e=>{
  if(!(e.ctrlKey||e.metaKey)||e.altKey||e.target.matches?.('input,textarea,select,[contenteditable="true"]'))return;
