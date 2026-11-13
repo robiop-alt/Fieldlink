@@ -1616,3 +1616,21 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
   box-shadow:0 8px 28px #0006;
  }
 }
+
+/* Real frame guides above Cesium, clipped to the camera pane in split view. */
+.offset-planner .sim-frame-guides{
+ position:absolute;z-index:4;pointer-events:none;overflow:hidden;
+}
+.offset-planner .sim-frame-guides[hidden]{display:none!important}
+.offset-planner .sim-frame-box{
+ position:absolute;border:1px solid rgba(236,247,238,.85);
+ box-shadow:0 0 0 100vmax rgba(0,0,0,.48);
+}
+.offset-planner .sim-frame-label{
+ position:absolute;top:5px;left:50%;transform:translateX(-50%);
+ padding:3px 6px;border-radius:3px;background:#0c1716a6;
+ color:#edf6ef;font:9px/1.2 'DM Mono',monospace;white-space:nowrap;
+}
+.offset-planner .shot-simulator-main .sim-frame-picker select{
+ width:82px;max-width:82px;min-width:0;
+}
