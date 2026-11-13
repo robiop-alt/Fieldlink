@@ -10,6 +10,8 @@ let terrainProvider=null,terrainHeights=[],terrainSignature='',terrainEpoch=0,te
 let playing=false,raf=0,lastTime=0,playElapsed=0,activeDrag=null,dragHandler=null;
 let overview=false,buildingEpoch=0,visibleBuildingTiles=0;
 let currentImageryLayer=null,flightMarker=null,flightRadiusCircle=null;
+let splitMap=null,splitRoute=null,splitDrone=null,splitRadius=null,splitArrow=null,splitMarkers=[];
+let sunSnapshot=null;
 function heightRadiusVisible(){
  try{return localStorage.getItem('offset-planner-drone-radius-visible-v1')!=='off'}
  catch{return true}
@@ -252,6 +254,7 @@ function updateFlightMarker(position,aglHeight,terrainHeight){
   }));
  }
  const C=window.Cesium;
+ syncSplitMap(position[0],position[1],aglHeight,viewer?.camera?.heading*deg);
  if(flightMarker){
   flightMarker.position=C.Cartesian3.fromDegrees(position[1],position[0],position[2]);
   flightMarker.show=overview;
@@ -309,6 +312,163 @@ function adaptiveQuality(now,dt){
   if(buildingTileset)buildingTileset.maximumScreenSpaceError=22;
   lastQualityChange=now;
  }
+}
+// Lightweight Leaflet route map: one Cesium renderer only, preserving iPhone memory.
+function splitAllowed(){return window.innerWidth>=850}
+function splitIsActive(){return enabled&&$('sim-layout').value==='split'&&splitAllowed()}
+function syncSplitMap(lat,lng,agl,heading){
+ if(!splitMap||!splitIsActive()||!Number.isFinite(lat)||!Number.isFinite(lng))return;
+ const at=[lat,lng];
+ if(splitDrone)splitDrone.setLatLng(at);
+ if(splitRadius){
+  splitRadius.setLatLng(at);
+  splitRadius.setRadius(Math.max(0,agl||0));
+  splitRadius.setStyle({opacity:heightRadiusVisible()?1:0,fillOpacity:heightRadiusVisible()?.09:0});
+ }
+ if(splitArrow){
+  const target=[lat+Math.cos((heading||0)*rad)*.00025,
+    lng+Math.sin((heading||0)*rad)*.00025/Math.max(.1,Math.cos(lat*rad))];
+  splitArrow.setLatLngs([at,target]);
+ }
+}
+function redrawSplitMap(){
+ if(!splitMap)return;
+ if(splitRoute){splitRoute.remove();splitRoute=null}
+ for(const marker of splitMarkers)marker.remove();
+ splitMarkers=[];
+ const s=core()?.getShot(),points=route(s);
+ if(!points.length)return;
+ if(points.length>=2){
+  const plan=flightData(),samples=[];
+  const perLeg=Math.max(3,Math.min(12,Math.floor(350/plan.legs.length)));
+  for(let i=0;i<plan.legs.length;i++)
+   for(let k=0;k<perLeg;k++){const p=flightPathPoint(plan,i,k/perLeg);samples.push([p[0],p[1]])}
+  samples.push(points[points.length-1]);
+  splitRoute=window.L.polyline(samples,{color:'#58d994',weight:3,opacity:.85}).addTo(splitMap);
+ }
+ points.forEach((p,i)=>{
+  splitMarkers.push(window.L.circleMarker(p,{radius:4,weight:1.5,color:'#fff',
+   fillColor:'#3ac47c',fillOpacity:1}).addTo(splitMap).bindTooltip('WP '+(i+1)));
+ });
+ if(points.length>1)splitMap.fitBounds(window.L.latLngBounds(points).pad(.23),{animate:false,maxZoom:19});
+ else splitMap.setView(points[0],17,{animate:false});
+ const i=Math.min(core()?.getActiveWaypoint()||0,points.length-1);
+ syncSplitMap(points[i][0],points[i][1],altitude(s,i),cameraDirection(s,i));
+}
+function setupSplitMap(){
+ if(splitMap||!window.L)return;
+ splitMap=window.L.map('sim-split-map',{
+  zoomControl:false,attributionControl:true,dragging:true,
+  scrollWheelZoom:false,keyboard:false,tap:false
+ });
+ window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,attribution:'© OpenStreetMap contributors'
+ }).addTo(splitMap);
+ splitDrone=window.L.circleMarker([0,0],{radius:6,color:'#fff',weight:2,
+  fillColor:'#f4ad54',fillOpacity:1}).addTo(splitMap);
+ splitRadius=window.L.circle([0,0],{radius:30,color:'#ff9b38',
+  weight:2,fillColor:'#ff9b38',fillOpacity:.09,interactive:false}).addTo(splitMap);
+ splitArrow=window.L.polyline([[0,0],[0,0]],{color:'#ffaf68',weight:2,
+  opacity:.9,interactive:false}).addTo(splitMap);
+ redrawSplitMap();
+}
+function applySplitLayout(){
+ const active=splitIsActive();
+ $('shot-preview-view').classList.toggle('sim-split',active);
+ $('sim-split-map').hidden=!active;
+ if(active){setupSplitMap();requestAnimationFrame(()=>{
+  if(!splitMap)return;splitMap.invalidateSize({pan:false});
+  redrawSplitMap();
+ })}
+ if(viewer&&!viewer.isDestroyed())requestAnimationFrame(()=>{
+  viewer.resize();
+  if(!playing&&!overview)showCamera();
+ });
+ if($('sim-layout').value==='split'&&!active&&enabled)
+  status('Map + Camera requires an iPad or wider screen. Camera view stays full size on iPhone.');
+}
+function clearSplitMap(){
+ if(splitMap){splitMap.remove();splitMap=null}
+ splitRoute=null;splitDrone=null;splitRadius=null;splitArrow=null;splitMarkers=[];
+ $('sim-split-map').hidden=true;
+ $('shot-preview-view').classList.remove('sim-split');
+}
+// Solar geometry using the standard solar orbital approximation (UTC input).
+// This computes approximate geographic solar direction, not surveyed shadows.
+function solarAngles(date,latitude,longitude){
+ const d=date.getTime()/86400000+2440587.5-2451545;
+ const m=rad*(357.5291+.98560028*d);
+ const c=rad*(1.9148*Math.sin(m)+.02*Math.sin(2*m)+.0003*Math.sin(3*m));
+ const lambda=m+c+rad*102.9372+Math.PI,epsilon=rad*23.4397;
+ const decl=Math.asin(Math.sin(lambda)*Math.sin(epsilon));
+ const asc=Math.atan2(Math.sin(lambda)*Math.cos(epsilon),Math.cos(lambda));
+ const phi=latitude*rad,h=rad*(280.16+360.9856235*d+longitude)-asc;
+ const elevation=Math.asin(Math.sin(phi)*Math.sin(decl)+Math.cos(phi)*Math.cos(decl)*Math.cos(h));
+ const azimuth=(Math.atan2(Math.sin(h),Math.cos(h)*Math.sin(phi)-Math.tan(decl)*Math.cos(phi))+Math.PI)%(2*Math.PI);
+ return {azimuth:(azimuth+2*Math.PI)%(2*Math.PI),elevation};
+}
+function shotSunDate(){
+ const value=$('sim-sun-datetime').value;
+ if(!value)return null;
+ const millis=Date.parse(value.length===16?value+':00Z':value+'Z');
+ const hours=Number($('sim-sun-utc').value);
+ return Number.isFinite(millis)&&Number.isFinite(hours)?new Date(millis-hours*3600000):null;
+}
+function defaultSunControls(){
+ const timezone=$('sim-sun-utc');
+ if(timezone.options.length)return;
+ for(let half=-24;half<=28;half++){
+  const h=half/2,opt=document.createElement('option');
+  opt.value=String(h);
+  opt.textContent='UTC'+(h>=0?'+':'')+h;
+  timezone.append(opt);
+ }
+ const shot=core()?.getShot(),date=/^\d{4}-\d{2}-\d{2}$/.test(shot?.date||'')
+  ?shot.date:new Date().toISOString().slice(0,10);
+ const timeOfDay=String(shot?.time||'').toLowerCase();
+ const hour=timeOfDay.includes('sunrise')?'06':timeOfDay.includes('morning')?'09':
+  timeOfDay.includes('sunset')?'19':timeOfDay.includes('golden')?'18':
+  timeOfDay.includes('afternoon')?'16':timeOfDay.includes('night')?'22':'12';
+ $('sim-sun-datetime').value=date+'T'+hour+':00';
+ const guess=new Date(date+'T12:00:00');
+ const offset=Math.round(-guess.getTimezoneOffset()/30)/2;
+ timezone.value=String(offset);
+}
+function applySun(){
+ if(!viewer||viewer.isDestroyed()||!window.Cesium)return;
+ defaultSunControls();
+ const C=window.Cesium,active=$('sim-sun-toggle').checked;
+ const points=route(core()?.getShot()),p=points[core()?.getActiveWaypoint()||0]||points[0];
+ if(!active||!p){
+  viewer.shadows=false;viewer.scene.shadowMap.enabled=false;
+  viewer.scene.globe.enableLighting=false;
+  if(buildingTileset)buildingTileset.shadows=C.ShadowMode.DISABLED;
+  $('sim-sun-status').textContent='Off · studio lighting';
+  // Revert to soft, consistent fill to avoid dark shadow sides.
+  if(sunSnapshot?.light)viewer.scene.light=sunSnapshot.light;
+  return;
+ }
+ const date=shotSunDate();
+ if(!date||!Number.isFinite(date.getTime())){
+  $('sim-sun-status').textContent='Choose a valid date and time';return;
+ }
+ const solar=solarAngles(date,p[0],p[1]);
+ const az=solar.azimuth,elev=solar.elevation;
+ const h=Math.round(elev*deg),bearing=Math.round(az*deg);
+ $('sim-sun-status').textContent='Sun '+h+'° high · '+bearing+'° bearing'+
+  (h<=0?' · below horizon':' · preview shadows');
+ if(!sunSnapshot?.light)sunSnapshot={light:viewer.scene.light};
+ const enu=C.Transforms.eastNorthUpToFixedFrame(C.Cartesian3.fromDegrees(p[1],p[0]));
+ const sunLocal=new C.Cartesian3(Math.sin(az)*Math.cos(elev),
+  Math.cos(az)*Math.cos(elev),Math.sin(elev));
+ const fromSun=C.Matrix4.multiplyByPointAsVector(enu,sunLocal,new C.Cartesian3());
+ const direction=C.Cartesian3.negate(C.Cartesian3.normalize(fromSun,fromSun),new C.Cartesian3());
+ viewer.scene.light=new C.DirectionalLight({direction,intensity:h>0?1.3:.65});
+ const shadows=h>0&&$('sim-quality').value!=='performance';
+ viewer.shadows=shadows;
+ viewer.scene.shadowMap.enabled=shadows;
+ viewer.scene.globe.enableLighting=shadows;
+ if(buildingTileset)buildingTileset.shadows=shadows?C.ShadowMode.ENABLED:C.ShadowMode.DISABLED;
 }
 function cameraAt(position,height,heading,tilt,horizontalFov){
  if(!viewer||!position)return;
@@ -428,6 +588,7 @@ function renderRoute(){
     fillColor:C.Color.WHITE,disableDepthTestDistance:Number.POSITIVE_INFINITY}
  })._offsetTarget=true;
  renderWaypointTicks(flightData());
+ redrawSplitMap();
 }
 
 /* Re:Earth Buildings streams open Overture/OSM 3D Tiles directly into
@@ -561,6 +722,7 @@ async function loadBuildings(point,run,force=false){
   }
   buildingTileset=tileset;
   viewer.scene.primitives.add(tileset);
+  applySun();
   applyQuality();
   if(google){
    // The Google mesh contains its own terrain and textures.
@@ -845,6 +1007,7 @@ async function initialise(run){
  });
  currentImageryLayer=layer;
  applyQuality();
+ sunSnapshot={light:viewer.scene.light};
  showGoogleControls();
  configureSky(false);
  viewer.scene.globe.depthTestAgainstTerrain=false;
@@ -873,10 +1036,12 @@ async function initialise(run){
   direction:lightDirection,intensity:1.25
  });
  viewer.scene.fog.enabled=false;
+ applySun();
  if(!enabled||run!==epoch)return;
  installEditing();
  overlay('');
  renderRoute();showCamera();
+ applySplitLayout();applySun();
  sampleRouteTerrain(run);
  status('3D camera follows each waypoint camera cone · sampling terrain heights.');
  loadBuildings(route(core()?.getShot())[core()?.getActiveWaypoint()]||route(core()?.getShot())[0],run);
@@ -887,6 +1052,7 @@ function destroy(){
  terrainEpoch++;terrainHeights=[];terrainSignature='';terrainProvider=null;terrainReady=false;
  if(dragHandler){dragHandler.destroy();dragHandler=null}
  if(viewer){viewer.destroy();viewer=null}
+ clearSplitMap();sunSnapshot=null;
  currentImageryLayer=null;flightMarker=null;flightRadiusCircle=null;
  activeDrag=null;
 }
@@ -901,7 +1067,7 @@ function setExpanded(on){
  $('sim-landscape-settings').textContent='Settings';
  $('sim-landscape-settings').setAttribute('aria-expanded','false');
  requestAnimationFrame(()=>requestAnimationFrame(()=>{
-  if(enabled&&viewer){viewer.resize();if(!playing&&!overview)showCamera()}
+  if(enabled&&viewer){viewer.resize();applySplitLayout();if(!playing&&!overview)showCamera()}
  }));
 }
 $('sim-landscape-settings').addEventListener('click',()=>{
@@ -931,6 +1097,7 @@ function setMode(on){
  $('shot-simulator-controls').hidden=!on;
  $('preview-terrain-credit').hidden=!on;
  $('sim-expand').hidden=!on;
+ if(!on)clearSplitMap();
  if(!on)setExpanded(false);
  $('preview-3d-toggle').setAttribute('aria-pressed',String(on));
  $('preview-3d-toggle').textContent=on?'2D Map':'3D Simulator';
@@ -955,6 +1122,7 @@ function refresh(){
  const signature=JSON.stringify(points);
  if(signature!==terrainSignature){terrainHeights=[];terrainSignature='';}
  renderRoute();showCamera();
+ applySplitLayout();applySun();
  sampleRouteTerrain(run);
  loadBuildings(points[core().getActiveWaypoint()]||points[0],run);
 }
@@ -1026,7 +1194,7 @@ $('sim-hud-toggle').addEventListener('change',()=>{
  if(viewer&&!playing)showCamera();
  else if(viewer)setHud(null);
 });
-$('sim-quality').addEventListener('change',applyQuality);
+$('sim-quality').addEventListener('change',()=>{applyQuality();applySun()});
 $('sim-smoothing').addEventListener('change',()=>{
  if(viewer){
   renderRoute();
@@ -1034,6 +1202,15 @@ $('sim-smoothing').addEventListener('change',()=>{
   else if(!playing)showCamera();
  }
 });
+$('sim-layout').addEventListener('change',()=>{
+ if($('sim-layout').value==='split'&&overview){
+  overview=false;$('sim-view').value='camera';
+ }
+ applySplitLayout();
+});
+$('sim-sun-toggle').addEventListener('change',applySun);
+$('sim-sun-datetime').addEventListener('change',applySun);
+$('sim-sun-utc').addEventListener('change',applySun);
 $('sim-speed').addEventListener('input',event=>{
  $('sim-speed-value').textContent=event.target.value+' m/s';
  syncTimeline(flightData().total);
@@ -1042,6 +1219,6 @@ document.addEventListener('offset:map-rendered',refresh);
 document.addEventListener('offset:shot-rendered',refresh);
 document.addEventListener('offset:preview-height-changed',refresh);
 document.addEventListener('offset:planner-layout',()=>{if(enabled&&viewer)viewer.resize()});
-window.addEventListener('resize',()=>{if(enabled&&viewer)viewer.resize()});
+window.addEventListener('resize',()=>{if(enabled&&viewer){applySplitLayout();viewer.resize()}});
 $('preview-aspect').addEventListener('change',()=>{if(enabled&&viewer)viewer.resize()});
 })();
