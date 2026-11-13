@@ -129,6 +129,9 @@ class MainActivity : Activity() {
             if(secret) inputType=129
         }
     }
+    private fun offsetDialog() =
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+
     private fun rounded(fill:Int,stroke:Int=fill,radius:Int=12):GradientDrawable =
         GradientDrawable().apply {
             shape=GradientDrawable.RECTANGLE
@@ -165,13 +168,13 @@ class MainActivity : Activity() {
         header.addView(text(message,14f,Color.rgb(204,216,215)).apply {
             setLineSpacing(dp(3).toFloat(),1f)
         })
-        val builder=AlertDialog.Builder(this)
+        val builder=offsetDialog()
             .setView(header)
             .setNegativeButton("Close",null)
         if(actionLabel!=null && action!=null) builder.setPositiveButton(actionLabel) { _,_ -> action() }
         val technical=detail?.takeIf { it.isNotBlank() }
         if(technical!=null) builder.setNeutralButton("Details") { _,_ ->
-            AlertDialog.Builder(this).setTitle("Technical details")
+            offsetDialog().setTitle("Technical details")
                 .setMessage(technical.take(1500))
                 .setPositiveButton("Close",null).show()
         }
@@ -205,7 +208,7 @@ class MainActivity : Activity() {
         body.addView(text(message,14f,Color.rgb(207,218,218)).apply {
             setLineSpacing(dp(3).toFloat(),1f)
         })
-        AlertDialog.Builder(this).setView(body)
+        offsetDialog().setView(body)
             .setNegativeButton("Cancel",null)
             .setPositiveButton(confirmLabel) { _,_ -> onConfirm() }
             .show().also { dialog ->
@@ -335,11 +338,11 @@ class MainActivity : Activity() {
         ))
         val moreTools=button("More tools") {
             (tools.parent as? ViewGroup)?.removeView(tools)
-            AlertDialog.Builder(this).setTitle("More tools")
+            offsetDialog().setTitle("More tools")
                 .setView(ScrollView(this).apply { addView(tools) })
                 .setPositiveButton("Close",null).show()
         }
-        val settings=card("Upload preferences")
+        val settings=card("Advanced")
         val lowData=Switch(this).apply {
             text="Low Data Mode"
             textSize=13f
@@ -449,7 +452,7 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _,enabled ->
                 prefs.edit().putBoolean("overlay_pilot_only",enabled).apply()
                 if(enabled && !PilotForeground.permissionGranted(this@MainActivity)) {
-                    AlertDialog.Builder(this@MainActivity)
+                    offsetDialog()
                         .setTitle("Allow app visibility")
                         .setMessage("To show the pill only while DJI Pilot 2 is open, Android needs one-time Usage access for OFFSET. No screen content is read. Until access is granted, the pill stays hidden in this mode.")
                         .setNegativeButton("Later",null)
@@ -533,9 +536,9 @@ class MainActivity : Activity() {
             else showPermissionStatus()
         })
         settings.addView(text("Old cache files are quarantined. Switching projects requires stopping and restarting the uploader.",13f,muted))
-        val preferences=button("Upload preferences") {
+        val preferences=button("Advanced") {
             (settings.parent as? ViewGroup)?.removeView(settings)
-            AlertDialog.Builder(this).setTitle("Upload preferences")
+            offsetDialog().setTitle("Advanced")
                 .setView(ScrollView(this).apply { addView(settings) })
                 .setPositiveButton("Close",null).show()
         }
@@ -601,24 +604,24 @@ class MainActivity : Activity() {
 
     private fun startManualSdBackup() {
         if(sdBackupRunning) {
-            AlertDialog.Builder(this).setMessage("An SD backup is already running.")
+            offsetDialog().setMessage("An SD backup is already running.")
                 .setPositiveButton("OK",null).show()
             return
         }
         val pid=prefs.getString("project","").orEmpty()
         if(pid.isBlank() || !cacheAccessOk()) {
-            AlertDialog.Builder(this).setMessage("Select a project and grant DJI cache access first.")
+            offsetDialog().setMessage("Select a project and grant DJI cache access first.")
                 .setPositiveButton("OK",null).show()
             return
         }
         if(!sdCardAccessOk()) {
-            AlertDialog.Builder(this).setTitle("SD card needed")
+            offsetDialog().setTitle("SD card needed")
                 .setMessage("Choose the writable offset folder on your SD card, then press Copy rushes to SD card again.")
                 .setPositiveButton("Choose SD card") { _,_ -> chooseSdCard() }
                 .setNegativeButton("Cancel",null).show()
             return
         }
-        AlertDialog.Builder(this).setTitle("End-of-day SD backup")
+        offsetDialog().setTitle("End-of-day SD backup")
             .setMessage("Copy verified, project-owned original rushes to SD now? No automatic SD copying takes place during flight. Leave OFFSET open while copying. DJI originals are never deleted.")
             .setNegativeButton("Cancel",null)
             .setPositiveButton("Start copying") { _,_ -> runManualSdBackup(pid) }
@@ -636,7 +639,7 @@ class MainActivity : Activity() {
             addView(detail)
             addView(progress)
         }
-        val dialog=AlertDialog.Builder(this).setTitle("Copy rushes to SD card")
+        val dialog=offsetDialog().setTitle("Copy rushes to SD card")
             .setView(body)
             .setNegativeButton("Stop copy") { _,_ -> sdBackupCancel=true }
             .create()
@@ -705,7 +708,7 @@ class MainActivity : Activity() {
                 val stopped=sdBackupCancel
                 runOnUiThread {
                     dialog.dismiss()
-                    AlertDialog.Builder(this).setTitle(if(stopped) "SD backup stopped" else "SD backup finished")
+                    offsetDialog().setTitle(if(stopped) "SD backup stopped" else "SD backup finished")
                         .setMessage("Verified: $copied / $total\nSkipped: $skipped\nErrors: $failures\n\nDJI originals remain untouched. You can run this again to retry.")
                         .setPositiveButton("Close",null).show()
                 }
@@ -716,8 +719,8 @@ class MainActivity : Activity() {
     private fun showSdBackupStatus() {
         val pid=prefs.getString("project","").orEmpty()
         if(!prefs.getBoolean("sd_backup_status",true)) {
-            AlertDialog.Builder(this).setTitle("SD backup status")
-                .setMessage("Enable SD backup status in Upload preferences.")
+            offsetDialog().setTitle("SD backup status")
+                .setMessage("Enable SD backup status in Advanced.")
                 .setPositiveButton("Close",null).show()
             return
         }
@@ -728,7 +731,7 @@ class MainActivity : Activity() {
         val free=ControllerPolicy.sdFreeBytes(this)
         val space=if(free!=null) String.format(java.util.Locale.US,"%.1f GB",(free.toDouble()/1073741824.0))
                   else "Unavailable (Android SD volume access)"
-        AlertDialog.Builder(this).setTitle("SD backup status")
+        offsetDialog().setTitle("SD backup status")
             .setMessage("Project: ${if(pid.isBlank()) "Not selected" else pid}\n" +
                 "SD copying: Manual only\n" +
                 "SD access: ${if(access) "Ready" else "Unavailable"}\n" +
@@ -785,7 +788,7 @@ class MainActivity : Activity() {
                     }
             }catch(e:Exception) { "✕ Server unreachable · check network" }
             runOnUiThread {
-                AlertDialog.Builder(this).setTitle(heading)
+                offsetDialog().setTitle(heading)
                     .setMessage((local+result).joinToString("\n")+
                         "\n\nChecks are read-only. No test footage was uploaded.")
                     .setPositiveButton("Close",null).show()
@@ -804,7 +807,7 @@ class MainActivity : Activity() {
             body.addView(field)
         }
         body.addView(button("Test connection") { testConnection() })
-        AlertDialog.Builder(this).setTitle("Connection settings")
+        offsetDialog().setTitle("Connection settings")
             .setView(body)
             .setPositiveButton("Save") { _,_ ->
                 val normalized=normalizedServerUrl(server.text.toString())
@@ -839,7 +842,7 @@ class MainActivity : Activity() {
         val base=normalizedServerUrl(server.text.toString())
         val device=token.text.toString().trim()
         if(!base.startsWith("https://") || device.isBlank()) {
-            AlertDialog.Builder(this).setTitle("Connection required")
+            offsetDialog().setTitle("Connection required")
                 .setMessage("Set your HTTPS server and device token in Connection settings first.")
                 .setPositiveButton("OK",null).show()
             return
@@ -853,18 +856,7 @@ class MainActivity : Activity() {
                     org.json.JSONArray(response.body?.string() ?: "[]")
                 }
                 runOnUiThread {
-                    val names=Array(result.length()) { i ->
-                        val item=result.getJSONObject(i)
-                        "${if(item.optString("id")==project.text.toString().trim()) "● " else ""}${item.optString("name")}  ·  ${item.optString("id")}  ·  ${item.optInt("clips")} clips"
-                    }
-                    AlertDialog.Builder(this).setTitle("Manage projects")
-                        .setItems(names) { _,index ->
-                            val item=result.getJSONObject(index)
-                            activateProject(item.getString("id"),item.optString("name","Project"))
-                        }
-                        .setNeutralButton("Manage / delete") { _,_ -> showProjectManagement(result) }
-                        .setPositiveButton("New project") { _,_ -> createProjectDialog() }
-                        .setNegativeButton("Close",null).show()
+                    showProjectPicker(result)
                 }
             }catch(e:Exception) {
                 runOnUiThread {
@@ -876,18 +868,104 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun showProjectManagement(projects:org.json.JSONArray) {
-        val names=Array(projects.length()) { i ->
-            val item=projects.getJSONObject(i)
-            "${item.optString("name")} · ${item.optInt("clips")} clips"
+    private fun showOffsetPanel(title:String, content:View, vararg actions:Button):android.app.Dialog {
+        val dialog=android.app.Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            background=rounded(bg,Color.rgb(57,65,67),18)
+            setPadding(dp(16),dp(12),dp(16),dp(14))
         }
-        AlertDialog.Builder(this).setTitle("Manage projects")
-            .setItems(names) { _,index ->
-                val item=projects.getJSONObject(index)
-                confirmDeleteProject(item.getString("id"),
-                    item.optString("name","Project"),item.optInt("clips"))
+        body.addView(text(title,18f).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        val scroll=object:ScrollView(this) {
+            override fun onMeasure(widthMeasureSpec:Int,heightMeasureSpec:Int) {
+                val limit=dp((resources.configuration.screenHeightDp-120).coerceAtLeast(80))
+                val cap=if(View.MeasureSpec.getMode(heightMeasureSpec)==View.MeasureSpec.UNSPECIFIED)
+                    limit else minOf(limit,View.MeasureSpec.getSize(heightMeasureSpec))
+                super.onMeasure(widthMeasureSpec,View.MeasureSpec.makeMeasureSpec(cap,View.MeasureSpec.AT_MOST))
             }
-            .setNegativeButton("Close",null).show()
+        }
+        scroll.addView(content)
+        body.addView(scroll,LinearLayout.LayoutParams(-1,-2))
+        body.addView(LinearLayout(this).apply {
+            gravity=android.view.Gravity.END
+            for(action in actions) addView(action,LinearLayout.LayoutParams(-2,dp(42)).apply {
+                leftMargin=dp(6)
+            })
+        },LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
+        dialog.setContentView(body)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(dp(minOf(460,resources.configuration.screenWidthDp-24)),-2)
+        return dialog
+    }
+
+    private fun showProjectPicker(projects:org.json.JSONArray, managing:Boolean=false) {
+        val dialog=android.app.Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val outline=Color.rgb(57,65,67)
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            background=rounded(bg,outline,18)
+            setPadding(dp(16),dp(12),dp(16),dp(14))
+        }
+        body.addView(text(if(managing) "Manage projects" else "Choose project",18f).apply {
+            setTypeface(typeface,android.graphics.Typeface.BOLD)
+        })
+        val rows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        if(projects.length()==0) rows.addView(text("No projects yet.",13f,muted))
+        for(index in 0 until projects.length()) {
+            val item=projects.getJSONObject(index)
+            val id=item.getString("id")
+            val name=item.optString("name","Project")
+            val count=item.optInt("clips")
+            val active=id==project.text.toString().trim()
+            val detail="$id  ·  $count clips"+if(active) "  ·  Active" else ""
+            val row=button("") {
+                dialog.dismiss()
+                if(managing) confirmDeleteProject(id,name,count) else activateProject(id,name)
+            }.apply {
+                gravity=android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                background=rounded(panel,if(active) accent else outline,10)
+                setPadding(dp(12),dp(7),dp(12),dp(7))
+                minHeight=dp(48)
+                textSize=14f
+                val label=android.text.SpannableString("$name\n$detail")
+                label.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                    0,name.length,android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                label.setSpan(android.text.style.ForegroundColorSpan(if(active) accent else muted),
+                    name.length+1,label.length,android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                label.setSpan(android.text.style.RelativeSizeSpan(0.8f),
+                    name.length+1,label.length,android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                text=label
+            }
+            rows.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(6) })
+        }
+        val scroll=ScrollView(this).apply { addView(rows) }
+        val listHeight=if(projects.length()>3) dp(minOf(220,resources.configuration.screenHeightDp/2)) else -2
+        body.addView(scroll,LinearLayout.LayoutParams(-1,listHeight))
+        val actions=LinearLayout(this).apply {
+            gravity=android.view.Gravity.END
+        }
+        fun addAction(control:Button) {
+            actions.addView(control,LinearLayout.LayoutParams(-2,dp(42)).apply { leftMargin=dp(6) })
+        }
+        if(!managing) addAction(button("Manage projects") {
+            dialog.dismiss()
+            showProjectPicker(projects,managing=true)
+        })
+        addAction(button("Close") { dialog.dismiss() })
+        if(!managing) addAction(primaryButton("New project") {
+            dialog.dismiss()
+            createProjectDialog()
+        })
+        body.addView(actions,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
+        dialog.setContentView(body)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(dp(minOf(460,resources.configuration.screenWidthDp-24)),-2)
     }
 
     private fun confirmDeleteProject(id:String,name:String,count:Int) {
@@ -909,7 +987,7 @@ class MainActivity : Activity() {
             container.addView(text("Type DELETE to confirm",12f,muted))
             container.addView(confirmation)
         }
-        val dialog=AlertDialog.Builder(this).setView(container)
+        val dialog=offsetDialog().setView(container)
             .setNegativeButton("Cancel",null)
             .setPositiveButton("Delete",null)
             .create()
@@ -964,13 +1042,13 @@ class MainActivity : Activity() {
             orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),0)
             addView(name)
         }
-        AlertDialog.Builder(this).setTitle("Create project")
+        offsetDialog().setTitle("Create project")
             .setView(container)
             .setNegativeButton("Cancel",null)
             .setPositiveButton("Create") { _,_ ->
                 val projectName=name.text.toString().trim()
                 if(projectName.isBlank()) {
-                    AlertDialog.Builder(this).setMessage("Project name is required.")
+                    offsetDialog().setMessage("Project name is required.")
                         .setPositiveButton("OK",null).show()
                 } else {
                     val base=server.text.toString().trim().trimEnd('/')
@@ -988,7 +1066,7 @@ class MainActivity : Activity() {
                             runOnUiThread {
                                 val id=result.getString("id")
                                 activateProject(id,projectName)
-                                AlertDialog.Builder(this).setTitle("Project created")
+                                offsetDialog().setTitle("Project created")
                                     .setMessage("Project: $projectName\nID: $id\nReview PIN: ${result.optString("pin")}\n\nSave the PIN now; it is only shown when the project is created.")
                                     .setPositiveButton("OK",null).show()
                             }
@@ -1008,7 +1086,7 @@ class MainActivity : Activity() {
         val base=server.text.toString().trim().trimEnd('/')
         val device=token.text.toString().trim()
         if(!base.startsWith("https://") || device.isBlank()) {
-            AlertDialog.Builder(this).setTitle("Check for updates")
+            offsetDialog().setTitle("Check for updates")
                 .setMessage("Configure the server and device token first.")
                 .setPositiveButton("OK",null).show()
             return
@@ -1030,7 +1108,7 @@ class MainActivity : Activity() {
                     val message=if(updateAvailable)
                         "Installed: ${installed.versionName} ($currentCode)\\nAvailable: ${info.optString("version_name")} ($latest)\\n\\nDownload the signed APK and confirm installation in Android."
                     else "Installed: ${installed.versionName} ($currentCode)\\nNo published update available yet."
-                    val dialog=AlertDialog.Builder(this).setTitle("App updates")
+                    val dialog=offsetDialog().setTitle("App updates")
                         .setMessage(message).setNegativeButton("Close",null)
                     if(updateAvailable) dialog.setPositiveButton("Download update") { _,_ ->
                         startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))
@@ -1060,7 +1138,7 @@ class MainActivity : Activity() {
         val base=normalizedServerUrl(server.text.toString())
         val device=token.text.toString().trim()
         if(!base.startsWith("https://") || device.isBlank()) {
-            AlertDialog.Builder(this).setTitle("Connection details required")
+            offsetDialog().setTitle("Connection details required")
                 .setMessage("Enter your HTTPS server URL and device token. Select a project separately under Projects.")
                 .setPositiveButton("OK",null).show()
             return
@@ -1079,7 +1157,7 @@ class MainActivity : Activity() {
                 }
             }catch(e:Exception) { "Connection failed: ${e.localizedMessage ?: "Check network and server URL."}" }
             runOnUiThread {
-                AlertDialog.Builder(this).setTitle("Connection test")
+                offsetDialog().setTitle("Connection test")
                     .setMessage(result).setPositiveButton("OK",null).show()
             }
         }.start()
@@ -1090,7 +1168,7 @@ class MainActivity : Activity() {
         val pid=project.text.toString().trim()
         val device=token.text.toString().trim()
         if(!base.startsWith("https://") || pid.isBlank() || device.isBlank()) {
-            AlertDialog.Builder(this).setTitle("Server upload history")
+            offsetDialog().setTitle("Server upload history")
                 .setMessage("Enter HTTPS server, project ID and device token first.")
                 .setPositiveButton("OK",null).show()
             return
@@ -1127,7 +1205,7 @@ class MainActivity : Activity() {
                     text=result;setTextColor(Color.BLACK);textSize=14f
                     setPadding(dp(18),dp(12),dp(18),dp(12))
                 }
-                AlertDialog.Builder(this).setTitle("Server upload history")
+                offsetDialog().setTitle("Server upload history")
                     .setView(ScrollView(this).apply { addView(label) })
                     .setPositiveButton("Close",null).show()
             }
@@ -1167,7 +1245,7 @@ class MainActivity : Activity() {
             setPadding(dp(18),dp(12),dp(18),dp(12))
         }
         val scroll=ScrollView(this).apply { addView(historyText) }
-        AlertDialog.Builder(this).setTitle("Upload history · local")
+        offsetDialog().setTitle("Upload history · local")
             .setView(scroll).setPositiveButton("Close",null).show()
     }
 
@@ -1189,19 +1267,16 @@ class MainActivity : Activity() {
             addView(text("Access follows the project settings. This QR code does not expire.",
                 11f,muted))
         }
-        AlertDialog.Builder(this).setTitle("Share · $projectName")
-            .setView(layout)
-            .setPositiveButton("Share link") { _,_ ->
+        lateinit var dialog:android.app.Dialog
+        dialog=showOffsetPanel("Share · $projectName",layout,
+            button("Close") { dialog.dismiss() },
+            primaryButton("Share link") {
+                dialog.dismiss()
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                     type="text/plain"
                     putExtra(Intent.EXTRA_TEXT,url)
                 },"Share OFFSET project"))
-            }
-            .setNegativeButton("Close",null)
-            .show().also { dialog ->
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.isAllCaps=false
-                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.isAllCaps=false
-            }
+            })
     }
 
     private fun showProjectShare() {
@@ -1291,7 +1366,7 @@ class MainActivity : Activity() {
     private data class CloudClip(val id:String,val filename:String,val bytes:Long)
 
     /** Operator-only local player. No decoding or playback runs in the background. */
-    private fun showLocalClipPreview(file:DocumentFile, playlist:List<DocumentFile>) {
+    private fun showLocalClipPreview(file:DocumentFile, playlist:List<DocumentFile>, selectionBoxes:Map<Uri,android.widget.CheckBox>) {
         val files=playlist.filter { it.isFile && it.name.orEmpty().endsWith(".mp4",true) }
         if(files.isEmpty()) {
             showOffsetError("Preview unavailable","No locally accessible MP4 files.")
@@ -1314,7 +1389,9 @@ class MainActivity : Activity() {
         }
         var scrubbing=false
         var durationMs=0
-        val playback=primaryButton("▶ Play") {
+        var controlsUntil=0L
+        val playback=button("▶") {
+            controlsUntil=android.os.SystemClock.uptimeMillis()+2500
             if(player.isPlaying) {
                 player.pause()
             } else {
@@ -1322,8 +1399,18 @@ class MainActivity : Activity() {
             }
         }
         val handler=android.os.Handler(android.os.Looper.getMainLooper())
+        lateinit var header:View
+        lateinit var footer:View
+        fun showControls() {
+            controlsUntil=android.os.SystemClock.uptimeMillis()+2500
+            header.visibility=View.VISIBLE
+            footer.visibility=View.VISIBLE
+        }
         val ticker=object:Runnable {
             override fun run() {
+                val visible=!player.isPlaying || scrubbing || android.os.SystemClock.uptimeMillis()<controlsUntil
+                header.visibility=if(visible) View.VISIBLE else View.GONE
+                footer.visibility=header.visibility
                 if(!scrubbing) {
                     try {
                         val total=player.duration.coerceAtLeast(0)
@@ -1337,7 +1424,8 @@ class MainActivity : Activity() {
                             return "%02d:%02d".format(java.util.Locale.US,seconds/60,seconds%60)
                         }
                         position.text="${clock(current)} / ${clock(durationMs)}"
-                        playback.text=if(player.isPlaying) "Ⅱ Pause" else "▶ Play"
+                        playback.text=if(player.isPlaying) "Ⅱ" else "▶"
+                        playback.contentDescription=if(player.isPlaying) "Pause" else "Play"
                     }catch(_:Exception){}
                 }
                 handler.postDelayed(this,250)
@@ -1356,10 +1444,11 @@ class MainActivity : Activity() {
                     player.seekTo((durationMs.toLong()*seek.progress/1000).toInt())
                 }catch(_:Exception){}
                 scrubbing=false
+                showControls()
             }
         })
-        val previous=button("◀ Previous") {}
-        val next=button("Next ▶") {}
+        val previous=button("‹") {}.apply { contentDescription="Previous clip" }
+        val next=button("›") {}.apply { contentDescription="Next clip" }
         val title=text("",16f,Color.WHITE).apply {
             setTypeface(typeface,android.graphics.Typeface.BOLD)
             maxLines=1
@@ -1377,66 +1466,70 @@ class MainActivity : Activity() {
             playback.isEnabled=false
             seek.isEnabled=false
         }
-        val screen=resources.configuration
-        val videoHeight=minOf(screen.screenWidthDp*9/16,screen.screenHeightDp/2)
-        val content=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL
-            background=rounded(bg,Color.rgb(52,62,64),16)
-            setPadding(dp(14),dp(10),dp(14),dp(12))
-        }
-        val header=LinearLayout(this).apply {
-            gravity=android.view.Gravity.CENTER_VERTICAL
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation=LinearLayout.VERTICAL
-                addView(clipCount)
-                addView(title)
-            },LinearLayout.LayoutParams(0,-2,1f))
-            addView(close,LinearLayout.LayoutParams(dp(44),dp(44)))
-        }
-        content.addView(header)
-        val videoStage=android.widget.FrameLayout(this).apply {
+        val choose=button("Clips ▾") {}
+        val select=button("Select") {}
+        val content=android.widget.FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
-            addView(player,android.widget.FrameLayout.LayoutParams(
-                -1,-1,android.view.Gravity.CENTER
-            ))
+            addView(player,android.widget.FrameLayout.LayoutParams(-1,-1,android.view.Gravity.CENTER))
         }
-        content.addView(videoStage,LinearLayout.LayoutParams(-1,dp(videoHeight)).apply {
-            topMargin=dp(6)
-        })
-        val timeline=LinearLayout(this).apply {
+        val tapSurface=View(this).apply {
+            contentDescription="Show playback controls"
+            setOnClickListener { showControls() }
+        }
+        content.addView(tapSurface,android.widget.FrameLayout.LayoutParams(-1,-1))
+        header=LinearLayout(this).apply {
+            setBackgroundColor(Color.argb(215,17,20,22))
             gravity=android.view.Gravity.CENTER_VERTICAL
-            addView(seek,LinearLayout.LayoutParams(0,dp(42),1f))
-            addView(position)
+            setPadding(dp(12),0,dp(8),0)
+            addView(title,LinearLayout.LayoutParams(0,-2,1f))
+            addView(clipCount)
+            addView(choose,LinearLayout.LayoutParams(-2,dp(38)))
+            addView(select,LinearLayout.LayoutParams(-2,dp(38)))
+            addView(close,LinearLayout.LayoutParams(dp(40),dp(38)))
         }
-        content.addView(timeline)
-        val controls=LinearLayout(this).apply {
-            gravity=android.view.Gravity.CENTER
-            addView(previous,LinearLayout.LayoutParams(0,dp(44),1f))
-            addView(playback,LinearLayout.LayoutParams(0,dp(44),1f).apply {
-                setMargins(dp(8),0,dp(8),0)
+        content.addView(header,android.widget.FrameLayout.LayoutParams(-1,-2,android.view.Gravity.TOP))
+        footer=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setBackgroundColor(Color.argb(215,17,20,22))
+            setPadding(dp(8),0,dp(12),0)
+            addView(LinearLayout(this@MainActivity).apply {
+                gravity=android.view.Gravity.CENTER_VERTICAL
+                for(control in listOf(previous,playback,next))
+                    addView(control,LinearLayout.LayoutParams(dp(40),dp(38)))
+                addView(seek,LinearLayout.LayoutParams(0,dp(38),1f))
+                addView(position)
             })
-            addView(next,LinearLayout.LayoutParams(0,dp(44),1f))
+            addView(playerStatus)
+            addView(info)
         }
-        content.addView(controls)
-        content.addView(playerStatus)
-        content.addView(info,LinearLayout.LayoutParams(-1,-2).apply {
-            topMargin=dp(6)
-        })
+        content.addView(footer,android.widget.FrameLayout.LayoutParams(-1,-2,android.view.Gravity.BOTTOM))
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         dialog.setContentView(content)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         var closed=false
         var requestId=0
+        fun updateSelection() {
+            val box=selectionBoxes[files[index].uri]
+            select.isEnabled=box?.isEnabled==true
+            select.text=if(box?.isChecked==true) "Selected ✓" else "Select"
+        }
+        select.setOnClickListener {
+            selectionBoxes[files[index].uri]?.performClick()
+            updateSelection()
+            showControls()
+        }
         fun loadClip() {
+            showControls()
+            updateSelection()
             val current=files[index]
             requestId++
             val thisRequest=requestId
             durationMs=0
             seek.progress=0
             position.text="00:00 / 00:00"
-            clipCount.text="LOCAL PREVIEW  ·  ${index+1} / ${files.size}"
+            clipCount.text="${index+1} / ${files.size}"
             title.text=current.name ?: "Clip"
-            playback.text="▶ Play"
+            playback.text="▶"
             previous.isEnabled=index>0
             next.isEnabled=index<files.lastIndex
             info.text="Reading clip details…"
@@ -1478,6 +1571,16 @@ class MainActivity : Activity() {
                 }
             }.start()
         }
+        choose.setOnClickListener {
+            player.pause()
+            showControls()
+            offsetDialog().setTitle("Choose clip")
+                .setSingleChoiceItems(files.map { it.name ?: "Clip" }.toTypedArray(),index) { list,which ->
+                    list.dismiss()
+                    if(index!=which) { index=which;loadClip() }
+                }
+                .setNegativeButton("Close",null).show()
+        }
         previous.setOnClickListener {
             if(index>0) { index--;loadClip() }
         }
@@ -1490,11 +1593,8 @@ class MainActivity : Activity() {
             try { player.stopPlayback() }catch(_:Exception){}
         }
         dialog.show()
-        // Fill the available controller display without forcing global orientation.
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels*0.95).toInt(),
-            android.view.WindowManager.LayoutParams.WRAP_CONTENT
-        )
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        dialog.window?.setLayout(-1,-1)
         loadClip()
         handler.post(ticker)
     }
@@ -1513,7 +1613,7 @@ class MainActivity : Activity() {
             warning+"\n\nDJI cache size includes visible MP4 files only. Android may store "+
             "the selected DJI folder on a different volume. No originals or "+
             "resumable low-data copies are ever deleted."
-        val builder=AlertDialog.Builder(this).setTitle("Media storage").setMessage(body)
+        val builder=offsetDialog().setTitle("Media storage").setMessage(body)
             .setNegativeButton("Close",null)
         if(data.oldTempCount>0)builder.setPositiveButton("Clean old temp files") { _,_ ->
             showOffsetConfirm("Clean old OFFSET temp files?",
@@ -1523,7 +1623,7 @@ class MainActivity : Activity() {
                 Thread {
                     val (removed,bytes)=ControllerMediaTools.cleanOldTemporaryChunks(this)
                     runOnUiThread {
-                        AlertDialog.Builder(this).setTitle("Cleanup complete")
+                        offsetDialog().setTitle("Cleanup complete")
                             .setMessage("$removed old chunk files removed · "+
                                 ControllerMediaTools.pretty(bytes)+" freed. DJI originals untouched.")
                             .setPositiveButton("Close",null).show()
@@ -1597,7 +1697,7 @@ class MainActivity : Activity() {
                 }
                 runOnUiThread {
                     if(prefs.getString("project","")==pid)showMediaLibraryPage()
-                    AlertDialog.Builder(this).setTitle("Media selection updated")
+                    offsetDialog().setTitle("Media selection updated")
                         .setMessage("$changed clips updated · $skipped skipped.\n"+
                             "No original DJI media was deleted.")
                         .setPositiveButton("Close",null).show()
@@ -1697,7 +1797,7 @@ class MainActivity : Activity() {
                     val thumb=thumbs[stem]
                     val bitmap=try {
                         thumb?.let { t -> contentResolver.openInputStream(t.uri)?.use { stream ->
-                            BitmapFactory.decodeStream(stream,null,BitmapFactory.Options().apply { inSampleSize=4 })
+                            BitmapFactory.decodeStream(stream,null,BitmapFactory.Options().apply { inSampleSize=2 })
                         } }
                     }catch(_:Exception){null}
                     clips.add(LibraryClip(file,bitmap))
@@ -1792,6 +1892,7 @@ class MainActivity : Activity() {
                 val libraryGrid=android.widget.GridLayout(this).apply { columnCount=columns }
                 grid.addView(libraryGrid)
                 val playlist=clips.map { it.file }
+                val selectionBoxes=mutableMapOf<Uri,android.widget.CheckBox>()
                 for((position,item) in clips.withIndex()) {
                     val file=item.file
                     val name=file.name ?: "clip.mp4"
@@ -1819,9 +1920,9 @@ class MainActivity : Activity() {
                     }
                     preview.contentDescription="Preview $name"
                     preview.isClickable=true
-                    preview.setOnClickListener { showLocalClipPreview(file,playlist) }
+                    preview.setOnClickListener { showLocalClipPreview(file,playlist,selectionBoxes) }
                     card.addView(preview,LinearLayout.LayoutParams(-1,dp(95)))
-                    card.addView(button("▶ Preview") { showLocalClipPreview(file,playlist) },
+                    card.addView(button("▶ Preview") { showLocalClipPreview(file,playlist,selectionBoxes) },
                         LinearLayout.LayoutParams(-1,dp(29)))
                     val selectRow=LinearLayout(this).apply {
                         orientation=LinearLayout.HORIZONTAL
@@ -1838,6 +1939,7 @@ class MainActivity : Activity() {
                             refreshBulk()
                         }
                     }
+                    selectionBoxes[file.uri]=selectBox
                     selectRow.addView(selectBox,LinearLayout.LayoutParams(dp(33),dp(34)))
                     selectRow.addView(text(name,12f,Color.WHITE).apply {
                         maxLines=1
@@ -1882,7 +1984,7 @@ class MainActivity : Activity() {
                         actions.add("Add to queue" to {
                             val result=ledger.enqueueManual(file,pid)
                             if(result!="Queued") {
-                                AlertDialog.Builder(this).setMessage(result).setPositiveButton("OK",null).show()
+                                offsetDialog().setMessage(result).setPositiveButton("OK",null).show()
                             } else showMediaLibraryPage()
                         })
                         if(localState!="quarantine") actions.add("Exclude from upload" to {
@@ -1897,14 +1999,16 @@ class MainActivity : Activity() {
                         menuButton.minWidth=dp(34)
                         menuButton.minimumWidth=dp(34)
                         menuButton.setPadding(0,0,0,0)
-                        menuButton.setOnClickListener { view ->
-                            val popup=android.widget.PopupMenu(this,view)
-                            actions.forEachIndexed { index,action -> popup.menu.add(0,index,index,action.first) }
-                            popup.setOnMenuItemClickListener { selected ->
-                                actions.getOrNull(selected.itemId)?.second?.invoke()
-                                true
+                        menuButton.setOnClickListener {
+                            val menu=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+                            lateinit var dialog:android.app.Dialog
+                            for((label,action) in actions) {
+                                menu.addView(button(label) {
+                                    dialog.dismiss()
+                                    action()
+                                },LinearLayout.LayoutParams(-1,dp(42)).apply { topMargin=dp(6) })
                             }
-                            popup.show()
+                            dialog=showOffsetPanel(name,menu,button("Close") { dialog.dismiss() })
                         }
                         detail.addView(menuButton,LinearLayout.LayoutParams(dp(38),dp(36)))
                     }
@@ -1967,7 +2071,7 @@ class MainActivity : Activity() {
         val uri=prefs.getString("tree_uri",null)?.let(Uri::parse)
         val root=uri?.let { DocumentFile.fromTreeUri(this,it) }
         if(pid.isBlank() || root==null) {
-            AlertDialog.Builder(this).setTitle("Clip library")
+            offsetDialog().setTitle("Clip library")
                 .setMessage("Select a project and CACHE_VIDEO folder first.")
                 .setPositiveButton("OK",null).show()
             return
@@ -2016,7 +2120,7 @@ class MainActivity : Activity() {
             line.addView(text("${file.name}\n${file.length()/1048576} MB · ${if(key in queued) "QUEUED" else "LOCAL"}",13f,Color.BLACK))
             layout.addView(line)
         }
-        val dialog=AlertDialog.Builder(this).setTitle("Clip library · $pid")
+        val dialog=offsetDialog().setTitle("Clip library · $pid")
             .setView(ScrollView(this).apply { addView(layout) })
             .setNegativeButton("Close",null)
             .setNeutralButton("Queue selected") { _,_ ->
@@ -2024,7 +2128,7 @@ class MainActivity : Activity() {
                 for(file in files) if(file.uri.toString() in selected) {
                     if(ledger.enqueueManual(file,pid)=="Queued") added++
                 }
-                AlertDialog.Builder(this).setTitle("Upload queue")
+                offsetDialog().setTitle("Upload queue")
                     .setMessage("$added clips added. Start upload to send them.")
                     .setPositiveButton("View queue") { _,_ -> showUploadQueue() }
                     .setNegativeButton("Close",null).show()
@@ -2049,24 +2153,20 @@ class MainActivity : Activity() {
         val urgent=queue.count { it.priority }
         layout.addView(text("${queue.size} waiting · ${urgent} prioritized · active upload finishes first",
             12f,muted))
-        var queueDialog:AlertDialog?=null
+        lateinit var queueDialog:android.app.Dialog
         layout.addView(button(if(searchTerm.isBlank())"Find clip by name" else "Filter: $searchTerm · Change") {
-            val field=EditText(this).apply {
-                hint="DJI filename"
-                setSingleLine(true)
-                setText(searchTerm)
-                setSelectAllOnFocus(true)
-            }
-            AlertDialog.Builder(this).setTitle("Find clip in queue")
-                .setView(field)
-                .setNegativeButton("Cancel",null)
-                .setPositiveButton("Filter") { _,_ ->
-                    queueDialog?.dismiss()
-                    showUploadQueue(field.text.toString().trim())
-                }.show()
+            val search=field("DJI filename",searchTerm).apply { setSelectAllOnFocus(true) }
+            lateinit var filterDialog:android.app.Dialog
+            filterDialog=showOffsetPanel("Find clip in queue",search,
+                button("Cancel") { filterDialog.dismiss() },
+                primaryButton("Filter") {
+                    filterDialog.dismiss()
+                    queueDialog.dismiss()
+                    showUploadQueue(search.text.toString().trim())
+                })
         })
         if(searchTerm.isNotBlank())layout.addView(button("Show all waiting clips") {
-            queueDialog?.dismiss()
+            queueDialog.dismiss()
             showUploadQueue()
         })
         if(queue.isEmpty())layout.addView(text(
@@ -2103,12 +2203,12 @@ class MainActivity : Activity() {
                 if(!promoted){
                     showOffsetError("Priority unavailable","The clip is no longer pending in this project.")
                 }
-                queueDialog?.dismiss()
+                queueDialog.dismiss()
                 showUploadQueue(searchTerm)
             })
             if(item.priority)line.addView(button("Clear") {
                 ledger.clearPriority(item.uri,pid)
-                queueDialog?.dismiss()
+                queueDialog.dismiss()
                 showUploadQueue(searchTerm)
             })
             if(item.manual)line.addView(button("Remove") {
@@ -2117,23 +2217,19 @@ class MainActivity : Activity() {
                     "Remove ${name} from the upload queue? The DJI original is not deleted.",
                     "Remove") {
                     ledger.removeFromQueue(item.uri,pid)
-                    queueDialog?.dismiss()
+                    queueDialog.dismiss()
                     showUploadQueue(searchTerm)
                 }
             })
             layout.addView(line,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
         }
-        AlertDialog.Builder(this).setTitle("Upload queue · ${pid}")
-            .setView(ScrollView(this).apply { addView(layout) })
-            .setPositiveButton("Close",null).create().also {
-                queueDialog=it
-                it.show()
-            }
+        queueDialog=showOffsetPanel("Upload queue · $pid",layout,
+            button("Close") { queueDialog.dismiss() })
     }
     private fun chooseManualFiles() {
         val pid=project.text.toString().trim()
         if(pid.isBlank()) {
-            AlertDialog.Builder(this).setMessage("Enter the destination project ID first.")
+            offsetDialog().setMessage("Enter the destination project ID first.")
                 .setPositiveButton("OK",null).show()
             return
         }
@@ -2151,7 +2247,7 @@ class MainActivity : Activity() {
         data.clipData?.let { clips -> for(i in 0 until clips.itemCount) uris.add(clips.getItemAt(i).uri) }
         data.data?.let { if(!uris.contains(it)) uris.add(it) }
         if(uris.isEmpty()) return
-        AlertDialog.Builder(this)
+        offsetDialog()
             .setTitle("Add proxy files to project?")
             .setMessage("Queue ${uris.size} selected file(s) for project $pid? Only select clips belonging to this project.")
             .setNegativeButton("Cancel",null)
@@ -2170,7 +2266,7 @@ class MainActivity : Activity() {
                         if(result=="Queued") added++ else problems.add(result)
                     }catch(e:Exception) { problems.add(e.message ?: "File access denied") }
                 }
-                AlertDialog.Builder(this).setTitle("Manual upload queue")
+                offsetDialog().setTitle("Manual upload queue")
                     .setMessage("$added file(s) queued for $pid. Start secure upload to send them. "+
                         if(problems.isEmpty()) "" else "${problems.size} skipped: ${problems.first()}")
                     .setPositiveButton("OK",null).show()
@@ -2213,7 +2309,7 @@ class MainActivity : Activity() {
         body.addView(text(
             "These permissions are saved across restarts. Android may require new screen capture permission for each metadata session.",
             12f,muted))
-        val dialog=AlertDialog.Builder(this).setView(body)
+        val dialog=offsetDialog().setView(body)
             .setNegativeButton("Close",null)
         if(!cacheGranted) dialog.setPositiveButton("Choose folder") { _,_ -> chooseFolder() }
         else if(!overlayGranted) dialog.setPositiveButton("Allow overlay") { _,_ ->
@@ -2273,7 +2369,7 @@ class MainActivity : Activity() {
                     if(root?.isDirectory!=true || !root.canWrite()) throw SecurityException("SD root is not writable")
                     prefs.edit().putString("sd_tree_uri",uri.toString())
                         .commit()
-                    AlertDialog.Builder(this).setTitle("SD card ready")
+                    offsetDialog().setTitle("SD card ready")
                         .setMessage("Choose Copy rushes to SD card after filming. OFFSET will never copy in the background. Originals remain untouched.")
                         .setPositiveButton("OK",null).show()
                 } catch(e:Exception) {
