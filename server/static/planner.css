@@ -1401,3 +1401,15 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
   display:none!important;
  }
 }
+
+
+/* Drone height radius — small synchronized visibility controls. */
+.offset-planner .drone-radius-toggle{
+ display:flex;align-items:center;gap:7px;margin:0 0 9px;
+ font-size:11px;color:#e4be95;cursor:pointer;
+}
+.offset-planner .drone-radius-toggle input,
+.offset-planner .sim-motion-row #sim-radius-toggle{
+ width:16px;height:16px;min-height:16px;flex:none;
+ margin:0;accent-color:#ed923d;
+}
