@@ -71,6 +71,7 @@ $('preview-aspect').addEventListener('change',event=>{
  if(!Object.hasOwn(ratios,aspect))return;
  shot.previewAspect=aspect;core().save();display();
 });
+document.addEventListener('offset:shot-lens-changed',display);
 document.addEventListener('offset:shot-rendered',display);
 document.addEventListener('offset:map-rendered',display);
 $('shot-lens').addEventListener('input',display);
