@@ -63,6 +63,7 @@ function render(){
 }
 document.addEventListener('offset:planner-layout',()=>{if(mini&&!$('shot-preview-2dmap').hidden)mini.invalidateSize({pan:false});});
 document.addEventListener('offset:map-rendered',render);
+document.addEventListener('offset:shot-lens-changed',render);
 document.addEventListener('offset:shot-rendered',render);
 document.addEventListener('offset:preview-mode-changed',render);
 document.addEventListener('offset:planner-map-ready',render);
