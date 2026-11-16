@@ -2,15 +2,16 @@ package no.fieldlink.uploader
 
 import android.app.AlertDialog
 import android.content.Context
+import android.content.DialogInterface
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.StateListDrawable
 import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
+import android.widget.BaseAdapter
+import android.widget.FrameLayout
 
 /** One visual style for every app-owned alert, including DJI's Android skin. */
 class OffsetDialogBuilder(context: Context) :
@@ -33,29 +34,51 @@ class OffsetDialogBuilder(context: Context) :
 
     private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
 
-    private fun surface(fill: Int, stroke: Int) = GradientDrawable().apply {
-        setColor(fill)
-        cornerRadius = dp(8).toFloat()
-        setStroke(dp(1), stroke)
+    // Project choices are actions too: give each row the same button surface.
+    override fun setItems(items: Array<out CharSequence>?, listener: DialogInterface.OnClickListener?): AlertDialog.Builder {
+        val labels = items?.toList().orEmpty()
+        return super.setAdapter(object : BaseAdapter() {
+            override fun getCount() = labels.size
+            override fun getItem(position: Int) = labels[position]
+            override fun getItemId(position: Int) = position.toLong()
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val frame = (convertView as? FrameLayout) ?: FrameLayout(context).apply {
+                    setPadding(dp(12), dp(4), dp(12), dp(4))
+                    addView(TextView(context).apply {
+                        textSize = 13f
+                        setTextColor(Color.rgb(244, 247, 246))
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        setPadding(dp(14), dp(10), dp(14), dp(10))
+                        minHeight = dp(44)
+                        background = context.getDrawable(R.drawable.offset_button_background)
+                        // The list owns clicks, focus and accessibility, not a nested button.
+                        isDuplicateParentStateEnabled = true
+                    }, FrameLayout.LayoutParams(-1, -2))
+                }
+                (frame.getChildAt(0) as TextView).text = labels[position]
+                return frame
+            }
+        }, listener)
     }
 
     private fun styleButton(button: Button, primary: Boolean) {
-        val accent = Color.rgb(183, 243, 77)
+        val quiet = button.text.toString().trim().lowercase() in setOf("close", "cancel", "back", "ok", "done")
+        val emphasized = primary && !quiet
         button.isAllCaps = false
-        button.textSize = 13f
-        button.setTextColor(if (primary) Color.rgb(17, 20, 22) else Color.rgb(244, 247, 246))
+        button.textSize = 12f
+        button.setTextColor(if (emphasized) Color.rgb(17, 20, 22) else Color.rgb(244, 247, 246))
         button.minHeight = dp(44)
         button.minimumHeight = dp(44)
-        button.setPadding(dp(14), dp(6), dp(14), dp(6))
+        button.minWidth = 0
+        button.minimumWidth = 0
+        button.maxLines = 2
+        button.setPadding(dp(12), dp(6), dp(12), dp(6))
         button.elevation = 0f
-        button.background = StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_pressed), surface(
-                if (primary) Color.rgb(159, 215, 65) else Color.rgb(57, 67, 70),
-                if (primary) accent else Color.rgb(83, 98, 100)))
-            addState(intArrayOf(), surface(
-                if (primary) accent else Color.rgb(43, 50, 52),
-                if (primary) accent else Color.rgb(70, 80, 81)))
-        }
+        button.stateListAnimator = null
+        // DJI's framework tint otherwise flattens a custom drawable back to a text-button look.
+        button.backgroundTintList = null
+        button.background = context.getDrawable(if (emphasized)
+            R.drawable.offset_button_primary else R.drawable.offset_button_background)
         (button.layoutParams as? ViewGroup.MarginLayoutParams)?.let {
             it.setMargins(dp(4), dp(6), dp(4), dp(6))
             button.layoutParams = it

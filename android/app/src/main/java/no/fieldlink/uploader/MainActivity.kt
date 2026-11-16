@@ -141,13 +141,31 @@ class MainActivity : Activity() {
         textSize=11f;letterSpacing=0.015f
         minHeight=0;minimumHeight=0;minWidth=0;minimumWidth=0
         elevation=0f
-        background=rounded(Color.rgb(43,50,52),Color.rgb(70,80,81))
+        backgroundTintList=null
+        background=getDrawable(R.drawable.offset_button_background)
         setPadding(dp(9),dp(5),dp(9),dp(5))
         setOnClickListener { action() }
     }
+    private fun showButtonMenu(title:String,actions:List<Pair<String,()->Unit>>) {
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(16),dp(4),dp(16),dp(8))
+        }
+        val dialog=OffsetDialogBuilder(this).setTitle(title)
+            .setView(ScrollView(this).apply { addView(body) })
+            .setNegativeButton("Close",null).create()
+        actions.forEach { (label,action) ->
+            body.addView(button(label) { dialog.dismiss();action() }.apply {
+                gravity=android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                minHeight=dp(44);minimumHeight=dp(44);textSize=12f
+                setPadding(dp(14),dp(8),dp(14),dp(8))
+            },LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(4),0,dp(4)) })
+        }
+        dialog.show()
+    }
     private fun primaryButton(label:String, action:()->Unit)=button(label,action).apply {
         setTextColor(bg)
-        background=rounded(accent,accent)
+        background=getDrawable(R.drawable.offset_button_primary)
         setTypeface(typeface,android.graphics.Typeface.BOLD)
     }
     private fun showOffsetError(title:String, message:String, detail:String?=null, actionLabel:String?=null, action:(()->Unit)?=null) {
@@ -1642,19 +1660,17 @@ class MainActivity : Activity() {
         },LinearLayout.LayoutParams(0,-2,1f))
         val sortButton=button(if(descending) "Z–A ▾" else "A–Z ▾") {}
         sortButton.contentDescription="Sort clips by filename"
-        sortButton.setOnClickListener { anchor ->
-            val menu=android.widget.PopupMenu(android.view.ContextThemeWrapper(this,R.style.OffsetPopupTheme),anchor)
-            menu.menu.add(0,0,0,"Filename A–Z").setCheckable(true).setChecked(!descending)
-            menu.menu.add(0,1,1,"Filename Z–A").setCheckable(true).setChecked(descending)
-            menu.setOnMenuItemClickListener { item ->
-                val newDescending=item.itemId==1
-                if(newDescending!=descending) {
-                    prefs.edit().putBoolean("media_library_descending",newDescending).apply()
+        sortButton.setOnClickListener {
+            showButtonMenu("Sort clips",listOf(
+                (if(!descending) "✓  Filename A–Z" else "Filename A–Z") to {
+                    prefs.edit().putBoolean("media_library_descending",false).apply()
+                    showMediaLibraryPage()
+                },
+                (if(descending) "✓  Filename Z–A" else "Filename Z–A") to {
+                    prefs.edit().putBoolean("media_library_descending",true).apply()
                     showMediaLibraryPage()
                 }
-                true
-            }
-            menu.show()
+            ))
         }
         nav.addView(sortButton)
         nav.addView(button("Queue") { showUploadQueue() })
@@ -1897,15 +1913,7 @@ class MainActivity : Activity() {
                         menuButton.minWidth=dp(34)
                         menuButton.minimumWidth=dp(34)
                         menuButton.setPadding(0,0,0,0)
-                        menuButton.setOnClickListener { view ->
-                            val popup=android.widget.PopupMenu(android.view.ContextThemeWrapper(this,R.style.OffsetPopupTheme),view)
-                            actions.forEachIndexed { index,action -> popup.menu.add(0,index,index,action.first) }
-                            popup.setOnMenuItemClickListener { selected ->
-                                actions.getOrNull(selected.itemId)?.second?.invoke()
-                                true
-                            }
-                            popup.show()
-                        }
+                        menuButton.setOnClickListener { showButtonMenu("Clip actions",actions) }
                         detail.addView(menuButton,LinearLayout.LayoutParams(dp(38),dp(36)))
                     }
                     card.addView(detail)
