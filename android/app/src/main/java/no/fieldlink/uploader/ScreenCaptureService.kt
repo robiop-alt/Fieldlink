@@ -95,21 +95,33 @@ class ScreenCaptureService : Service() {
                 }
                 val stride=plane.pixelStride
                 if(stride!=4) { busy.set(false);return@setOnImageAvailableListener }
-                val bitmapWidth=width+plane.rowStride/stride-width
-                val padded=Bitmap.createBitmap(bitmapWidth,height,Bitmap.Config.ARGB_8888)
-                plane.buffer.rewind()
-                padded.copyPixelsFromBuffer(plane.buffer)
-                val bitmap=Bitmap.createBitmap(padded,0,0,width,height)
-                padded.recycle()
-                val capturedAt=System.currentTimeMillis()
-                recognizer.process(InputImage.fromBitmap(bitmap,0))
-                    .addOnSuccessListener { result ->
-                        CameraSettingsStore.observe(this,result.text,capturedAt)
-                    }
-                    .addOnCompleteListener {
-                        bitmap.recycle()
-                        busy.set(false)
-                    }
+                val bitmapWidth=plane.rowStride/stride
+                val padded=Bitmap.createBitmap(bitmapWidth,image.height,Bitmap.Config.ARGB_8888)
+                val bitmap=try {
+                    plane.buffer.rewind()
+                    padded.copyPixelsFromBuffer(plane.buffer)
+                    if(bitmapWidth==image.width) padded
+                    else Bitmap.createBitmap(padded,0,0,image.width,image.height)
+                } catch(e:Exception) {
+                    padded.recycle()
+                    throw e
+                }
+                // With no row padding, createBitmap can return its input.
+                // Keep that bitmap alive until ML Kit has finished reading it.
+                if(bitmap!==padded) padded.recycle()
+                try {
+                    recognizer.process(InputImage.fromBitmap(bitmap,0))
+                        .addOnSuccessListener { result ->
+                            CameraSettingsStore.observe(this,result.text,now)
+                        }
+                        .addOnCompleteListener {
+                            bitmap.recycle()
+                            busy.set(false)
+                        }
+                } catch(e:Exception) {
+                    bitmap.recycle()
+                    throw e
+                }
             }catch(_:Exception) { busy.set(false) }
             finally { image.close() }
         },Handler(worker!!.looper))

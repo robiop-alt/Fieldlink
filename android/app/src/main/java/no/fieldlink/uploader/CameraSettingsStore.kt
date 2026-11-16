@@ -19,7 +19,7 @@ object CameraSettingsStore {
     private val settings=listOf("recording_format","lens","fps","iso","white_balance","shutter")
 
     fun parse(screen:String):Map<String,String> {
-        val text=screen.uppercase(Locale.ROOT).replace('°','°')
+        val text=screen.uppercase(Locale.ROOT)
         val lines=text.lines().map { it.trim().replace(Regex("\\s+")," ") }
         val values=mutableMapOf<String,String>()
         fun first(regex:Regex):String? = lines.firstNotNullOfOrNull { line ->
@@ -40,6 +40,32 @@ object CameraSettingsStore {
             ?.let { values["shutter"]=it+"°" }
         first(Regex("\\bSHUTTER(?: SPEED)?\\s*[:=]?\\s*(1/\\d{2,4})\\b"))
             ?.let { if(!values.containsKey("shutter"))values["shutter"]=it }
+        // DJI's live camera controls can show the value with its unit but no label.
+        first(Regex("\\b(18|24|35|50)\\s*MM\\b"))
+            ?.let { values.putIfAbsent("lens",it+"mm") }
+        first(Regex("\\b(23\\.98|24|25|29\\.97|30|48|50|59\\.94|60|100|120)\\s*FPS\\b"))
+            ?.let { values.putIfAbsent("fps",it) }
+        first(Regex("\\b(\\d{4,5})\\s*K\\b"))
+            ?.let { v -> v.toIntOrNull()?.takeIf { it in 2000..12000 }?.let {
+                values.putIfAbsent("white_balance",v+"K")
+            } }
+        // The DJI Pilot HUD groups format, resolution and the unlabelled frame rate.
+        val hudText=lines.joinToString(" ")
+        val hud=Regex("\\b(CINEMA\\s*DNG|CINEDNG|CDNG|(?:APPLE\\s+)?PRORES(?:\\s+(?:RAW(?: HQ)?|422(?: HQ)?))?)\\s*[|·]?\\s*(?:[248](?:\\.\\d+)?\\s*K|1080P?)\\s*[|·]?\\s*(23\\.98|24|25|29\\.97|30|48|50|59\\.94|60|100|120)(?![\\d.:])")
+            .find(hudText)
+        if(hud!=null) {
+            val format=hud.groupValues[1]
+            values.putIfAbsent("recording_format",if(format.replace(" ","") in setOf("CINEMADNG","CINEDNG","CDNG")) "CinemaDNG" else format)
+            values.putIfAbsent("fps",hud.groupValues[2])
+            Regex("\\bEI\\s*[:=]?\\s*(?:N\\s*)?(\\d{2,5})\\b").find(hudText)?.groupValues?.get(1)
+                ?.let { v -> v.toIntOrNull()?.takeIf { it in 50..25600 }?.let {
+                    values.putIfAbsent("iso","EI $v")
+                } }
+            first(Regex("(?<![\\d.])(\\d{2,3}(?:\\.\\d+)?)\\s*°"))
+                ?.let { v -> v.toDoubleOrNull()?.takeIf { it in 1.0..360.0 }?.let {
+                    values.putIfAbsent("shutter",v.removeSuffix(".0")+"°")
+                } }
+        }
         // Require at least two independently identifiable settings on the screen.
         return if(values.size>=2)values else emptyMap()
     }
