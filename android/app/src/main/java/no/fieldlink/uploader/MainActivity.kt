@@ -1305,7 +1305,7 @@ class MainActivity : Activity() {
 
 
 
-    private data class LibraryClip(val file:DocumentFile,val thumb:Bitmap?)
+    private data class LibraryClip(val file:DocumentFile)
     private data class CloudClip(val id:String,val filename:String,val bytes:Long)
 
     /** Operator-only local player. No decoding or playback runs in the background. */
@@ -1332,12 +1332,14 @@ class MainActivity : Activity() {
         }
         var scrubbing=false
         var durationMs=0
+        var playbackInteraction:()->Unit={}
         val playback=primaryButton("▶ Play") {
             if(player.isPlaying) {
                 player.pause()
             } else {
                 player.start()
             }
+            playbackInteraction()
         }
         val handler=android.os.Handler(android.os.Looper.getMainLooper())
         val ticker=object:Runnable {
@@ -1362,7 +1364,7 @@ class MainActivity : Activity() {
             }
         }
         seek.setOnSeekBarChangeListener(object:android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onStartTrackingTouch(bar:android.widget.SeekBar?) { scrubbing=true }
+            override fun onStartTrackingTouch(bar:android.widget.SeekBar?) { scrubbing=true;playbackInteraction() }
             override fun onProgressChanged(bar:android.widget.SeekBar?,value:Int,fromUser:Boolean) {
                 if(fromUser && durationMs>0) {
                     val seconds=(durationMs.toLong()*value/1000).toInt()/1000
@@ -1373,11 +1375,11 @@ class MainActivity : Activity() {
                 if(durationMs>0)try {
                     player.seekTo((durationMs.toLong()*seek.progress/1000).toInt())
                 }catch(_:Exception){}
-                scrubbing=false
+                scrubbing=false;playbackInteraction()
             }
         })
-        val previous=button("◀ Previous") {}
-        val next=button("Next ▶") {}
+        val previous=button("◀") {}.apply { contentDescription="Previous clip" }
+        val next=button("▶") {}.apply { contentDescription="Next clip" }
         val title=text("",16f,Color.WHITE).apply {
             setTypeface(typeface,android.graphics.Typeface.BOLD)
             maxLines=1
@@ -1394,52 +1396,73 @@ class MainActivity : Activity() {
             playerStatus.visibility=View.VISIBLE
             playback.isEnabled=false
             seek.isEnabled=false
+            playbackInteraction()
         }
-        val screen=resources.configuration
-        val videoHeight=minOf(screen.screenWidthDp*9/16,screen.screenHeightDp/2)
-        val content=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL
-            background=rounded(bg,Color.rgb(52,62,64),16)
-            setPadding(dp(14),dp(10),dp(14),dp(12))
+        // The video occupies the whole window; controls overlay it instead of reserving half the screen.
+        val content=android.widget.FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val videoStage=android.widget.FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(player,android.widget.FrameLayout.LayoutParams(-1,-1,android.view.Gravity.CENTER))
         }
+        content.addView(videoStage,android.widget.FrameLayout.LayoutParams(-1,-1))
         val header=LinearLayout(this).apply {
             gravity=android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(12),dp(6),dp(12),dp(6))
+            setBackgroundColor(Color.argb(205,17,20,22))
             addView(LinearLayout(this@MainActivity).apply {
                 orientation=LinearLayout.VERTICAL
-                addView(clipCount)
-                addView(title)
+                addView(clipCount);addView(title)
             },LinearLayout.LayoutParams(0,-2,1f))
             addView(close,LinearLayout.LayoutParams(dp(44),dp(44)))
         }
-        content.addView(header)
-        val videoStage=android.widget.FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
-            addView(player,android.widget.FrameLayout.LayoutParams(
-                -1,-1,android.view.Gravity.CENTER
-            ))
+        val bottom=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(12),dp(6),dp(12),dp(10))
+            setBackgroundColor(Color.argb(215,17,20,22))
         }
-        content.addView(videoStage,LinearLayout.LayoutParams(-1,dp(videoHeight)).apply {
-            topMargin=dp(6)
-        })
         val timeline=LinearLayout(this).apply {
             gravity=android.view.Gravity.CENTER_VERTICAL
-            addView(seek,LinearLayout.LayoutParams(0,dp(42),1f))
-            addView(position)
+            addView(seek,LinearLayout.LayoutParams(0,dp(44),1f));addView(position)
         }
-        content.addView(timeline)
-        val controls=LinearLayout(this).apply {
+        bottom.addView(timeline)
+        bottom.addView(LinearLayout(this).apply {
             gravity=android.view.Gravity.CENTER
-            addView(previous,LinearLayout.LayoutParams(0,dp(44),1f))
-            addView(playback,LinearLayout.LayoutParams(0,dp(44),1f).apply {
-                setMargins(dp(8),0,dp(8),0)
-            })
-            addView(next,LinearLayout.LayoutParams(0,dp(44),1f))
-        }
-        content.addView(controls)
-        content.addView(playerStatus)
-        content.addView(info,LinearLayout.LayoutParams(-1,-2).apply {
-            topMargin=dp(6)
+            addView(previous,LinearLayout.LayoutParams(dp(48),dp(44)))
+            addView(playback,LinearLayout.LayoutParams(dp(108),dp(44)).apply { setMargins(dp(10),0,dp(10),0) })
+            addView(next,LinearLayout.LayoutParams(dp(48),dp(44)))
         })
+        bottom.addView(playerStatus)
+        info.maxLines=1;info.ellipsize=android.text.TextUtils.TruncateAt.END
+        bottom.addView(info)
+        content.addView(header,android.widget.FrameLayout.LayoutParams(-1,-2,android.view.Gravity.TOP))
+        content.addView(bottom,android.widget.FrameLayout.LayoutParams(-1,-2,android.view.Gravity.BOTTOM))
+        var chromeVisible=true
+        val hideChrome=Runnable {
+            if(player.isPlaying&&!scrubbing){
+                header.visibility=View.GONE;bottom.visibility=View.GONE;chromeVisible=false
+            }
+        }
+        fun showChrome(){
+            header.visibility=View.VISIBLE;bottom.visibility=View.VISIBLE;chromeVisible=true
+            handler.removeCallbacks(hideChrome)
+            if(player.isPlaying&&!scrubbing)handler.postDelayed(hideChrome,2800)
+        }
+        playbackInteraction={ showChrome() }
+        videoStage.setOnClickListener {
+            if(chromeVisible&&player.isPlaying){
+                handler.removeCallbacks(hideChrome)
+                header.visibility=View.GONE;bottom.visibility=View.GONE;chromeVisible=false
+            }else showChrome()
+        }
+        // Keep controls clear of display cutouts and the system gesture area.
+        content.setOnApplyWindowInsetsListener { _,insets ->
+            val cutout=insets.displayCutout
+            content.setPadding(maxOf(insets.systemWindowInsetLeft,cutout?.safeInsetLeft?:0),
+                maxOf(insets.systemWindowInsetTop,cutout?.safeInsetTop?:0),
+                maxOf(insets.systemWindowInsetRight,cutout?.safeInsetRight?:0),
+                maxOf(insets.systemWindowInsetBottom,cutout?.safeInsetBottom?:0))
+            insets
+        }
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         dialog.setContentView(content)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -1463,6 +1486,8 @@ class MainActivity : Activity() {
             playerStatus.text="Preparing preview…"
             playerStatus.visibility=View.VISIBLE
             player.stopPlayback()
+            showChrome()
+            player.setOnCompletionListener { showChrome() }
             player.setOnPreparedListener { media ->
                 durationMs=media.duration.coerceAtLeast(0)
                 playback.isEnabled=true
@@ -1504,15 +1529,16 @@ class MainActivity : Activity() {
         }
         dialog.setOnDismissListener {
             closed=true
-            handler.removeCallbacks(ticker)
+            handler.removeCallbacks(ticker);handler.removeCallbacks(hideChrome)
             try { player.stopPlayback() }catch(_:Exception){}
         }
         dialog.show()
-        // Fill the available controller display without forcing global orientation.
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels*0.95).toInt(),
-            android.view.WindowManager.LayoutParams.WRAP_CONTENT
-        )
+        dialog.window?.apply {
+            setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,android.view.WindowManager.LayoutParams.MATCH_PARENT)
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            decorView.systemUiVisibility=View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN
+        }
         loadClip()
         handler.post(ticker)
     }
@@ -1697,27 +1723,16 @@ class MainActivity : Activity() {
             var serverError=""
             var visibleMediaBytes=0L
             var visibleMediaCount=0
+            var thumbnailSources:Map<String,List<DocumentFile>> = emptyMap()
             try {
                 val tree=cacheUri?.let { DocumentFile.fromTreeUri(this,it) }
-                val thumbs=tree?.findFile(".thumbnail")?.listFiles()
-                    ?.filter { it.isFile && (it.name ?: "").endsWith(".JPEG",true) || it.isFile && (it.name ?: "").endsWith(".JPG",true) }
-                    ?.associateBy { (it.name ?: "").substringBeforeLast(".").uppercase() }
-                    ?: emptyMap()
+                thumbnailSources=ControllerThumbnailLoader.index(tree)
                 val byFilename=compareBy<DocumentFile> { it.name.orEmpty().uppercase() }
                 val media=tree?.listFiles()?.filter { it.isFile && (it.name ?: "").endsWith(".mp4",true) }
                     ?.sortedWith(if(descending) byFilename.reversed() else byFilename).orEmpty()
                 visibleMediaBytes=media.sumOf { it.length().coerceAtLeast(0L) }
                 visibleMediaCount=media.size
-                for(file in media.take(250)) {
-                    val stem=(file.name ?: "").substringBeforeLast(".").uppercase()
-                    val thumb=thumbs[stem]
-                    val bitmap=try {
-                        thumb?.let { t -> contentResolver.openInputStream(t.uri)?.use { stream ->
-                            BitmapFactory.decodeStream(stream,null,BitmapFactory.Options().apply { inSampleSize=4 })
-                        } }
-                    }catch(_:Exception){null}
-                    clips.add(LibraryClip(file,bitmap))
-                }
+                for(file in media.take(250)) clips.add(LibraryClip(file))
             }catch(e:Exception) {serverError="Could not read CACHE_VIDEO: ${e.localizedMessage}"}
             if(base.startsWith("https://") && secret.isNotBlank()) {
                 try {
@@ -1737,7 +1752,7 @@ class MainActivity : Activity() {
                 }catch(e:Exception) {serverError="Cloud status unavailable: ${e.localizedMessage}"}
             }else serverError="Configure your server and device token in Settings → Connection"
             runOnUiThread {
-                if(project.text.toString().trim()!=pid) return@runOnUiThread
+                if(project.text.toString().trim()!=pid||!root.isAttachedToWindow) return@runOnUiThread
                 val ledger=ProjectLedger(this)
                 val queued=ledger.queueUris(pid)
                 val priorityUris=ledger.urgentUris(pid).toSet()
@@ -1807,6 +1822,7 @@ class MainActivity : Activity() {
                 val cardWidth=((resources.displayMetrics.widthPixels-dp(32)-gap*(columns-1))/columns).coerceAtLeast(dp(130))
                 val libraryGrid=android.widget.GridLayout(this).apply { columnCount=columns }
                 grid.addView(libraryGrid)
+                val thumbnailLoader=ControllerThumbnailLoader(this,root,thumbnailSources,cardWidth)
                 val playlist=clips.map { it.file }
                 for((position,item) in clips.withIndex()) {
                     val file=item.file
@@ -1831,12 +1847,12 @@ class MainActivity : Activity() {
                     val preview=ImageView(this).apply {
                         scaleType=ImageView.ScaleType.CENTER_CROP
                         setBackgroundColor(Color.rgb(19,24,26))
-                        item.thumb?.let { setImageBitmap(it) }
                     }
                     preview.contentDescription="Preview $name"
                     preview.isClickable=true
                     preview.setOnClickListener { showLocalClipPreview(file,playlist) }
-                    card.addView(preview,LinearLayout.LayoutParams(-1,dp(95)))
+                    card.addView(preview,LinearLayout.LayoutParams(-1,(cardWidth-dp(14))*9/16))
+                    thumbnailLoader.bind(preview,file)
                     card.addView(button("▶ Preview") { showLocalClipPreview(file,playlist) },
                         LinearLayout.LayoutParams(-1,dp(29)))
                     val selectRow=LinearLayout(this).apply {
@@ -1861,8 +1877,8 @@ class MainActivity : Activity() {
                         setTypeface(typeface,android.graphics.Typeface.BOLD)
                     },LinearLayout.LayoutParams(0,-2,1f))
                     card.addView(selectRow)
-                    // File timestamp is already provided by SAF. Video metadata is only
-                    // decoded when the operator explicitly taps Preview.
+                    // File timestamp is provided by SAF; thumbnail decoding is limited
+                    // to visible cards. Full clip details are read on Preview.
                     val modified=file.lastModified()
                     val modifiedLabel=if(modified>0)
                         java.text.DateFormat.getDateTimeInstance(
@@ -1995,9 +2011,8 @@ class MainActivity : Activity() {
             }
         }
         layout.addView(mode)
-        layout.addView(text("${files.size} clips · ${queued.size} queued · Select clips to upload",12f,Color.DKGRAY))
-        val thumbs=root.findFile(".thumbnail")
-        val thumbnailFiles=thumbs?.listFiles()?.filter { it.isFile } ?: emptyList()
+        layout.addView(text("${files.size} clips · ${queued.size} queued · Select clips to upload",12f,muted))
+        val thumbnailLoader=ControllerThumbnailLoader(this,layout,ControllerThumbnailLoader.index(root),dp(320))
         for(file in files.take(200)) {
             val key=file.uri.toString()
             val line=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL }
@@ -2007,20 +2022,12 @@ class MainActivity : Activity() {
                 setOnCheckedChangeListener { _,v -> if(v) selected.add(key) else selected.remove(key) }
             }
             line.addView(check)
-            val stem=(file.name ?: "").substringBeforeLast(".")
-            val thumb=thumbnailFiles.firstOrNull {
-                it.isFile && it.name?.substringBeforeLast(".")==stem && (it.name?.endsWith(".JPEG",true)==true || it.name?.endsWith(".JPG",true)==true)
+            val image=ImageView(this).apply {
+                scaleType=ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(Color.rgb(19,24,26))
             }
-            if(thumb!=null) {
-                try {
-                    contentResolver.openInputStream(thumb.uri)?.use { stream ->
-                        val bmp=BitmapFactory.decodeStream(stream)
-                        if(bmp!=null) line.addView(ImageView(this).apply {
-                            setImageBitmap(bmp);scaleType=ImageView.ScaleType.CENTER_CROP
-                        },LinearLayout.LayoutParams(dp(92),dp(56)).apply { rightMargin=dp(10) })
-                    }
-                }catch(_:Exception) {}
-            }
+            line.addView(image,LinearLayout.LayoutParams(dp(112),dp(63)).apply { rightMargin=dp(10) })
+            thumbnailLoader.bind(image,file)
             line.addView(text("${file.name}\n${file.length()/1048576} MB · ${if(key in queued) "QUEUED" else "LOCAL"}",13f,Color.rgb(244,247,246)))
             layout.addView(line)
         }
