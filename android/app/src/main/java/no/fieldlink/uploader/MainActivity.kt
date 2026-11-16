@@ -1752,7 +1752,7 @@ class MainActivity : Activity() {
                 }catch(e:Exception) {serverError="Cloud status unavailable: ${e.localizedMessage}"}
             }else serverError="Configure your server and device token in Settings → Connection"
             runOnUiThread {
-                if(project.text.toString().trim()!=pid||!root.isAttachedToWindow) return@runOnUiThread
+                if(project.text.toString().trim()!=pid||root.rootView!==window.decorView) return@runOnUiThread
                 val ledger=ProjectLedger(this)
                 val queued=ledger.queueUris(pid)
                 val priorityUris=ledger.urgentUris(pid).toSet()
