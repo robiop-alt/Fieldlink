@@ -578,60 +578,56 @@ def _shot_area_context(shot):
     return result
 
 
-def _area_pages(c, plan_name, shot, number, total, context):
-    """Keep source details on dedicated pages without reducing the shot map."""
-    def page(continued=False):
-        y=_page(c,plan_name,f'SHOT {number:02d} / {total:02d} - AREA INFORMATION'+(' (continued)' if continued else ''))
-        return _line(c,shot.get('name') or f'Shot {number}',M,y,12,INK,True)
-    y=page()
-    def write(text,size=9,color=INK,bold=False):
-        nonlocal y
-        for part in simpleSplit(_safe(text,3000),'Helvetica-Bold' if bold else 'Helvetica',size,PW-2*M):
-            if y<65:
-                c.showPage();y=page(True)
-            y=_line(c,part,M,y,size,color,bold)
+def _density_label(values):
+    return ' - '.join(f'{value:,.0f}' for value in sorted(set(values))) if values else 'Unknown'
+
+
+def _area_summary(c, context, top=207):
+    """Bounded two-column source summary; never adds a page or hides overflow."""
+    width=PW-2*M;gap=16;column=(width-gap)/2
+    c.setStrokeColor(colors.HexColor('#d6ddd8'));c.line(M,top,PW-M,top)
+    def column_text(items,x):
+        y=top-15
+        for text,size,color,bold in items:
+            font='Helvetica-Bold' if bold else 'Helvetica'
+            lines=simpleSplit(_safe(text,6000),font,size,column)
+            for line in lines:
+                if y<78:
+                    _line(c,'More details in Planner / source dataset.',x,64,7,RED)
+                    return
+                y=_line(c,line,x,y,size,color,bold)
     if context.get('error'):
-        write(context['error']);c.showPage();return
-    write('Retrieved for PDF: '+context['checked'],8,MUTED)
-    y-=12
-    write('DRONE ZONES - HORIZONTAL FLIGHT PATH',10,GREEN,True)
-    zone=context['zones']
-    write('Source: Luftfartstilsynet / dronesoner.no',8,MUTED)
+        column_text([(context['error'],8,RED,False)],M);return
+    zone=context['zones'];pop=context['population']
+    left=[('DRONE ZONES',9,GREEN,True)]
     if zone.get('error'):
-        write('Drone zone data unavailable. No conclusion about zone overlap can be made.',9,RED)
+        left.append(('Zone data unavailable; overlap unknown.',8,RED,False))
     else:
-        write('Dataset: '+str(zone['date'])+' | Origin: '+str(zone['origin']),8,MUTED)
-        if zone['stale']:write('WARNING: cached or mirror dataset; currency unverified.',9,RED)
-        if zone['truncated']:write('WARNING: incomplete zone results; additional zones may apply.',9,RED)
-        if not zone['hits']:write('No horizontal overlap found in the retrieved dataset. This is not flight clearance.')
-        for props in zone['hits']:
-            y-=6
-            write((props.get('name') or 'Unnamed zone')+' | '+(props.get('identifier') or 'No identifier'),9,INK,True)
-            write('Restriction: '+str(props.get('restriction') or 'Unknown'))
-            write('Vertical limits (as supplied): '+str(props.get('lowerLimit') if props.get('lowerLimit') is not None else 'Unknown')+' '+str(props.get('lowerVerticalReference') or '')+' to '+str(props.get('upperLimit') if props.get('upperLimit') is not None else 'Unknown')+' '+str(props.get('upperVerticalReference') or ''),8)
-            if props.get('reason'):write('Reason: '+', '.join(props['reason']),8)
-            if props.get('message'):write(props['message'],8)
-    write('Horizontal overlap only. Altitude, activation times and applicability to the shot date are not evaluated. Check active NOTAM, AIP and permissions.',8,MUTED)
-    y-=14
-    write('POPULATION & SETTLEMENTS - SSB',10,GREEN,True)
-    write('Source: Statistics Norway (SSB) | https://kart.ssb.no/',8,MUTED)
-    pop=context['population']
+        left.append(('dronesoner.no | '+str(zone['date']),7,MUTED,False))
+        if zone['stale']:left.append(('WARNING: cached / mirror; currency unverified.',7,RED,True))
+        if zone['truncated']:left.append(('WARNING: incomplete zone results.',7,RED,True))
+        if not zone['hits']:left.append(('No horizontal overlap found in retrieved data.',8,INK,False))
+        for z in zone['hits']:
+            title=(z.get('name') or 'Unnamed zone')+' ('+(z.get('identifier') or '?')+')'
+            limits=str(z.get('lowerLimit') if z.get('lowerLimit') is not None else '?')+' '+str(z.get('lowerVerticalReference') or '')+' to '+str(z.get('upperLimit') if z.get('upperLimit') is not None else '?')+' '+str(z.get('upperVerticalReference') or '')
+            left.append((title+' | '+str(z.get('restriction') or 'Unknown restriction')+' | '+limits,7.5,INK,False))
+    # Essential scope caveat comes before potentially long zone lists.
+    left.insert(1,('Horizontal overlap only; check vertical limits, activation, NOTAM and permissions.',7,MUTED,False))
+    right=[('POPULATION - SSB',9,GREEN,True)]
     if pop.get('error'):
-        write('SSB data unavailable or route outside supported coverage. Population density is unknown.',9,RED)
+        right.append(('SSB unavailable / outside coverage. Density unknown.',8,RED,False))
     else:
-        write('Population grid: '+str(pop['years'].get('population','Unknown'))+' | Settlements: '+str(pop['years'].get('settlements','Unknown')),8,MUTED)
-        def density(values):
-            return ' - '.join(f'{value:,.0f}' for value in sorted(set(values)))+' residents/km2' if values else 'Unknown / no published value'
-        write('Flight path density (published 250 m cells): '+(density(pop['density']) if pop['density'] else 'Unknown'))
-        if not pop['covered']:write('Partial or missing density coverage along the flight path. Missing values are not zero.',9,RED)
-        write('SSB settlements intersected: '+(', '.join(pop['settlements']) if pop['settlements'] else 'None in retrieved settlement dataset'))
-        y-=6
-        for index,values in pop['waypoints']:write(f'WP {index:02d}: '+density(values),8)
-    write('Resident population statistics, not people currently present. SSB settlement boundaries do not determine the operating category under your authorization.',8,MUTED)
-    c.showPage()
+        right.append(('kart.ssb.no | grid '+str(pop['years'].get('population','?'))+' / settlements '+str(pop['years'].get('settlements','?')),7,MUTED,False))
+        right.append(('Route: '+_density_label(pop['density'])+' residents/km2 (250 m cells)',8,INK,True))
+        if not pop['covered']:right.append(('Partial / missing coverage. Unknown is not zero.',7,RED,False))
+        right.append(('SSB settlements: '+(', '.join(pop['settlements']) if pop['settlements'] else 'None in retrieved data'),7.5,INK,False))
+        right.append(('Waypoint densities appear in the waypoint list.',7,MUTED,False))
+    right.append(('Resident statistics, not people present or an authorization category.',7,MUTED,False))
+    right.append(('Retrieved: '+context['checked'],7,MUTED,False))
+    column_text(left,M);column_text(right,M+column+gap)
 
 def make_planner_pdf(plan):
-    """Shot map plus source-based area information for each selected shot."""
+    """One A4 page per selected shot, including map and area source summaries."""
     buffer=io.BytesIO()
     c=canvas.Canvas(buffer,pagesize=A4,pageCompression=1)
     c.setTitle("OFFSET Drone Planner - "+_safe(plan.get("name"),100))
@@ -662,9 +658,9 @@ def make_planner_pdf(plan):
             y-=5
             desc_lines=simpleSplit(description,"Helvetica",9,PW-2*M)
             # Keep the map and all essential shot details together.
-            for part in desc_lines[:5]:
+            for part in desc_lines[:3]:
                 y=_line(c,part,M,y,9,INK)
-            if len(desc_lines)>5:
+            if len(desc_lines)>3:
                 y=_line(c,"Description continues in the Planner.",M,y,8,MUTED)
         y-=8
         route=shot.get("route") if isinstance(shot.get("route"),list) else []
@@ -675,8 +671,10 @@ def make_planner_pdf(plan):
             point=shot["target"]
         solar=_sun_events(shot,point)
         closure=_closure_path(route,cones,shot.get('simSmoothing','cinematic')) if shot.get('pdfClosureArea') is True else []
-        map_height=(245 if y>=580 else 205) if solar else (290 if y>=580 else 245)
-        if closure:map_height-=24
+        context=_shot_area_context(shot)
+        population=context.get('population',{})
+        density_by_wp=dict(population.get('waypoints',[]))
+        map_height=min(280,max(95,y-360-(54 if solar else 0)-(30 if closure else 0)))
         _map(c,route,shot.get("target"),cones,marshals,M,y,PW-2*M,map_height,solar,shot.get("sketches"),shot.get("textBoxes"),closure)
         y-=map_height+8
         if closure:
@@ -692,7 +690,7 @@ def make_planner_pdf(plan):
         col_width=(PW-2*M-16)/2
         left_x=M
         right_x=M+col_width+16
-        bottom=56
+        bottom=223
         y_left=_line(c,"WAYPOINTS (HEIGHT AGL)",left_x,y,10,GREEN,True)
         for i,p in enumerate(route):
             if not _coord(p):continue
@@ -701,8 +699,9 @@ def make_planner_pdf(plan):
                 break
             data=cones[i] if i<len(cones) and isinstance(cones[i],dict) else {}
             y_left=_line(c,f"{i+1:02d}  {_waypoint_height(data):g} m AGL · {p[0]:.5f}, {p[1]:.5f}",left_x,y_left,8,INK)
-            if data.get("visible",True):
-                y_left=_line(c,f"     {data.get('mode','manual')} camera · FOV {data.get('fov',50)} deg",left_x,y_left,7,MUTED)
+            camera=f"FOV {data.get('fov',50)} deg | " if data.get('visible',True) else ''
+            density=camera+'SSB: '+_density_label(density_by_wp.get(i+1))+' /km2'
+            y_left=_line(c,density,left_x,y_left,7,MUTED)
 
         # Embed the selected shot reference alongside the plan on the SAME page.
         ref=shot.get("referenceImage","")
@@ -739,8 +738,8 @@ def make_planner_pdf(plan):
             p=g["position"]
             y_right=_line(c,f"     {p[0]:.5f}, {p[1]:.5f}",right_x,y_right,7,MUTED)
 
+        _area_summary(c,context)
         c.showPage()
-        _area_pages(c,name,shot,number,total,_shot_area_context(shot))
     c.save()
     buffer.seek(0)
     return buffer.getvalue()

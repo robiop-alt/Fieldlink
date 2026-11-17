@@ -47,10 +47,14 @@ class PDFAreaTests(unittest.TestCase):
             data=planner_pdf.make_planner_pdf({'name':'Test','shots':[{'route':[[59.91,10.71]]}]})
         self.assertTrue(data.startswith(b'%PDF-'))
 
-    def test_long_zone_list_paginates(self):
+    def test_long_zone_list_stays_on_one_page_per_shot(self):
         context={'checked':'2026-11-17','zones':{'hits':[{'name':'Zone '+str(i),'message':'Long source message '*30} for i in range(40)],'date':'2026','origin':'official','stale':False,'truncated':False},'population':{'error':True}}
         with patch.object(planner_pdf,'_basemap',return_value=None),patch.object(planner_pdf,'_shot_area_context',return_value=context):
             data=planner_pdf.make_planner_pdf({'shots':[{'route':[[59.91,10.71]]}]})
-        self.assertGreater(len(data),4000)
+        import re
+        self.assertEqual(len(re.findall(rb'/Type /Page\b',data)),1)
+        with patch.object(planner_pdf,'_basemap',return_value=None),patch.object(planner_pdf,'_shot_area_context',return_value=context):
+            data=planner_pdf.make_planner_pdf({'shots':[{'route':[[59.91,10.71]]}]*3})
+        self.assertEqual(len(re.findall(rb'/Type /Page\b',data)),3)
 
 if __name__=='__main__':unittest.main()
