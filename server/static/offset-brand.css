@@ -1,0 +1,16 @@
+/* Shared, non-interactive beta label beside the OFFSET wordmark. */
+.brand.offset-brand-beta,.planner-logo.offset-brand-beta,.offset-offline-brand{
+  display:inline-flex;align-items:center;gap:8px;vertical-align:middle;text-decoration:none;
+}
+.offset-beta,.brand .offset-beta{
+  display:inline-block;flex:0 0 auto;padding:3px 5px;border:1px solid #3f613b;border-radius:4px;
+  background:#18261a;color:#a9d59b;font:600 9px/1.15 system-ui,sans-serif;
+  letter-spacing:1.1px;white-space:nowrap;
+}
+@media(max-width:600px){
+  .brand.offset-brand-beta,.planner-logo.offset-brand-beta{gap:6px}
+  .offset-beta,.brand .offset-beta{padding:3px 4px;font-size:8px;letter-spacing:.8px}
+  .top .offset-brand-beta img{width:clamp(86px,26vw,120px)!important;min-height:0!important}
+}
+
+@media(max-width:600px){.top:has(.offset-brand-beta),.planner-top:has(.offset-brand-beta),.studio-head:has(.offset-brand-beta){flex-wrap:wrap;row-gap:10px}}
