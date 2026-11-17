@@ -1,0 +1,11 @@
+.population-controls{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:8px 12px;background:#151f20;border-bottom:1px solid #314143;font-size:11px}
+.offset-planner .population-toggle{display:inline-flex;align-items:center;gap:7px;margin:0;color:#d9e2df;font-size:11px}
+.offset-planner #population-toggle{display:inline-block;width:17px;height:17px;min-height:17px;margin:0;accent-color:#bd9bea}
+.population-legend{display:flex;gap:12px;flex-wrap:wrap;color:#aebdb7;font-size:10px}
+.population-legend span{display:inline-flex;align-items:center;gap:5px}
+.population-key{width:11px;height:11px;display:inline-block;border:1px solid #bd9bea;background:#bd9bea20;border-radius:2px}
+.population-key.density{border-color:#e6ae62;background:linear-gradient(90deg,#e6ae6210,#e6ae6280)}
+.population-controls a{margin-left:auto;color:#a9c9de;font-size:10px;text-decoration:none}
+.population-status{margin:0;padding:7px 12px;border-bottom:1px solid #314143;background:#11191b;color:#aebdb7;font-size:10px;line-height:1.5}
+.population-status[data-state=error]{color:#f2ada7}.population-status[data-state=notice]{color:#c0c9c5}
+@media(pointer:coarse){.population-toggle{min-height:36px}}

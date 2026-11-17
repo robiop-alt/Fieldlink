@@ -11,3 +11,6 @@ reportlab>=4.2,<5
 
 # Encrypt private Cesium ion token in persistent planner DB.
 cryptography>=43,<47
+
+# Clip SSB geometry without simplifying settlement boundaries.
+shapely>=2.0,<3

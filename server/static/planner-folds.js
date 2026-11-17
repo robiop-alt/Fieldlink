@@ -37,7 +37,7 @@ for(const [id,selector,label] of panels){
  summary.append(title,chevron);
  content.parentElement.insertBefore(section,content);
  section.append(summary,content);
- if(id==='map-airspace'){const status=document.getElementById('airspace-status');if(status)section.append(status)}
+ if(id==='map-airspace'){for(const control of [document.getElementById('airspace-status'),document.querySelector('.population-controls'),document.getElementById('population-status')]){if(control)section.append(control)}}
  section.addEventListener('toggle',()=>{
   state[id]=section.open;save();
   if(section.open&&id==='preview')rerenderMaps();

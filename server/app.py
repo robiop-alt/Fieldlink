@@ -578,6 +578,19 @@ def planner_route_elevation(body: PlannerElevationRequest, request: Request,
                         headers={'Cache-Control':'private, max-age=600'})
 
 
+@app.get('/api/admin/planner/population')
+def planner_population(request: Request, south: float, west: float, north: float, east: float,
+                       x_admin_key: str = Header(default='')):
+    require_admin(x_admin_key, request)
+    try:
+        from population_ssb import features_in_bbox
+        result = features_in_bbox((south, west, north, east))
+    except ValueError as error:
+        raise HTTPException(422, str(error))
+    except Exception:
+        raise HTTPException(503, 'SSB data temporarily unavailable. No area classification is available.')
+    return JSONResponse(result, headers={'Cache-Control': 'private, max-age=300'})
+
 @app.get('/api/admin/planner/zones')
 def planner_drone_geozones(request: Request, south: float, west: float, north: float, east: float,
                           x_admin_key: str = Header(default='')):
