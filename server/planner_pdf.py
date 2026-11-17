@@ -522,7 +522,7 @@ def _shot_area_context(shot):
     """Fetch source data at export, independent of display-layer preferences.
 
     Horizontal intersections only: ED-269 altitude/time applicability must
-    still be checked. Missing SSB cells are unknown, never zero residents.
+    still be checked. Population layers are intentionally not fetched for PDF.
     """
     from shapely.geometry import Point, LineString, shape
     route=shot.get('route') or []
@@ -546,45 +546,16 @@ def _shot_area_context(shot):
         return {'hits':hits,'date':data.get('source_date','Unknown'),
                 'stale':data.get('stale',True),'truncated':data.get('truncated',False),
                 'origin':data.get('origin','unknown')}
-    def population():
-        from population_ssb import features_in_bbox
-        from shapely.ops import unary_union
-        data=features_in_bbox(bounds)
-        if not data.get('complete'):raise ValueError('Incomplete SSB coverage')
-        cells=[];settlements=[]
-        for feature in data['features']:
-            geom=shape(feature['geometry']);props=feature['properties']
-            if not geom.intersects(flight):continue
-            if props.get('kind')=='population':cells.append((geom,props))
-            elif props.get('kind')=='settlement':settlements.append(props.get('name','SSB settlement'))
-        known=[(geom,props) for geom,props in cells if isinstance(props.get('density'),(int,float)) and math.isfinite(props['density']) and props['density']>=0]
-        densities=[props['density'] for _,props in known]
-        waypoint_values=[]
-        for index,p in enumerate(route):
-            if not _coord(p):continue
-            point=Point(p[1],p[0])
-            values=sorted(set(props['density'] for geom,props in known if geom.covers(point)))
-            waypoint_values.append((index+1,values))
-        covered=bool(known) and unary_union([geom for geom,_ in known]).covers(flight)
-        return {'years':data.get('years',{}),'density':(min(densities),max(densities)) if densities else None,
-                'covered':covered,'waypoints':waypoint_values,'settlements':sorted(set(settlements))}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        futures={key:pool.submit(fn) for key,fn in [('zones',zones),('population',population)]}
-        for key,future in futures.items():
-            try:result[key]=future.result()
-            except Exception:
-                _LOG.warning('PDF %s data unavailable',key,exc_info=True)
-                result[key]={'error':True}
+    try:result['zones']=zones()
+    except Exception:
+        _LOG.warning('PDF zone data unavailable',exc_info=True)
+        result['zones']={'error':True}
     return result
 
 
-def _density_label(values):
-    return ' - '.join(f'{value:,.0f}' for value in sorted(set(values))) if values else 'Unknown'
-
-
 def _area_summary(c, context, top=207):
-    """Bounded two-column source summary; never adds a page or hides overflow."""
-    width=PW-2*M;gap=16;column=(width-gap)/2
+    """Bounded source summary; never adds a page or hides overflow."""
+    column=PW-2*M
     c.setStrokeColor(colors.HexColor('#d6ddd8'));c.line(M,top,PW-M,top)
     def column_text(items,x):
         y=top-15
@@ -598,7 +569,7 @@ def _area_summary(c, context, top=207):
                 y=_line(c,line,x,y,size,color,bold)
     if context.get('error'):
         column_text([(context['error'],8,RED,False)],M);return
-    zone=context['zones'];pop=context['population']
+    zone=context['zones']
     left=[('DRONE ZONES',9,GREEN,True)]
     if zone.get('error'):
         left.append(('Zone data unavailable; overlap unknown.',8,RED,False))
@@ -613,18 +584,8 @@ def _area_summary(c, context, top=207):
             left.append((title+' | '+str(z.get('restriction') or 'Unknown restriction')+' | '+limits,7.5,INK,False))
     # Essential scope caveat comes before potentially long zone lists.
     left.insert(1,('Horizontal overlap only; check vertical limits, activation, NOTAM and permissions.',7,MUTED,False))
-    right=[('POPULATION - SSB',9,GREEN,True)]
-    if pop.get('error'):
-        right.append(('SSB unavailable / outside coverage. Density unknown.',8,RED,False))
-    else:
-        right.append(('kart.ssb.no | grid '+str(pop['years'].get('population','?'))+' / settlements '+str(pop['years'].get('settlements','?')),7,MUTED,False))
-        right.append(('Route: '+_density_label(pop['density'])+' residents/km2 (250 m cells)',8,INK,True))
-        if not pop['covered']:right.append(('Partial / missing coverage. Unknown is not zero.',7,RED,False))
-        right.append(('SSB settlements: '+(', '.join(pop['settlements']) if pop['settlements'] else 'None in retrieved data'),7.5,INK,False))
-        right.append(('Waypoint densities appear in the waypoint list.',7,MUTED,False))
-    right.append(('Resident statistics, not people present or an authorization category.',7,MUTED,False))
-    right.append(('Retrieved: '+context['checked'],7,MUTED,False))
-    column_text(left,M);column_text(right,M+column+gap)
+    left.append(('Retrieved: '+context['checked'],7,MUTED,False))
+    column_text(left,M)
 
 def make_planner_pdf(plan):
     """One A4 page per selected shot, including map and area source summaries."""
@@ -672,8 +633,6 @@ def make_planner_pdf(plan):
         solar=_sun_events(shot,point)
         closure=_closure_path(route,cones,shot.get('simSmoothing','cinematic')) if shot.get('pdfClosureArea') is True else []
         context=_shot_area_context(shot)
-        population=context.get('population',{})
-        density_by_wp=dict(population.get('waypoints',[]))
         map_height=min(280,max(95,y-360-(54 if solar else 0)-(30 if closure else 0)))
         _map(c,route,shot.get("target"),cones,marshals,M,y,PW-2*M,map_height,solar,shot.get("sketches"),shot.get("textBoxes"),closure)
         y-=map_height+8
@@ -699,9 +658,8 @@ def make_planner_pdf(plan):
                 break
             data=cones[i] if i<len(cones) and isinstance(cones[i],dict) else {}
             y_left=_line(c,f"{i+1:02d}  {_waypoint_height(data):g} m AGL · {p[0]:.5f}, {p[1]:.5f}",left_x,y_left,8,INK)
-            camera=f"FOV {data.get('fov',50)} deg | " if data.get('visible',True) else ''
-            density=camera+'SSB: '+_density_label(density_by_wp.get(i+1))+' /km2'
-            y_left=_line(c,density,left_x,y_left,7,MUTED)
+            if data.get('visible',True):
+                y_left=_line(c,f"     {data.get('mode','manual')} camera · FOV {data.get('fov',50)} deg",left_x,y_left,7,MUTED)
 
         # Embed the selected shot reference alongside the plan on the SAME page.
         ref=shot.get("referenceImage","")
