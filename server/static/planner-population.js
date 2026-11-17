@@ -3,10 +3,11 @@
 'use strict';
 const toggle=document.getElementById('population-toggle'),status=document.getElementById('population-status');
 if(!toggle||!status)return;
+const retry=document.getElementById('population-retry');
 // Do not restore a browser checkbox or persist the switch. Default is always OFF.
 toggle.checked=false;
 let map=null,layer=null,abort=null,timer=null,sequence=0,data=null,lastBounds='';
-const setStatus=(message,kind='info')=>{status.textContent=message;status.dataset.state=kind};
+const setStatus=(message,kind='info')=>{status.textContent=message;status.dataset.state=kind;if(retry)retry.hidden=kind!=='error'||!toggle.checked};
 const validPoint=p=>Array.isArray(p)&&p.length>=2&&Number.isFinite(p[0])&&Number.isFinite(p[1]);
 function orientation(a,b,c){return (b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])}
 function onSegment(p,a,b){return Math.abs(orientation(a,b,p))<1e-12&&p[0]>=Math.min(a[0],b[0])-1e-12&&p[0]<=Math.max(a[0],b[0])+1e-12&&p[1]>=Math.min(a[1],b[1])-1e-12&&p[1]<=Math.max(a[1],b[1])+1e-12}
@@ -87,6 +88,7 @@ async function refresh(){
  }finally{clearTimeout(timeout)}
 }
 function schedule(){if(!toggle.checked)return;if(timer)clearTimeout(timer);timer=setTimeout(refresh,400)}
+if(retry)retry.addEventListener('click',()=>{lastBounds='';refresh()});
 toggle.addEventListener('change',()=>{if(!toggle.checked){clear();setStatus('SSB population layer off.','notice')}else refresh()});
 document.addEventListener('offset:planner-map-ready',event=>{map=event.detail?.map;if(map){map.on('moveend',()=>{if(toggle.checked){clear();setStatus('Map changed — updating SSB data…');schedule()}});if(toggle.checked)refresh()}});
 document.addEventListener('offset:map-rendered',summary);

@@ -1,11 +1,11 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 function setup(){
- const events={},node={checked:true,addEventListener(k,v){this[k]=v}},status={dataset:{}};let calls=0,finish,removed=0,added=0;
+ const events={},node={checked:true,addEventListener(k,v){this[k]=v}},status={dataset:{}},retry={hidden:true,addEventListener(k,v){this[k]=v}};let calls=0,finish,removed=0,added=0;
  const map={getZoom:()=>14,getBounds:()=>({getSouth:()=>59,getWest:()=>9,getNorth:()=>59.02,getEast:()=>9.02}),on(){},getPane:()=>({style:{}}),removeLayer(){removed++}};
- const context={window:{addEventListener(){}},document:{getElementById:id=>id==='population-toggle'?node:status,addEventListener(k,v){events[k]=v}},URLSearchParams,AbortController,setTimeout,clearTimeout,fetch(){calls++;return new Promise(r=>finish=r)},L:{geoJSON(){return{addTo(){added++;return this}}}},getShot:()=>null};
+ const context={window:{addEventListener(){}},document:{getElementById:id=>id==='population-toggle'?node:id==='population-retry'?retry:status,addEventListener(k,v){events[k]=v}},URLSearchParams,AbortController,setTimeout,clearTimeout,fetch(){calls++;return new Promise(r=>finish=r)},L:{geoJSON(){return{addTo(){added++;return this}}}},getShot:()=>null};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../static/planner-population.js'),'utf8'),context);
  events['offset:planner-map-ready']({detail:{map}});
- return{api:context.window.OffsetPopulation,node,status,events,get calls(){return calls},get added(){return added},resolve:r=>finish(r)};
+ return{api:context.window.OffsetPopulation,node,status,retry,events,get calls(){return calls},get added(){return added},resolve:r=>finish(r)};
 }
 const square={type:'Feature',properties:{kind:'settlement'},geometry:{type:'Polygon',coordinates:[[[1,1],[3,1],[3,3],[1,3],[1,1]]]}};
 const data={type:'FeatureCollection',complete:true,coverage:[-1,-1,5,5],features:[square]};
@@ -35,4 +35,12 @@ test('SSB switch and status live inside Drone zone information',()=>{
  const doc={querySelector:s=>s==='.map-panel > .airspace-controls'?zones:s==='.population-controls'?controls:null,getElementById:id=>id==='airspace-status'?zoneStatus:id==='population-status'?populationStatus:null,createElement:node};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../static/planner-folds.js'),'utf8'),{document:doc,localStorage:{getItem:()=>null},requestAnimationFrame(){}});
  assert.ok(parent.section.children.includes(controls));assert.ok(parent.section.children.includes(populationStatus));assert.ok(parent.section.children.includes(zones));
+});
+
+test('a failed SSB request offers retry without toggling the layer',async()=>{
+ const s=setup();s.node.checked=true;s.node.change();s.resolve({ok:false,json:async()=>({detail:'SSB data temporarily unavailable'})});
+ await new Promise(r=>setImmediate(r));assert.equal(s.retry.hidden,false);assert.match(s.status.textContent,/unavailable/);
+ s.retry.click();assert.equal(s.calls,2);assert.equal(s.retry.hidden,true);
+ s.node.checked=false;s.node.change();s.resolve({ok:true,json:async()=>({...data,years:{settlements:2026,population:2025}})});
+ await new Promise(r=>setImmediate(r));assert.equal(s.added,0);
 });

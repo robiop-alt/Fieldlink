@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSO
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
-import os, sqlite3, secrets, hashlib, hmac, time, uuid, re, mimetypes, subprocess, threading, base64
+import os, sqlite3, secrets, hashlib, hmac, time, uuid, re, mimetypes, subprocess, threading, base64, logging
 from urllib.parse import urlsplit, quote
 from db_persistence import DurableConnection, restore
 
@@ -588,7 +588,8 @@ def planner_population(request: Request, south: float, west: float, north: float
     except ValueError as error:
         raise HTTPException(422, str(error))
     except Exception:
-        raise HTTPException(503, 'SSB data temporarily unavailable. No area classification is available.')
+        logging.getLogger('offset.population').exception('SSB layer request failed')
+        raise HTTPException(503, 'SSB data temporarily unavailable')
     return JSONResponse(result, headers={'Cache-Control': 'private, max-age=300'})
 
 @app.get('/api/admin/planner/zones')
