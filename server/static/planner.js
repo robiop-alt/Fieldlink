@@ -226,6 +226,7 @@ let waypointPreviewTimer=null;
 function syncWaypointSliderValues(){
  $('map-wp-height-value').textContent=$('map-wp-height').value+' m';
  $('map-wp-tilt-value').textContent=$('map-wp-tilt').value+'°';
+ document.querySelectorAll('[data-waypoint-step]').forEach(b=>{const n=$(b.dataset.waypointStep);b.disabled=n.disabled||Number(n.value)+Number(b.dataset.step)<Number(n.min)||Number(n.value)+Number(b.dataset.step)>Number(n.max)});
 }
 function flushWaypointPreview(){
  clearTimeout(waypointPreviewTimer);waypointPreviewTimer=null;renderMap();
@@ -241,6 +242,10 @@ for(const [id,key,min,max] of [['map-wp-height','altitudeAGL',0,200],['map-wp-ti
  $(id).oninput=()=>updateWaypointValue(id,key,min,max);
  $(id).onchange=flushWaypointPreview;
 }
+document.querySelectorAll('[data-waypoint-step]').forEach(button=>button.onclick=()=>{
+ const id=button.dataset.waypointStep,node=$(id);if(node.disabled)return;
+ node.value=Number(node.value)+Number(button.dataset.step);node.dispatchEvent(new Event('input'));node.dispatchEvent(new Event('change'));
+});
 $('map-wp-bearing').onchange=()=>{updateWaypointValue('map-wp-bearing','bearing',0,359);flushWaypointPreview()};
 $('redo-edit').onclick=()=>travelHistory('redo');
 document.addEventListener('keydown',e=>{
@@ -494,12 +499,50 @@ function addTextBox(position){
  setTool('move');renderMap();scheduleSave();
 }
 
+function nearestRouteSegment(points,point,project){
+ const p=project(point);let best=null;
+ for(let i=0;i<points.length-1;i++){
+  const a=project(points[i]),b=project(points[i+1]),dx=b.x-a.x,dy=b.y-a.y,d=dx*dx+dy*dy;
+  if(d===0)continue;
+  const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/d));
+  const x=a.x+t*dx,y=a.y+t*dy,error=(p.x-x)**2+(p.y-y)**2;
+  if(!best||error<best.error)best={index:i,t,x,y,error};
+ }
+ return best;
+}
+function interpolatedWaypoint(a,b,t,baseTilt=-10){
+ const num=(v,f)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v):f;
+ const lerp=(key,f)=>num(a[key],f)+(num(b[key],f)-num(a[key],f))*t;
+ return {visible:a.visible!==false||b.visible!==false,mode:a.mode==='target'&&b.mode==='target'?'target':'manual',
+  altitudeAGL:Math.round(Math.max(0,Math.min(200,lerp('altitudeAGL',30)))),
+  tilt:Math.round(Math.max(-85,Math.min(35,lerp('tilt',baseTilt)))),
+  bearing:(num(a.bearing,0)+(((num(b.bearing,0)-num(a.bearing,0)+540)%360)-180)*t+360)%360,
+  fov:lerp('fov',50),range:lerp('range',30),lensAuto:!!a.lensAuto&&!!b.lensAuto};
+}
+function offerWaypointInsertion(latlng){
+ const shot=getShot();if(!shot||selectingWaypoints||!['move','route'].includes(tool)||shot.route.length>=500)return;
+ const hit=nearestRouteSegment(shot.route,latlng,p=>map.latLngToLayerPoint(p));
+ if(!hit||hit.t<=.001||hit.t>=.999)return;
+ const point=map.layerPointToLatLng([hit.x,hit.y]),start=shot.route[hit.index],end=shot.route[hit.index+1];
+ const body=document.createElement('div'),button=document.createElement('button');
+ button.type='button';button.textContent='Insert waypoint';body.append(button);
+ button.onclick=()=>{
+  if(getShot()!==shot||shot.route.length>=500||shot.route[hit.index]!==start||shot.route[hit.index+1]!==end)return;
+  const all=cones(shot),i=hit.index;
+  const a={...all[i],bearing:effectiveBearing(shot,i)},b={...all[i+1],bearing:effectiveBearing(shot,i+1)};
+  const cone=interpolatedWaypoint(a,b,hit.t,Number(shot.simPitch??-10));
+  shot.route.splice(i+1,0,[point.lat,point.lng]);all.splice(i+1,0,cone);
+  selectedWaypoints=new Set([...selectedWaypoints].map(n=>n>i?n+1:n));
+  map.closePopup();render();selectWaypoint(i+1);scheduleSave();
+ };
+ L.popup({maxWidth:230}).setLatLng(point).setContent(body).openOn(map);
+}
 function pointIcon(i){ensureWaypointSelection();return L.divIcon({className:'waypoint-hit',html:'<div class="waypoint-number" data-selected="'+selectedWaypoints.has(i)+'" data-active="'+(i===activeWaypoint)+'">'+(i+1)+'</div>',iconSize:[44,44],iconAnchor:[22,22]})}
 function updateStats(){
  const modes={route:'Path · tap to add a waypoint',sketch:'Draw · drag to draw. Choose Move to pan.',camera:'Target · tap to place camera target',marshal:'Guard · tap to place a road marshal',text:'Text · tap to add a text box',measure:'Measure · tap two points'};
  const badge=$('map-mode-status');badge.hidden=!modes[tool];badge.textContent=modes[tool]||'';
  const shot=getShot();const n=shot?.route.length||0;let distance=0;if(map&&shot)for(let i=1;i<n;i++)distance+=map.distance(shot.route[i-1],shot.route[i]);$('route-stats').textContent=n+' waypoint'+(n===1?'':'s')+' · '+(distance>=1000?(distance/1000).toFixed(2)+' km':Math.round(distance)+' m');$('map-help').textContent=tool==='measure'?(measurementPoints.length===0?'Tap the first point to measure a straight-line map distance.':measurementPoints.length===1?'Tap the second point. Distance is approximate and horizontal.':'Approximate horizontal distance. Tap to start a new measurement; tap the ruler to close.'):tool==='route'?'Tap the map to add points. Drag a point to adjust it.':tool==='camera'?'Tap where the camera should point.':tool==='marshal'?'Tap a street to place a red road marshal. Drag to move; tap to edit or remove.':tool==='text'?'Tap the map to place a text box. Tap existing text to edit or delete; drag to move.':tool==='sketch'?'Draw in red. Choose Move to pan the map or tap a drawing to delete it.':'Pan and zoom the map, or choose a drawing tool.'}
-function renderMap(){if(!map||!current)return;if(droneHeightRing){droneHeightRing.remove();droneHeightRing=null}if(routeLine)routeLine.remove();if(aimLine)aimLine.remove();sketchLayers.forEach(layer=>layer.remove());sketchLayers=[];markers.forEach(x=>x.remove());markers=[];if(targetMarker)targetMarker.remove();targetMarker=null;const shot=getShot();if(!shot)return;ensureWaypointSelection();sketches(shot).forEach(points=>{if(Array.isArray(points)&&points.length>1&&points.every(coordsOk))sketchLayers.push(drawingLayer(shot,points))});routeLine=L.polyline(shot.route,{color:'#2fb474',weight:4,opacity:.95}).addTo(map);shot.route.forEach((p,i)=>{if(!coordsOk(p))return;const m=L.marker(p,{draggable:!selectingWaypoints,icon:pointIcon(i)}).addTo(map);m.bindTooltip('Waypoint '+(i+1));m.on('click',()=>{ensureWaypointSelection();if(selectingWaypoints){if(selectedWaypoints.has(i))selectedWaypoints.delete(i);else selectedWaypoints.add(i);renderMap()}else selectWaypoint(i)});m.on('dragend',()=>{shot.route[i]=[m.getLatLng().lat,m.getLatLng().lng];renderMap();scheduleSave()});markers.push(m)});if(coordsOk(shot.target)){targetMarker=L.marker(shot.target,{draggable:true,icon:L.divIcon({className:'',html:'<div class="camera-target">⌖</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);targetMarker.bindTooltip('Camera target');targetMarker.on('dragend',()=>{shot.target=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];renderMap();scheduleSave()});if(shot.route.length)aimLine=L.polyline([shot.route[shot.route.length-1],shot.target],{color:'#df956d',weight:2,dashArray:'6,7',opacity:.85}).addTo(map)}renderCones(shot);
+function renderMap(){if(!map||!current)return;if(droneHeightRing){droneHeightRing.remove();droneHeightRing=null}if(routeLine)routeLine.remove();if(aimLine)aimLine.remove();sketchLayers.forEach(layer=>layer.remove());sketchLayers=[];markers.forEach(x=>x.remove());markers=[];if(targetMarker)targetMarker.remove();targetMarker=null;const shot=getShot();if(!shot)return;ensureWaypointSelection();sketches(shot).forEach(points=>{if(Array.isArray(points)&&points.length>1&&points.every(coordsOk))sketchLayers.push(drawingLayer(shot,points))});routeLine=L.featureGroup([L.polyline(shot.route,{weight:20,opacity:0,bubblingMouseEvents:false}),L.polyline(shot.route,{color:'#2fb474',weight:4,opacity:.95,bubblingMouseEvents:false})]).addTo(map);routeLine.on('click',e=>offerWaypointInsertion(e.latlng));shot.route.forEach((p,i)=>{if(!coordsOk(p))return;const m=L.marker(p,{draggable:!selectingWaypoints,icon:pointIcon(i)}).addTo(map);m.bindTooltip('Waypoint '+(i+1));m.on('click',()=>{ensureWaypointSelection();if(selectingWaypoints){if(selectedWaypoints.has(i))selectedWaypoints.delete(i);else selectedWaypoints.add(i);renderMap()}else selectWaypoint(i)});m.on('dragend',()=>{shot.route[i]=[m.getLatLng().lat,m.getLatLng().lng];renderMap();scheduleSave()});markers.push(m)});if(coordsOk(shot.target)){targetMarker=L.marker(shot.target,{draggable:true,icon:L.divIcon({className:'',html:'<div class="camera-target">⌖</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);targetMarker.bindTooltip('Camera target');targetMarker.on('dragend',()=>{shot.target=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];renderMap();scheduleSave()});if(shot.route.length)aimLine=L.polyline([shot.route[shot.route.length-1],shot.target],{color:'#df956d',weight:2,dashArray:'6,7',opacity:.85}).addTo(map)}renderCones(shot);
  const active=shot.route[activeWaypoint];
  if(radiusEnabled()&&coordsOk(active)){
   const raw=Number(shot.waypointCones?.[activeWaypoint]?.altitudeAGL??30);

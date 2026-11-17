@@ -1902,3 +1902,11 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 .offset-planner #sim-height-quick{flex:1 0 100%;width:100%;margin:0;height:36px;min-height:36px;accent-color:#efa959;touch-action:none}
 .offset-planner #preview-pitch-controls button{min-width:40px;min-height:40px;height:40px;padding:3px 8px}
 @media(pointer:coarse){.offset-planner #sim-height-quick{height:44px;min-height:44px}.offset-planner #preview-pitch-controls button{min-height:44px;height:44px}}
+
+.offset-planner .precision-slider{display:flex;align-items:center;gap:5px;width:100%;min-width:0}
+.offset-planner .precision-slider input[type=range]{flex:1 1 0!important;width:0!important;min-width:20px}
+.offset-planner .precision-step{flex:0 0 32px;min-width:32px;min-height:40px;height:40px;padding:2px!important;font-size:18px;background:#253c32;color:#e6f4e9;border:1px solid #4b6558;border-radius:5px}
+.offset-planner .precision-step:disabled{opacity:.4}
+.offset-planner .sim-height-quick>.precision-slider{flex:1 0 100%}
+.offset-planner .sim-tilt-row>.precision-slider{flex:1;width:auto}
+.offset-planner .leaflet-popup-content button{min-height:44px;padding:7px 12px;border:1px solid #4b6558;border-radius:6px;background:#253c32;color:#e6f4e9}

@@ -955,6 +955,12 @@ function syncQuickWaypointControls(){
  $('sim-height-quick').disabled=!points.length;
  const h=altitude(s,i);$('sim-height-quick').value=h;$('sim-height-quick-value').textContent=h+' m AGL';
 }
+document.querySelectorAll('[data-sim-step]').forEach(button=>button.addEventListener('click',()=>{
+ const input=$(button.dataset.simStep);if(input.disabled)return;
+ if(playing)stop(false);
+ input.value=Number(input.value)+Number(button.dataset.step);
+ input.dispatchEvent(new Event('input'));input.dispatchEvent(new Event('change'));
+}));
 $('sim-wp-previous').addEventListener('click',()=>core()?.setActiveWaypoint((core()?.getActiveWaypoint()||0)-1));
 $('sim-wp-next').addEventListener('click',()=>core()?.setActiveWaypoint((core()?.getActiveWaypoint()||0)+1));
 let quickHeightFrame=0;
@@ -987,6 +993,7 @@ function setWaypointPitch(value){
  if(viewer&&!playing&&!overview)showCamera();
 }
 function movePitch(delta){
+ if(playing)stop(false);
  setWaypointPitch(pitch(core()?.getShot())+delta);
 }
 function installEditing(){
@@ -1282,8 +1289,8 @@ function refresh(){
 }
 syncTimeline(flightData().total);
 $('preview-3d-toggle').addEventListener('click',()=>setMode(!enabled));
-$('preview-pitch-up').addEventListener('click',()=>movePitch(5));
-$('preview-pitch-down').addEventListener('click',()=>movePitch(-5));
+$('preview-pitch-up').addEventListener('click',()=>movePitch(1));
+$('preview-pitch-down').addEventListener('click',()=>movePitch(-1));
 $('sim-waypoint-tilt').addEventListener('input',event=>setWaypointPitch(event.target.value));
 $play.addEventListener('click',play);
 $('sim-seek').addEventListener('input',event=>scrubFlight(event.target.value));
