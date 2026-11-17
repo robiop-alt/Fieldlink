@@ -16,14 +16,15 @@ function nodes(){const all={};return id=>all[id]??=( {value:'',hidden:false,text
 test('waypoint selection uses the exact camera pose and matching eased timeline position',()=>{
  const $=nodes(),points=[[59,10],[60,11],[61,12]],plan={points,legs:[100,300],total:400};
  const poses=[];
- const ctx=context(['motionDistance','timeForDistance','showCamera'],{
+ const ctx=context(['motionDistance','timeForDistance','syncQuickWaypointControls','showCamera'],{
   $,core:()=>({getShot:()=>({}),getActiveWaypoint:()=>1}),route:()=>points,viewer:{},playing:false,overview:false,
   flightData:()=>plan,flightSmoothing:()=>1,playElapsed:0,syncTimeline:()=>{},
   heightAboveEllipsoid:()=>120,cameraDirection:()=>75,pitch:()=>-20,cameraFov:()=>60,
   cameraAt:(...args)=>poses.push(args),setHud:()=>{},lensLabel:()=>'',fpsLabel:()=>'',altitude:()=>30,
-  fov:()=>60,updateFlightMarker:()=>{},groundAt:()=>90
+  fov:()=>60,altitude:()=>30,updateFlightMarker:()=>{},groundAt:()=>90
  });
  ctx.showCamera();assert.equal(poses[0][0],points[1]);assert.equal(poses[0][2],75);
+ assert.equal($('sim-active-waypoint').textContent,'WP 2 / 3');assert.equal($('sim-height-quick').value,30);
  assert.ok(Math.abs(ctx.motionDistance(ctx.playElapsed,400)-100)<.002);
  assert.equal(ctx.timeForDistance(0,400),0);assert.equal(ctx.timeForDistance(400,400),400);
 });

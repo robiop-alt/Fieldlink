@@ -8,7 +8,9 @@ const panels=[
  ['waypoints','.shot-editor > .cone-settings','Waypoint camera cone'],
  ['preview','.shot-editor > .shot-preview-panel','Shot preview'],
  ['terrain','.shot-editor > .terrain-panel','Terrain & elevation'],
- ['reference','.shot-editor > .reference-panel','Shot reference']
+ ['reference','.shot-editor > .reference-panel','Shot reference'],
+ ['map-sun','.map-panel > .sun-panel','Sun information'],
+ ['map-airspace','.map-panel > .airspace-controls','Drone zone information']
 ];
 const key='offset-planner-collapsed-sections-v1';
 let state={};
@@ -35,6 +37,7 @@ for(const [id,selector,label] of panels){
  summary.append(title,chevron);
  content.parentElement.insertBefore(section,content);
  section.append(summary,content);
+ if(id==='map-airspace'){const status=document.getElementById('airspace-status');if(status)section.append(status)}
  section.addEventListener('toggle',()=>{
   state[id]=section.open;save();
   if(section.open&&id==='preview')rerenderMaps();

@@ -197,6 +197,8 @@ function renderWaypointEditor(){
  const picker=$('map-waypoint');picker.replaceChildren();
  (shot?.route||[]).forEach((_,i)=>{const option=document.createElement('option');option.value=i;option.textContent='WP '+(i+1);picker.append(option)});
  picker.value=activeWaypoint;picker.disabled=!cone;
+ $('map-wp-previous').disabled=!cone||activeWaypoint===0;
+ $('map-wp-next').disabled=!cone||activeWaypoint>=shot.route.length-1;
  $('select-waypoints').setAttribute('aria-pressed',String(selectingWaypoints));
  $('select-waypoints').textContent=selectingWaypoints?'Done':'Select';
  $('delete-waypoints').textContent='Delete selected ('+selectedWaypoints.size+')';$('delete-waypoints').disabled=!selectedWaypoints.size;
@@ -218,6 +220,8 @@ $('select-waypoints').onclick=()=>{if(tool==='measure')setTool('move');ensureWay
 $('select-all-waypoints').onclick=()=>{ensureWaypointSelection();getShot()?.route.forEach((_,i)=>selectedWaypoints.add(i));renderMap()};
 $('delete-waypoints').onclick=deleteSelectedWaypoints;
 $('map-waypoint').onchange=e=>selectWaypoint(Number(e.target.value));
+$('map-wp-previous').onclick=()=>selectWaypoint(activeWaypoint-1);
+$('map-wp-next').onclick=()=>selectWaypoint(activeWaypoint+1);
 let waypointPreviewTimer=null;
 function syncWaypointSliderValues(){
  $('map-wp-height-value').textContent=$('map-wp-height').value+' m';
@@ -387,7 +391,7 @@ function roadMarshals(shot=getShot()){return Array.isArray(shot?.marshals)?shot.
 function marshalIcon(){
  return L.divIcon({
   className:'marshal-marker-wrap',
-  iconSize:[30,36],iconAnchor:[15,32],
+  iconSize:[44,48],iconAnchor:[22,38],
   html:'<span class="marshal-person" aria-hidden="true"><svg viewBox="0 0 24 30" width="23" height="29" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="4.5" r="3.4" fill="#ff4148" stroke="#fff" stroke-width="1.2"/><path d="M12 9 L12 19 M12 11 L5 15 M12 11 L19 15 M12 19 L6.5 27 M12 19 L17.5 27" fill="none" stroke="#ff4148" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 9 L12 19 M12 11 L5 15 M12 11 L19 15 M12 19 L6.5 27 M12 19 L17.5 27" fill="none" stroke="#fff" stroke-opacity=".72" stroke-width=".65" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
  });
 }
@@ -419,6 +423,8 @@ function renderMarshals(){
  guards.forEach((item,i)=>{
   if(!coordsOk(item.position))return;
   const marker=L.marker(item.position,{draggable:true,icon:marshalIcon(),zIndexOffset:1100}).addTo(map);
+  marker.on('popupopen',()=>marker.getElement()?.classList.add('map-object-selected'));
+  marker.on('popupclose',()=>marker.getElement()?.classList.remove('map-object-selected'));
   marker.bindTooltip(item.label||'Road marshal '+(i+1),{direction:'top',offset:[0,-20]});
   marker.on('dragend',()=>{
    const p=marker.getLatLng();item.position=[p.lat,p.lng];
@@ -453,14 +459,16 @@ function addMarshal(position){
 
 function textBoxes(shot){if(!Array.isArray(shot.textBoxes))shot.textBoxes=[];return shot.textBoxes}
 function drawingLayer(shot,points){
- const line=L.polyline(points,{color:'#ed4148',weight:3,opacity:1,bubblingMouseEvents:false}).addTo(map);
+ const line=L.polyline(points,{color:'#ed4148',weight:3,opacity:1,bubblingMouseEvents:false});
+ const hit=L.polyline(points,{weight:20,opacity:0,bubblingMouseEvents:false});
+ const group=L.featureGroup([hit,line]).addTo(map);
  const popup=document.createElement('div'),title=document.createElement('strong'),remove=document.createElement('button');
  title.textContent='Map drawing';remove.type='button';remove.className='annotation-delete';remove.textContent='Delete drawing';
  popup.append(title,remove);
  remove.onclick=()=>{if(getShot()!==shot)return;const i=sketches(shot).indexOf(points);if(i<0)return;shot.sketches.splice(i,1);map.closePopup();renderMap();scheduleSave()};
- line.bindPopup(popup);line.on('click',()=>{if(tool==='sketch')return;line.setStyle({weight:6});line.openPopup()});
- line.on('popupclose',()=>line.setStyle({weight:3}));
- return line;
+ group.bindPopup(popup);group.on('click',event=>{if(tool==='sketch')return;line.setStyle({weight:6});group.openPopup(event.latlng)});
+ group.on('popupclose',()=>line.setStyle({weight:3}));
+ return group;
 }
 function renderTextBoxes(shot){
  textMarkers.forEach(marker=>marker.remove());textMarkers=[];
@@ -486,8 +494,11 @@ function addTextBox(position){
  setTool('move');renderMap();scheduleSave();
 }
 
-function pointIcon(i){ensureWaypointSelection();return L.divIcon({className:'',html:'<div class="waypoint-number" data-selected="'+selectedWaypoints.has(i)+'" data-active="'+(i===activeWaypoint)+'">'+(i+1)+'</div>',iconSize:[28,28],iconAnchor:[14,14]})}
-function updateStats(){const shot=getShot();const n=shot?.route.length||0;let distance=0;if(map&&shot)for(let i=1;i<n;i++)distance+=map.distance(shot.route[i-1],shot.route[i]);$('route-stats').textContent=n+' waypoint'+(n===1?'':'s')+' · '+(distance>=1000?(distance/1000).toFixed(2)+' km':Math.round(distance)+' m');$('map-help').textContent=tool==='measure'?(measurementPoints.length===0?'Tap the first point to measure a straight-line map distance.':measurementPoints.length===1?'Tap the second point. Distance is approximate and horizontal.':'Approximate horizontal distance. Tap to start a new measurement; tap the ruler to close.'):tool==='route'?'Tap the map to add points. Drag a point to adjust it.':tool==='camera'?'Tap where the camera should point.':tool==='marshal'?'Tap a street to place a red road marshal. Drag to move; tap to edit or remove.':tool==='text'?'Tap the map to place a text box. Tap existing text to edit or delete; drag to move.':tool==='sketch'?'Draw in red. Choose Move to pan the map or tap a drawing to delete it.':'Pan and zoom the map, or choose a drawing tool.'}
+function pointIcon(i){ensureWaypointSelection();return L.divIcon({className:'waypoint-hit',html:'<div class="waypoint-number" data-selected="'+selectedWaypoints.has(i)+'" data-active="'+(i===activeWaypoint)+'">'+(i+1)+'</div>',iconSize:[44,44],iconAnchor:[22,22]})}
+function updateStats(){
+ const modes={route:'Path · tap to add a waypoint',sketch:'Draw · drag to draw. Choose Move to pan.',camera:'Target · tap to place camera target',marshal:'Guard · tap to place a road marshal',text:'Text · tap to add a text box',measure:'Measure · tap two points'};
+ const badge=$('map-mode-status');badge.hidden=!modes[tool];badge.textContent=modes[tool]||'';
+ const shot=getShot();const n=shot?.route.length||0;let distance=0;if(map&&shot)for(let i=1;i<n;i++)distance+=map.distance(shot.route[i-1],shot.route[i]);$('route-stats').textContent=n+' waypoint'+(n===1?'':'s')+' · '+(distance>=1000?(distance/1000).toFixed(2)+' km':Math.round(distance)+' m');$('map-help').textContent=tool==='measure'?(measurementPoints.length===0?'Tap the first point to measure a straight-line map distance.':measurementPoints.length===1?'Tap the second point. Distance is approximate and horizontal.':'Approximate horizontal distance. Tap to start a new measurement; tap the ruler to close.'):tool==='route'?'Tap the map to add points. Drag a point to adjust it.':tool==='camera'?'Tap where the camera should point.':tool==='marshal'?'Tap a street to place a red road marshal. Drag to move; tap to edit or remove.':tool==='text'?'Tap the map to place a text box. Tap existing text to edit or delete; drag to move.':tool==='sketch'?'Draw in red. Choose Move to pan the map or tap a drawing to delete it.':'Pan and zoom the map, or choose a drawing tool.'}
 function renderMap(){if(!map||!current)return;if(droneHeightRing){droneHeightRing.remove();droneHeightRing=null}if(routeLine)routeLine.remove();if(aimLine)aimLine.remove();sketchLayers.forEach(layer=>layer.remove());sketchLayers=[];markers.forEach(x=>x.remove());markers=[];if(targetMarker)targetMarker.remove();targetMarker=null;const shot=getShot();if(!shot)return;ensureWaypointSelection();sketches(shot).forEach(points=>{if(Array.isArray(points)&&points.length>1&&points.every(coordsOk))sketchLayers.push(drawingLayer(shot,points))});routeLine=L.polyline(shot.route,{color:'#2fb474',weight:4,opacity:.95}).addTo(map);shot.route.forEach((p,i)=>{if(!coordsOk(p))return;const m=L.marker(p,{draggable:!selectingWaypoints,icon:pointIcon(i)}).addTo(map);m.bindTooltip('Waypoint '+(i+1));m.on('click',()=>{ensureWaypointSelection();if(selectingWaypoints){if(selectedWaypoints.has(i))selectedWaypoints.delete(i);else selectedWaypoints.add(i);renderMap()}else selectWaypoint(i)});m.on('dragend',()=>{shot.route[i]=[m.getLatLng().lat,m.getLatLng().lng];renderMap();scheduleSave()});markers.push(m)});if(coordsOk(shot.target)){targetMarker=L.marker(shot.target,{draggable:true,icon:L.divIcon({className:'',html:'<div class="camera-target">⌖</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);targetMarker.bindTooltip('Camera target');targetMarker.on('dragend',()=>{shot.target=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];renderMap();scheduleSave()});if(shot.route.length)aimLine=L.polyline([shot.route[shot.route.length-1],shot.target],{color:'#df956d',weight:2,dashArray:'6,7',opacity:.85}).addTo(map)}renderCones(shot);
  const active=shot.route[activeWaypoint];
  if(radiusEnabled()&&coordsOk(active)){

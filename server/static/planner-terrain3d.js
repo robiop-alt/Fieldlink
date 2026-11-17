@@ -571,6 +571,7 @@ function cameraAt(position,height,heading,tilt,horizontalFov){
 function showCamera(){
  const s=core()?.getShot(),points=route(s);if(!viewer||!points.length)return;
  const i=Math.min(core().getActiveWaypoint(),points.length-1),point=points[i];
+ syncQuickWaypointControls();
  if(!playing){const plan=flightData(),at=plan.legs.slice(0,i).reduce((sum,n)=>sum+n,0);playElapsed=timeForDistance(at,plan.total);syncTimeline(plan.total)}
  if(overview){
   const C=window.Cesium;
@@ -946,6 +947,30 @@ function scrubFlight(value){
  if(!playing)status('Preview at '+clock(playElapsed/(Number($('sim-speed').value)||3))+' · press Play to continue');
 }
 
+function syncQuickWaypointControls(){
+ const s=core()?.getShot(),points=route(s),i=core()?.getActiveWaypoint()||0;
+ $('sim-active-waypoint').textContent=points.length?'WP '+(i+1)+' / '+points.length:'WP —';
+ $('sim-wp-previous').disabled=!points.length||i===0;
+ $('sim-wp-next').disabled=!points.length||i>=points.length-1;
+ $('sim-height-quick').disabled=!points.length;
+ const h=altitude(s,i);$('sim-height-quick').value=h;$('sim-height-quick-value').textContent=h+' m AGL';
+}
+$('sim-wp-previous').addEventListener('click',()=>core()?.setActiveWaypoint((core()?.getActiveWaypoint()||0)-1));
+$('sim-wp-next').addEventListener('click',()=>core()?.setActiveWaypoint((core()?.getActiveWaypoint()||0)+1));
+let quickHeightFrame=0;
+$('sim-height-quick').addEventListener('input',event=>{
+ const s=core()?.getShot(),i=core()?.getActiveWaypoint(),n=Number(event.target.value);
+ if(!s?.route?.[i]||!Number.isFinite(n))return;
+ if(playing)stop(false);
+ if(!s.waypointCones)s.waypointCones=[];
+ if(!s.waypointCones[i])s.waypointCones[i]={};
+ s.waypointCones[i].altitudeAGL=Math.max(0,Math.min(200,Math.round(n)));
+ syncQuickWaypointControls();core().save();
+ if(viewer&&!quickHeightFrame)quickHeightFrame=requestAnimationFrame(()=>{quickHeightFrame=0;if(enabled&&viewer)showCamera()})
+});
+$('sim-height-quick').addEventListener('change',()=>{if(enabled&&viewer){renderRoute();showCamera()}});
+document.addEventListener('offset:map-rendered',syncQuickWaypointControls);
+document.addEventListener('offset:shot-rendered',syncQuickWaypointControls);
 function setWaypointPitch(value){
  const s=core()?.getShot();if(!s)return;
  const i=core()?.getActiveWaypoint(),n=Number(value);

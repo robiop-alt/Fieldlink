@@ -567,7 +567,7 @@
 
 /* Sun controls belong to the map, not to the shot editor.
    Present as a full-width compact strip immediately above the map. */
-.offset-planner .map-panel>.sun-panel{
+.offset-planner .map-panel .sun-panel{
  flex:0 0 auto;
  margin:0;
  padding:11px 15px 10px;
@@ -576,16 +576,16 @@
  border-radius:0;
  background:#192321;
 }
-.offset-planner .map-panel>.sun-panel .planner-extra-heading{
+.offset-planner .map-panel .sun-panel .planner-extra-heading{
  align-items:baseline;
  flex-wrap:wrap;
  gap:5px 14px;
 }
-.offset-planner .map-panel>.sun-panel .planner-extra-heading strong{
+.offset-planner .map-panel .sun-panel .planner-extra-heading strong{
  color:#f1e9cb;
  font-size:12px;
 }
-.offset-planner .map-panel>.sun-panel label{
+.offset-planner .map-panel .sun-panel label{
  display:flex;
  flex-wrap:wrap;
  align-items:center;
@@ -593,14 +593,14 @@
  margin:7px 0 0;
  color:#aebeb2;
 }
-.offset-planner .map-panel>.sun-panel label #sun-hour-label{
+.offset-planner .map-panel .sun-panel label #sun-hour-label{
  float:none;
  order:2;
  margin-left:auto;
  color:#f2c77d;
  font-size:12px;
 }
-.offset-planner .map-panel>.sun-panel input[type="range"]{
+.offset-planner .map-panel .sun-panel input[type="range"]{
  flex:1 1 180px;
  order:1;
  min-width:110px;
@@ -608,25 +608,25 @@
  margin:0;
  accent-color:#f1bc62;
 }
-.offset-planner .map-panel>.sun-panel .sun-metrics{
+.offset-planner .map-panel .sun-panel .sun-metrics{
  justify-content:flex-start;
  gap:7px 18px;
  margin-top:5px;
  font-size:10px;
 }
-.offset-planner .map-panel>.sun-panel .sun-events{
+.offset-planner .map-panel .sun-panel .sun-events{
  margin-top:3px;
  font-size:10px;
 }
-.offset-planner .map-panel>.sun-panel>.extra-hint{
+.offset-planner .map-panel .sun-panel>.extra-hint{
  margin:4px 0 0;
  font-size:9px;
 }
 @media(max-width:800px){
- .offset-planner .map-panel>.sun-panel{padding:9px 10px 8px}
- .offset-planner .map-panel>.sun-panel label{gap:5px 7px}
- .offset-planner .map-panel>.sun-panel input[type="range"]{flex-basis:130px}
- .offset-planner .map-panel>.sun-panel .planner-extra-heading>span{
+ .offset-planner .map-panel .sun-panel{padding:9px 10px 8px}
+ .offset-planner .map-panel .sun-panel label{gap:5px 7px}
+ .offset-planner .map-panel .sun-panel input[type="range"]{flex-basis:130px}
+ .offset-planner .map-panel .sun-panel .planner-extra-heading>span{
   text-align:left;
  }
 }
@@ -951,10 +951,10 @@
  .offset-planner .airspace-controls{flex-wrap:wrap;gap:5px;padding:5px}
  .offset-planner .airspace-legend{display:none}
  .offset-planner .airspace-status{padding:4px 7px;font-size:9px}
- .offset-planner .map-panel>.sun-panel{padding:7px 9px 6px}
- .offset-planner .map-panel>.sun-panel .planner-extra-heading strong{font-size:11px}
- .offset-planner .map-panel>.sun-panel .planner-extra-heading>span{font-size:9px}
- .offset-planner .map-panel>.sun-panel .extra-hint{display:none}
+ .offset-planner .map-panel .sun-panel{padding:7px 9px 6px}
+ .offset-planner .map-panel .sun-panel .planner-extra-heading strong{font-size:11px}
+ .offset-planner .map-panel .sun-panel .planner-extra-heading>span{font-size:9px}
+ .offset-planner .map-panel .sun-panel .extra-hint{display:none}
  .offset-planner #planner-map{
   height:clamp(230px,calc(100dvh - 195px),420px)!important;
   min-height:230px!important;max-height:none!important;
@@ -1885,3 +1885,20 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 .offset-planner #planner-map.map-sketching .leaflet-pane{touch-action:none!important;cursor:crosshair}
 .offset-planner #planner-map.map-sketching .leaflet-marker-pane,
 .offset-planner #planner-map.map-sketching .leaflet-overlay-pane path{pointer-events:none!important}
+
+/* Comfortable hit areas around the original compact map symbols. */
+.offset-planner .waypoint-hit,.offset-planner .marshal-marker-wrap{display:flex;align-items:center;justify-content:center}
+.offset-planner .waypoint-hit .waypoint-number{flex-shrink:0}
+.offset-planner .marshal-marker-wrap.map-object-selected{filter:drop-shadow(0 0 5px #fff)}
+.offset-planner #map-wp-previous,.offset-planner #map-wp-next{min-width:34px;min-height:44px;padding:4px;font-size:22px}
+.offset-planner .map-mode-status{position:absolute;z-index:800;top:10px;left:56px;right:10px;width:fit-content;max-width:calc(100% - 66px);padding:7px 10px;border:1px solid #557362;border-radius:7px;background:#14271eea;color:#e5f5e9;font-size:12px;pointer-events:none}
+.offset-planner .map-mode-status[hidden]{display:none!important}
+.offset-planner .map-panel>.planner-fold{margin:4px 8px}
+.offset-planner .map-panel>.planner-fold .sun-panel{margin:0;border:0}
+.offset-planner #preview-pitch-controls{display:flex;flex-direction:column;align-items:stretch;width:220px;max-width:calc(100% - 24px);height:auto;gap:2px;padding:5px 7px}
+.offset-planner .sim-waypoint-navigation,.offset-planner .sim-tilt-quick{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.offset-planner .sim-height-quick{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:11px;color:#ebf5ee}
+.offset-planner .sim-height-quick output{margin-left:auto;color:#efbd7b}
+.offset-planner #sim-height-quick{flex:1 0 100%;width:100%;margin:0;height:36px;min-height:36px;accent-color:#efa959;touch-action:none}
+.offset-planner #preview-pitch-controls button{min-width:40px;min-height:40px;height:40px;padding:3px 8px}
+@media(pointer:coarse){.offset-planner #sim-height-quick{height:44px;min-height:44px}.offset-planner #preview-pitch-controls button{min-height:44px;height:44px}}
