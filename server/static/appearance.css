@@ -63,7 +63,6 @@
 :where(html[data-offset-page="review"]) .review-panel .offset-frame-inline select:focus-visible{outline:2px solid var(--accent)}
 :where(html[data-offset-page="review"]) .review-panel #metadata-filters :is(.clip-tool[data-active="true"],.new-clips-filter[aria-pressed="true"],details[open] > summary){color:var(--accent-text);background:var(--accent-soft)}
 /* planner */
-:where(html[data-offset-page="planner"]) .offset-planner button{border:1px solid var(--accent-border);background:var(--accent);color:var(--accent-ink)}
 :where(html[data-offset-page="planner"]) .offset-planner :is(button,input,select,textarea,a):focus-visible{outline:2px solid var(--accent)}
 :where(html[data-offset-page="planner"]) .shot-item.active{border-color:var(--accent)}
 :where(html[data-offset-page="planner"]) .map-toolbar button.active{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
