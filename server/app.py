@@ -921,7 +921,7 @@ def device_app_update(x_device_token:str=Header(default='')):
             match=re.fullmatch(r'offset-android-(\d+)',tag)
             if match:
                 assets=release.get('assets',[])
-                asset=next((a for a in assets if a.get('name')=='OFFSET.apk'),None)
+                asset=next((a for a in assets if a.get('name') in ('OFFSET.apk','app-release.apk')),None)
                 if asset:
                     version_code=int(match.group(1))
                     version_name=release.get('name',tag)
