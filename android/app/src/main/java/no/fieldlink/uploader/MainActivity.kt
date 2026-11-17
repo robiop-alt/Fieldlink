@@ -465,13 +465,13 @@ class MainActivity : Activity() {
         settings.addView(startOnBoot)
         settings.addView(text(
             if(Build.VERSION.SDK_INT>=35)
-                "Controller pill starts at boot. On Android 15+, uploads resume automatically when you open OFFSET; Android does not allow starting a data-sync foreground service directly at boot."
+                "Floating status starts at boot. On Android 15+, uploads resume automatically when you open OFFSET; Android does not allow starting a data-sync foreground service directly at boot."
             else
                 "Automatically resume the uploader when the controller restarts, if project and cache folder are configured.",
             12f,muted
         ))
 
-        val overlay=Switch(this).apply { text="Floating upload status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
+        val overlay=Switch(this).apply { text="Floating status";setTextColor(Color.WHITE);isChecked=prefs.getBoolean("overlay",true)
             setOnCheckedChangeListener { _,enabled ->
                 prefs.edit().putBoolean("overlay",enabled).apply()
                 if(!enabled) stopService(Intent(this@MainActivity,ControllerOverlayService::class.java))
@@ -481,7 +481,7 @@ class MainActivity : Activity() {
             } }
         settings.addView(overlay)
         val pilotOnly=Switch(this).apply {
-            text="Show pill only in DJI Pilot 2"
+            text="Show floating status only in DJI Pilot 2"
             textSize=12f
             setTextColor(Color.WHITE)
             isChecked=prefs.getBoolean("overlay_pilot_only",false)
@@ -490,7 +490,7 @@ class MainActivity : Activity() {
                 if(enabled && !PilotForeground.permissionGranted(this@MainActivity)) {
                     OffsetDialogBuilder(this@MainActivity)
                         .setTitle("Allow app visibility")
-                        .setMessage("To show the pill only while DJI Pilot 2 is open, Android needs one-time Usage access for OFFSET. No screen content is read. Until access is granted, the pill stays hidden in this mode.")
+                        .setMessage("To show floating status only while DJI Pilot 2 is open, Android needs one-time Usage access for OFFSET. No screen content is read. Until access is granted, floating status stays hidden in this mode.")
                         .setNegativeButton("Later",null)
                         .setPositiveButton("Open settings") { _,_ ->
                             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
@@ -503,7 +503,7 @@ class MainActivity : Activity() {
             }
         }
         settings.addView(pilotOnly)
-        settings.addView(text("When off, the pill can appear over other apps. When on, it appears only in DJI Pilot 2. Uploads continue in the background either way.",11f,muted))
+        settings.addView(text("When off, floating status can appear over other apps. When on, it appears only in DJI Pilot 2. Uploads continue in the background either way.",11f,muted))
         val metadataReminder=Switch(this).apply {
             text="Metadata access reminder"
             setTextColor(Color.WHITE)
@@ -515,7 +515,7 @@ class MainActivity : Activity() {
         settings.addView(metadataReminder)
         settings.addView(text("Show a small METADATA TAP prompt over DJI Pilot when screen capture access is inactive.",12f,muted))
 
-        settings.addView(text("OVERLAY STYLE",12f,accent))
+        settings.addView(text("FLOATING STATUS STYLE",12f,accent))
         val styles=android.widget.RadioGroup(this).apply {
             orientation=android.widget.RadioGroup.HORIZONTAL
         }
@@ -533,10 +533,10 @@ class MainActivity : Activity() {
         }
         settings.addView(styles)
         settings.addView(text(
-            "Minimal: edge pill · Compact: brief progress · Classic: expanded status. Drag to either edge, tap to expand.",
+            "Minimal: edge indicator · Compact: brief progress · Classic: expanded status panel. Drag to either edge, tap to expand.",
             12f,muted
         ))
-        settings.addView(text("Overlay opacity",14f,muted))
+        settings.addView(text("Status opacity",14f,muted))
         val opacityValue=text("",13f,muted)
         val opacity=SeekBar(this).apply {
             max=80
@@ -566,8 +566,8 @@ class MainActivity : Activity() {
         }
         settings.addView(showStatus)
         settings.addView(showProject)
-        settings.addView(text("Overlay changes apply after restarting the uploader.",12f,muted))
-        settings.addView(button("Allow overlay on top of DJI Pilot 2") {
+        settings.addView(text("Status settings apply after restarting the uploader.",12f,muted))
+        settings.addView(button("Allow floating status over DJI Pilot 2") {
             if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
             else showPermissionStatus()
         })
@@ -795,9 +795,9 @@ class MainActivity : Activity() {
         val overlayEnabled=prefs.getBoolean("overlay",true)
         val overlayAllowed=Build.VERSION.SDK_INT<23 || Settings.canDrawOverlays(this)
         local.add(when {
-            !overlayEnabled -> "· Status pill disabled"
-            overlayAllowed -> "✓ Status pill permission"
-            else -> "✕ Status pill permission missing"
+            !overlayEnabled -> "· Floating status disabled"
+            overlayAllowed -> "✓ Floating status permission"
+            else -> "✕ Floating status permission missing"
         })
         val space=filesDir.usableSpace
         local.add(if(space >= 150L*1024*1024) "✓ Local working space"
