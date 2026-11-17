@@ -405,7 +405,7 @@ function setupSplitMap(){
  if(splitMap)return;
  const main=core()?.getMap(),host=$('sim-split-map');
  if(!main)return;
- for(const selector of ['.map-panel .map-top-controls','.map-panel .map-toolbar','#waypoint-editor','#planner-map']){
+ for(const selector of ['.map-panel .map-top-controls','#waypoint-editor','.map-panel .map-toolbar','#planner-map']){
   const node=document.querySelector(selector);if(!node)continue;
   const placeholder=document.createComment('OFFSET main map original position');
   node.parentNode.insertBefore(placeholder,node);
