@@ -517,8 +517,121 @@ def _map(c, route, target, cones, marshals, x, top, w, h, solar=None, sketches=N
     c.setFillColor(MUTED)
     c.drawString(x+13,top-h+9,note)
 
+
+def _shot_area_context(shot):
+    """Fetch source data at export, independent of display-layer preferences.
+
+    Horizontal intersections only: ED-269 altitude/time applicability must
+    still be checked. Missing SSB cells are unknown, never zero residents.
+    """
+    from shapely.geometry import Point, LineString, shape
+    route=shot.get('route') or []
+    points=[p for p in route if _coord(p)]
+    if not points:
+        return {'error':'No waypoint positions; area assessment unavailable.'}
+    cones=shot.get('waypointCones') or []
+    sampled=[p for p,_ in _closure_path(route,cones,shot.get('simSmoothing','cinematic'))]
+    flight=LineString([(p[1],p[0]) for p in sampled]) if len(sampled)>1 else Point(points[0][1],points[0][0])
+    west,south,east,north=flight.bounds
+    bounds=(south-.0001,west-.0001,north+.0001,east+.0001)
+    result={'checked':datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
+    def zones():
+        from drone_zones import features_in_bbox
+        data=features_in_bbox(bounds)
+        hits=[]
+        for feature in data['features']:
+            if shape(feature['geometry']).intersects(flight):
+                props=feature['properties']
+                if props not in hits:hits.append(props)
+        return {'hits':hits,'date':data.get('source_date','Unknown'),
+                'stale':data.get('stale',True),'truncated':data.get('truncated',False),
+                'origin':data.get('origin','unknown')}
+    def population():
+        from population_ssb import features_in_bbox
+        from shapely.ops import unary_union
+        data=features_in_bbox(bounds)
+        if not data.get('complete'):raise ValueError('Incomplete SSB coverage')
+        cells=[];settlements=[]
+        for feature in data['features']:
+            geom=shape(feature['geometry']);props=feature['properties']
+            if not geom.intersects(flight):continue
+            if props.get('kind')=='population':cells.append((geom,props))
+            elif props.get('kind')=='settlement':settlements.append(props.get('name','SSB settlement'))
+        known=[(geom,props) for geom,props in cells if isinstance(props.get('density'),(int,float)) and math.isfinite(props['density']) and props['density']>=0]
+        densities=[props['density'] for _,props in known]
+        waypoint_values=[]
+        for index,p in enumerate(route):
+            if not _coord(p):continue
+            point=Point(p[1],p[0])
+            values=sorted(set(props['density'] for geom,props in known if geom.covers(point)))
+            waypoint_values.append((index+1,values))
+        covered=bool(known) and unary_union([geom for geom,_ in known]).covers(flight)
+        return {'years':data.get('years',{}),'density':(min(densities),max(densities)) if densities else None,
+                'covered':covered,'waypoints':waypoint_values,'settlements':sorted(set(settlements))}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures={key:pool.submit(fn) for key,fn in [('zones',zones),('population',population)]}
+        for key,future in futures.items():
+            try:result[key]=future.result()
+            except Exception:
+                _LOG.warning('PDF %s data unavailable',key,exc_info=True)
+                result[key]={'error':True}
+    return result
+
+
+def _area_pages(c, plan_name, shot, number, total, context):
+    """Keep source details on dedicated pages without reducing the shot map."""
+    def page(continued=False):
+        y=_page(c,plan_name,f'SHOT {number:02d} / {total:02d} - AREA INFORMATION'+(' (continued)' if continued else ''))
+        return _line(c,shot.get('name') or f'Shot {number}',M,y,12,INK,True)
+    y=page()
+    def write(text,size=9,color=INK,bold=False):
+        nonlocal y
+        for part in simpleSplit(_safe(text,3000),'Helvetica-Bold' if bold else 'Helvetica',size,PW-2*M):
+            if y<65:
+                c.showPage();y=page(True)
+            y=_line(c,part,M,y,size,color,bold)
+    if context.get('error'):
+        write(context['error']);c.showPage();return
+    write('Retrieved for PDF: '+context['checked'],8,MUTED)
+    y-=12
+    write('DRONE ZONES - HORIZONTAL FLIGHT PATH',10,GREEN,True)
+    zone=context['zones']
+    write('Source: Luftfartstilsynet / dronesoner.no',8,MUTED)
+    if zone.get('error'):
+        write('Drone zone data unavailable. No conclusion about zone overlap can be made.',9,RED)
+    else:
+        write('Dataset: '+str(zone['date'])+' | Origin: '+str(zone['origin']),8,MUTED)
+        if zone['stale']:write('WARNING: cached or mirror dataset; currency unverified.',9,RED)
+        if zone['truncated']:write('WARNING: incomplete zone results; additional zones may apply.',9,RED)
+        if not zone['hits']:write('No horizontal overlap found in the retrieved dataset. This is not flight clearance.')
+        for props in zone['hits']:
+            y-=6
+            write((props.get('name') or 'Unnamed zone')+' | '+(props.get('identifier') or 'No identifier'),9,INK,True)
+            write('Restriction: '+str(props.get('restriction') or 'Unknown'))
+            write('Vertical limits (as supplied): '+str(props.get('lowerLimit') if props.get('lowerLimit') is not None else 'Unknown')+' '+str(props.get('lowerVerticalReference') or '')+' to '+str(props.get('upperLimit') if props.get('upperLimit') is not None else 'Unknown')+' '+str(props.get('upperVerticalReference') or ''),8)
+            if props.get('reason'):write('Reason: '+', '.join(props['reason']),8)
+            if props.get('message'):write(props['message'],8)
+    write('Horizontal overlap only. Altitude, activation times and applicability to the shot date are not evaluated. Check active NOTAM, AIP and permissions.',8,MUTED)
+    y-=14
+    write('POPULATION & SETTLEMENTS - SSB',10,GREEN,True)
+    write('Source: Statistics Norway (SSB) | https://kart.ssb.no/',8,MUTED)
+    pop=context['population']
+    if pop.get('error'):
+        write('SSB data unavailable or route outside supported coverage. Population density is unknown.',9,RED)
+    else:
+        write('Population grid: '+str(pop['years'].get('population','Unknown'))+' | Settlements: '+str(pop['years'].get('settlements','Unknown')),8,MUTED)
+        def density(values):
+            return ' - '.join(f'{value:,.0f}' for value in sorted(set(values)))+' residents/km2' if values else 'Unknown / no published value'
+        write('Flight path density (published 250 m cells): '+(density(pop['density']) if pop['density'] else 'Unknown'))
+        if not pop['covered']:write('Partial or missing density coverage along the flight path. Missing values are not zero.',9,RED)
+        write('SSB settlements intersected: '+(', '.join(pop['settlements']) if pop['settlements'] else 'None in retrieved settlement dataset'))
+        y-=6
+        for index,values in pop['waypoints']:write(f'WP {index:02d}: '+density(values),8)
+    write('Resident population statistics, not people currently present. SSB settlement boundaries do not determine the operating category under your authorization.',8,MUTED)
+    c.showPage()
+
 def make_planner_pdf(plan):
-    """One complete A4 page per shot (plus no cover or separate guard page)."""
+    """Shot map plus source-based area information for each selected shot."""
     buffer=io.BytesIO()
     c=canvas.Canvas(buffer,pagesize=A4,pageCompression=1)
     c.setTitle("OFFSET Drone Planner - "+_safe(plan.get("name"),100))
@@ -627,6 +740,7 @@ def make_planner_pdf(plan):
             y_right=_line(c,f"     {p[0]:.5f}, {p[1]:.5f}",right_x,y_right,7,MUTED)
 
         c.showPage()
+        _area_pages(c,name,shot,number,total,_shot_area_context(shot))
     c.save()
     buffer.seek(0)
     return buffer.getvalue()
