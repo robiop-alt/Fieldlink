@@ -20,7 +20,7 @@ android {
     }
     signingConfigs {
         create("offsetRelease") {
-            storeFile = file(System.getenv("OFFSET_KEYSTORE_PATH") ?: "missing-release-keystore.jks")
+            storeFile = file(System.getenv("OFFSET_KEYSTORE_PATH")?.takeIf { it.isNotBlank() } ?: "missing-release-keystore.jks")
             storePassword = System.getenv("OFFSET_KEYSTORE_PASSWORD") ?: ""
             keyAlias = System.getenv("OFFSET_KEY_ALIAS") ?: ""
             keyPassword = System.getenv("OFFSET_KEY_PASSWORD") ?: ""
