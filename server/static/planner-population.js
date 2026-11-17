@@ -4,10 +4,36 @@
 const toggle=document.getElementById('population-toggle'),status=document.getElementById('population-status');
 if(!toggle||!status)return;
 const retry=document.getElementById('population-retry');
+const densityLegend=document.getElementById('population-density-scale');
+// Fixed absolute bands: identical density has the same color at every location.
+const densityBands=[
+ {max:500,color:'#fff0a6',opacity:.24,label:'0–499'},
+ {max:2000,color:'#ffc85b',opacity:.32,label:'500–1,999'},
+ {max:5000,color:'#ff9b32',opacity:.42,label:'2,000–4,999'},
+ {max:10000,color:'#f36925',opacity:.50,label:'5,000–9,999'},
+ {max:20000,color:'#dc3d2a',opacity:.58,label:'10,000–19,999'},
+ {max:Infinity,color:'#982340',opacity:.66,label:'20,000+'},
+];
+function populationStyle(feature){
+ if(feature.properties.kind==='settlement')return{color:'#bd9bea',weight:1.8,fillColor:'#bd9bea',fillOpacity:.025};
+ const density=feature.properties.density;
+ if(!Number.isFinite(density)||density<0)return{color:'#849098',weight:.7,dashArray:'3 3',fillColor:'#849098',fillOpacity:.08};
+ const band=densityBands.find(b=>density<b.max);
+ return{color:band.color,weight:.65,opacity:.85,fillColor:band.color,fillOpacity:band.opacity};
+}
+if(densityLegend){
+ for(const band of densityBands){
+  const item=document.createElement('span'),swatch=document.createElement('i');
+  swatch.style.backgroundColor=band.color;swatch.setAttribute('aria-hidden','true');
+  item.append(swatch,document.createTextNode(band.label));densityLegend.append(item);
+ }
+ const missing=document.createElement('span'),swatch=document.createElement('i');swatch.style.backgroundColor='#849098';swatch.setAttribute('aria-hidden','true');missing.append(swatch,document.createTextNode('No data'));densityLegend.append(missing);
+}
+
 // Do not restore a browser checkbox or persist the switch. Default is always OFF.
 toggle.checked=false;
 let map=null,layer=null,abort=null,timer=null,sequence=0,data=null,lastBounds='';
-const setStatus=(message,kind='info')=>{status.textContent=message;status.dataset.state=kind;if(retry)retry.hidden=kind!=='error'||!toggle.checked};
+const setStatus=(message,kind='info')=>{status.textContent=message;status.dataset.state=kind;if(densityLegend)densityLegend.hidden=!toggle.checked;if(retry)retry.hidden=kind!=='error'||!toggle.checked};
 const validPoint=p=>Array.isArray(p)&&p.length>=2&&Number.isFinite(p[0])&&Number.isFinite(p[1]);
 function orientation(a,b,c){return (b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])}
 function onSegment(p,a,b){return Math.abs(orientation(a,b,p))<1e-12&&p[0]>=Math.min(a[0],b[0])-1e-12&&p[0]<=Math.max(a[0],b[0])+1e-12&&p[1]>=Math.min(a[1],b[1])-1e-12&&p[1]<=Math.max(a[1],b[1])+1e-12}
@@ -38,7 +64,7 @@ function classify(route,collection){
  return inside.every(Boolean)?'inside':inside.some(Boolean)?'mixed':'outside';
 }
 // Geometry helpers are shared with regression tests, without mutating the planner.
-window.OffsetPopulation={classify,contains};
+window.OffsetPopulation={classify,contains,populationStyle};
 function summary(){
  if(!toggle.checked||!data)return;
  const shot=typeof getShot==='function'?getShot():null;
@@ -76,11 +102,7 @@ async function refresh(){
   if(!toggle.checked||request!==sequence)return;
   if(next.type!=='FeatureCollection'||!next.complete||!Array.isArray(next.features)||!Array.isArray(next.coverage))throw Error('Incomplete SSB response');
   if(!map.getPane('population-ssb')){map.createPane('population-ssb');const pane=map.getPane('population-ssb');pane.style.zIndex='320';pane.style.pointerEvents='none'}
-  layer=L.geoJSON(next,{pane:'population-ssb',interactive:false,style:feature=>{
-   if(feature.properties.kind==='settlement')return{color:'#bd9bea',weight:1.8,fillColor:'#bd9bea',fillOpacity:.07};
-   const density=feature.properties.density;
-   return{color:density==null?'#849098':'#e6ae62',weight:.4,fillColor:density==null?'#849098':'#e6ae62',fillOpacity:density==null?.03:Math.min(.34,.04+Math.log10(1+density)*.055)};
-  }}).addTo(map);
+  layer=L.geoJSON(next,{pane:'population-ssb',interactive:false,style:populationStyle}).addTo(map);
   data=next;summary();
  }catch(error){
   if(request!==sequence||!toggle.checked)return;

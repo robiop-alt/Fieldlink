@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),vm=requir
 function setup(){
  const events={},node={checked:true,addEventListener(k,v){this[k]=v}},status={dataset:{}},retry={hidden:true,addEventListener(k,v){this[k]=v}};let calls=0,finish,removed=0,added=0;
  const map={getZoom:()=>14,getBounds:()=>({getSouth:()=>59,getWest:()=>9,getNorth:()=>59.02,getEast:()=>9.02}),on(){},getPane:()=>({style:{}}),removeLayer(){removed++}};
- const context={window:{addEventListener(){}},document:{getElementById:id=>id==='population-toggle'?node:id==='population-retry'?retry:status,addEventListener(k,v){events[k]=v}},URLSearchParams,AbortController,setTimeout,clearTimeout,fetch(){calls++;return new Promise(r=>finish=r)},L:{geoJSON(){return{addTo(){added++;return this}}}},getShot:()=>null};
+ const context={window:{addEventListener(){}},document:{getElementById:id=>id==='population-toggle'?node:id==='population-retry'?retry:id==='population-density-scale'?null:status,addEventListener(k,v){events[k]=v}},URLSearchParams,AbortController,setTimeout,clearTimeout,fetch(){calls++;return new Promise(r=>finish=r)},L:{geoJSON(){return{addTo(){added++;return this}}}},getShot:()=>null};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../static/planner-population.js'),'utf8'),context);
  events['offset:planner-map-ready']({detail:{map}});
  return{api:context.window.OffsetPopulation,node,status,retry,events,get calls(){return calls},get added(){return added},resolve:r=>finish(r)};
@@ -43,4 +43,15 @@ test('a failed SSB request offers retry without toggling the layer',async()=>{
  s.retry.click();assert.equal(s.calls,2);assert.equal(s.retry.hidden,true);
  s.node.checked=false;s.node.change();s.resolve({ok:true,json:async()=>({...data,years:{settlements:2026,population:2025}})});
  await new Promise(r=>setImmediate(r));assert.equal(s.added,0);
+});
+
+test('population colors have distinct fixed bands and missing is not zero',()=>{
+ const {populationStyle}=setup().api;
+ const style=density=>populationStyle({properties:{kind:'population',density}});
+ const samples=[0,1000,3000,8000,14000,25000].map(style);
+ assert.equal(new Set(samples.map(s=>s.fillColor)).size,6);
+ for(let i=1;i<samples.length;i++)assert.ok(samples[i].fillOpacity>samples[i-1].fillOpacity);
+ assert.ok(style(14000).fillOpacity>=.5);
+ assert.notEqual(style(null).fillColor,style(0).fillColor);
+ assert.equal(style(14000).fillColor,style(17000).fillColor);
 });
