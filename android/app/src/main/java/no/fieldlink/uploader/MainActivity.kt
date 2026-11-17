@@ -112,6 +112,25 @@ class MainActivity : Activity() {
     private lateinit var token:EditText
     private var settingsView:View?=null
     private var settingsOpen=false
+    private lateinit var startUploadButton:Button
+    private lateinit var stopUploadButton:Button
+    private lateinit var uploadChoiceLabel:TextView
+    private fun refreshUploadChoice() {
+        if(!::startUploadButton.isInitialized) return
+        val paused=prefs.getBoolean("upload_paused",false)
+        fun style(control:Button,selected:Boolean,label:String) {
+            control.text=if(selected) "✓ $label" else label
+            control.isSelected=selected
+            control.setTextColor(if(selected) bg else Color.WHITE)
+            control.background=getDrawable(if(selected) R.drawable.offset_button_primary else R.drawable.offset_button_background)
+            control.contentDescription="$label, ${if(selected) "selected" else "not selected"}"
+        }
+        style(startUploadButton,!paused,"Start upload")
+        style(stopUploadButton,paused,"Stop upload")
+        uploadChoiceLabel.text=if(paused) "UPLOADS OFF · file monitoring continues"
+            else "UPLOADS ON · sends when connection and battery allow"
+        uploadChoiceLabel.setTextColor(if(paused) muted else accent)
+    }
     private lateinit var folderLabel:TextView
     private lateinit var projectSummary:TextView
     private val bg=Color.rgb(17,20,22)
@@ -243,6 +262,7 @@ class MainActivity : Activity() {
     }
     override fun onResume() {
         super.onResume()
+        refreshUploadChoice()
         // Restore the pill after an in-place upgrade or the first overlay grant.
         // No permission dialog is shown if Android already granted access.
         if(prefs.getBoolean("start_on_boot",true) &&
@@ -317,15 +337,18 @@ class MainActivity : Activity() {
             button("Camera metadata") { startMetadataCapture() },
             button("Permissions") { showPermissionStatus() }
         ))
-        upload.addView(row(
-            primaryButton("Start upload") { saveAndStart() },
-            button("Stop upload") {
-                prefs.edit().putBoolean("upload_paused",true).apply()
-                // Keep the watcher alive so Media Library sees new DJI files.
-                resumeSavedUploader(force=true)
-                folderLabel.text="OFFSET off · file monitoring continues"
-            }
-        ))
+        uploadChoiceLabel=text("",12f,muted)
+        upload.addView(uploadChoiceLabel)
+        startUploadButton=button("Start upload") { saveAndStart();refreshUploadChoice() }
+        stopUploadButton=button("Stop upload") {
+            prefs.edit().putBoolean("upload_paused",true).apply()
+            // Keep the watcher alive so Media Library sees new DJI files.
+            resumeSavedUploader(force=true)
+            folderLabel.text="OFFSET off · file monitoring continues"
+            refreshUploadChoice()
+        }
+        upload.addView(row(startUploadButton,stopUploadButton))
+        refreshUploadChoice()
         addSection(upload)
         refreshFolderLabel()
         if(server.text.isBlank() || token.text.isBlank()) {
@@ -1707,6 +1730,7 @@ class MainActivity : Activity() {
         header.addView(button("⚙ Settings") {
             settingsView?.let {
                 settingsOpen=true
+                refreshUploadChoice()
                 setContentView(it)
             }
         })
@@ -1736,6 +1760,15 @@ class MainActivity : Activity() {
         nav.addView(button("Queue") { showUploadQueue() })
         nav.addView(button("Refresh") { showMediaLibraryPage() })
         root.addView(nav)
+        val sdRow=LinearLayout(this).apply {
+            gravity=android.view.Gravity.CENTER_VERTICAL
+            setPadding(0,dp(5),0,dp(5))
+            addView(text("End-of-day backup",12f,muted),LinearLayout.LayoutParams(0,-2,1f))
+            addView(button("SD status") { showSdBackupStatus() })
+            addView(primaryButton("Copy to SD") { startManualSdBackup() },
+                LinearLayout.LayoutParams(-2,dp(40)).apply { leftMargin=dp(6) })
+        }
+        root.addView(sdRow)
         val status=text("Loading media…",12f,muted)
         root.addView(status)
         val grid=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
