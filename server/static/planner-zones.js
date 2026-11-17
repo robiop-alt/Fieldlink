@@ -7,6 +7,9 @@
 const toggle=document.getElementById('airspace-toggle');
 const status=document.getElementById('airspace-status');
 if(!toggle||!status)return;
+// Always start OFF, including browsers that restore checkbox values.
+toggle.checked=false;
+status.textContent='Drone zone layer off.';
 let map=null,layer=null,abort=null,timer=null,requestNumber=0;
 let lastBounds='';
 const setStatus=(message,kind='info')=>{status.textContent=message;status.dataset.state=kind};
@@ -107,4 +110,5 @@ document.addEventListener('offset:planner-map-ready',event=>{
   map.on('moveend',schedule);
   if(toggle.checked)refresh(true);
 });
+window.addEventListener('pageshow',event=>{if(event.persisted){toggle.checked=false;remove();lastBounds='';setStatus('Drone zone layer off.','notice')}});
 })();
