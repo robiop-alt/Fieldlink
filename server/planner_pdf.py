@@ -291,7 +291,7 @@ def _sun_summary(c, events, x, y, w):
 def _waypoint_height(cone):
     try:value=float(cone.get('altitudeAGL',30))
     except (TypeError,ValueError,AttributeError):return 30
-    return min(500,value) if math.isfinite(value) and value>=2 else 30
+    return min(200,value) if math.isfinite(value) and value>=0 else 30
 
 
 def _closure_path(route, cones, mode='cinematic'):
@@ -304,7 +304,7 @@ def _closure_path(route, cones, mode='cinematic'):
         cone=cones[i] if i<len(cones) and isinstance(cones[i],dict) else {}
         try:h=float(cone.get('altitudeAGL',30))
         except (TypeError,ValueError):h=30
-        heights.append(min(500,max(2,h)) if math.isfinite(h) else 30)
+        heights.append(min(200,max(0,h)) if math.isfinite(h) else 30)
     if len(points)==1:return [(points[0],heights[0])]
     def distance(a,b):
         lat1,lat2=map(math.radians,(a[0],b[0]));dlat=lat2-lat1;dlon=math.radians(b[1]-a[1])

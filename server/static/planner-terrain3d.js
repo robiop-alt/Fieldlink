@@ -96,8 +96,8 @@ function distance(a,b){
  return 6371008.8*2*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h)));
 }
 function altitude(s,i){
- const n=Number(s?.waypointCones?.[i]?.altitudeAGL);
- return Number.isFinite(n)&&n>=2?Math.max(2,Math.min(500,n)):30;
+ const n=Number(s?.waypointCones?.[i]?.altitudeAGL??30);
+ return Number.isFinite(n)&&n>=0?Math.max(0,Math.min(200,n)):30;
 }
 function pitch(s,i=core()?.getActiveWaypoint()){
  const wp=s?.waypointCones?.[i]?.tilt;

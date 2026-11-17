@@ -233,7 +233,7 @@ function updateWaypointValue(id,key,min,max){
  syncWaypointSliderValues();scheduleSave();
  if(!waypointPreviewTimer)waypointPreviewTimer=setTimeout(flushWaypointPreview,60);
 }
-for(const [id,key,min,max] of [['map-wp-height','altitudeAGL',2,500],['map-wp-tilt','tilt',-85,35]]){
+for(const [id,key,min,max] of [['map-wp-height','altitudeAGL',0,200],['map-wp-tilt','tilt',-85,35]]){
  $(id).oninput=()=>updateWaypointValue(id,key,min,max);
  $(id).onchange=flushWaypointPreview;
 }
@@ -491,8 +491,8 @@ function updateStats(){const shot=getShot();const n=shot?.route.length||0;let di
 function renderMap(){if(!map||!current)return;if(droneHeightRing){droneHeightRing.remove();droneHeightRing=null}if(routeLine)routeLine.remove();if(aimLine)aimLine.remove();sketchLayers.forEach(layer=>layer.remove());sketchLayers=[];markers.forEach(x=>x.remove());markers=[];if(targetMarker)targetMarker.remove();targetMarker=null;const shot=getShot();if(!shot)return;ensureWaypointSelection();sketches(shot).forEach(points=>{if(Array.isArray(points)&&points.length>1&&points.every(coordsOk))sketchLayers.push(drawingLayer(shot,points))});routeLine=L.polyline(shot.route,{color:'#2fb474',weight:4,opacity:.95}).addTo(map);shot.route.forEach((p,i)=>{if(!coordsOk(p))return;const m=L.marker(p,{draggable:!selectingWaypoints,icon:pointIcon(i)}).addTo(map);m.bindTooltip('Waypoint '+(i+1));m.on('click',()=>{ensureWaypointSelection();if(selectingWaypoints){if(selectedWaypoints.has(i))selectedWaypoints.delete(i);else selectedWaypoints.add(i);renderMap()}else selectWaypoint(i)});m.on('dragend',()=>{shot.route[i]=[m.getLatLng().lat,m.getLatLng().lng];renderMap();scheduleSave()});markers.push(m)});if(coordsOk(shot.target)){targetMarker=L.marker(shot.target,{draggable:true,icon:L.divIcon({className:'',html:'<div class="camera-target">⌖</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);targetMarker.bindTooltip('Camera target');targetMarker.on('dragend',()=>{shot.target=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];renderMap();scheduleSave()});if(shot.route.length)aimLine=L.polyline([shot.route[shot.route.length-1],shot.target],{color:'#df956d',weight:2,dashArray:'6,7',opacity:.85}).addTo(map)}renderCones(shot);
  const active=shot.route[activeWaypoint];
  if(radiusEnabled()&&coordsOk(active)){
-  const raw=Number(shot.waypointCones?.[activeWaypoint]?.altitudeAGL);
-  const radius=Number.isFinite(raw)&&raw>=2?Math.min(500,raw):30;
+  const raw=Number(shot.waypointCones?.[activeWaypoint]?.altitudeAGL??30);
+  const radius=Number.isFinite(raw)&&raw>=0?Math.min(200,raw):30;
   droneHeightRing=L.circle(active,{
    radius,color:'#ff9b38',weight:2.5,opacity:1,
    fillColor:'#f58a29',fillOpacity:.14,interactive:false
