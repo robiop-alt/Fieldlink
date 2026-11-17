@@ -1,0 +1,107 @@
+/* Shared appearance tokens; brand artwork and operational statuses are independent. */
+:root{--accent:#57b62f;--accent-text:#57b62f;--accent-ink:#0b0d0f;--accent-hover:#6bc049;--accent-hover-ink:#0b0d0f;--accent-soft:#172613;--accent-soft-hover:#20371a;--accent-border:#456c32;--accent-ring:rgba(87,182,47,.24)}
+/* admin */
+:where(html[data-offset-page="admin"]) .brand span{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .eyebrow{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) h1 em{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) button{color:var(--accent-ink)}
+:where(html[data-offset-page="admin"]) .pin{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .project a,:where(html[data-offset-page="admin"]) .result a,:where(html[data-offset-page="admin"]) .clip a{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) footer span{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .settings-disclosure>summary:before{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .offset-admin .hero .eyebrow{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .offset-admin .hero h1 em{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .offset-admin .panel-head .eyebrow{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .offset-admin input:focus,:where(html[data-offset-page="admin"]) .offset-admin textarea:focus,:where(html[data-offset-page="admin"]) .offset-admin select:focus{border-color:var(--accent-text);box-shadow:0 0 0 2px var(--accent-ring)}
+:where(html[data-offset-page="admin"]) .offset-admin button{background:var(--accent);color:var(--accent-ink)}
+:where(html[data-offset-page="admin"]) .offset-admin button:hover:not(:disabled){background:var(--accent-hover);color:var(--accent-hover-ink)}
+:where(html[data-offset-page="admin"]) .offset-admin :is(button,a,summary,input,select,textarea):focus-visible{outline:2px solid var(--accent)}
+:where(html[data-offset-page="admin"]) .offset-admin #created{border:1px solid var(--accent-border);background:var(--accent-soft)}
+:where(html[data-offset-page="admin"]) .offset-admin #created .pin{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .offset-admin .project-actions .project-review-link{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .offset-admin .project-review-settings-popover input[type=checkbox]{accent-color:var(--accent)}
+:where(html[data-offset-page="admin"]) .offset-admin .admin-drawer-feedback{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .offset-admin .landing-gallery-heading .eyebrow{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .offset-admin .landing-shot>a:focus-visible{outline:2px solid var(--accent)}
+:where(html[data-offset-page="admin"]) .offset-admin .landing-capabilities-heading .eyebrow{color:var(--accent-text)}
+:where(html[data-offset-page="admin"]) .offset-admin .planner-nav{color:var(--accent-text);border:1px solid var(--accent-border);background:var(--accent-soft)}
+:where(html[data-offset-page="admin"]) .offset-admin .planner-nav:hover{background:var(--accent-soft-hover);border-color:var(--accent)}
+/* review */
+:where(html[data-offset-page="review"]) .brand span{color:var(--accent-text)}
+:where(html[data-offset-page="review"]) .eyebrow{color:var(--accent-text)}
+:where(html[data-offset-page="review"]) h1 em{color:var(--accent-text)}
+:where(html[data-offset-page="review"]) button{color:var(--accent-ink)}
+:where(html[data-offset-page="review"]) .pin{color:var(--accent-text)}
+:where(html[data-offset-page="review"]) .project a,:where(html[data-offset-page="review"]) .result a,:where(html[data-offset-page="review"]) .clip a{color:var(--accent-text)}
+:where(html[data-offset-page="review"]) footer span{color:var(--accent-text)}
+:where(html[data-offset-page="review"]) .settings-disclosure>summary:before{color:var(--accent-text)}
+:where(html[data-offset-page="review"]) .view-switch .active{outline:1px solid var(--accent)}
+:where(html[data-offset-page="review"]) .review-panel button:focus-visible,:where(html[data-offset-page="review"]) .review-panel a:focus-visible,:where(html[data-offset-page="review"]) .review-panel input:focus-visible,:where(html[data-offset-page="review"]) .review-panel select:focus-visible{outline:2px solid var(--accent)}
+@media (pointer:coarse){:where(html[data-offset-page="review"]) .review-panel input[type="checkbox"]{accent-color:var(--accent)}}
+:where(html[data-offset-page="review"]) .offset-player-seek{accent-color:var(--accent)}
+:where(html[data-offset-page="review"]) .clipgrid .clip .offset-clip-preview:hover .offset-clip-play-icon,:where(html[data-offset-page="review"]) .clipgrid .clip .offset-clip-preview:focus-visible .offset-clip-play-icon{border-color:var(--accent)}
+:where(html[data-offset-page="review"]) .offset-player-controls .offset-play-toggle{background:var(--accent);border:1px solid var(--accent);color:var(--accent-ink)}
+:where(html[data-offset-page="review"]) .clipgrid .clip.offset-active-clip{outline:2px solid var(--accent)}
+:where(html[data-offset-page="review"]) .offset-frame-choice:has(input:checked){color:var(--accent-text);background:var(--accent-soft)}
+:where(html[data-offset-page="review"]) .review-intro .eyebrow{color:var(--accent-text)}
+:where(html[data-offset-page="review"]) .review-panel #metadata-filters #clip-filter:focus{box-shadow:0 0 0 2px var(--accent-ring)}
+:where(html[data-offset-page="review"]) .review-panel .clip.offset-active-clip{box-shadow:inset 0 0 0 1px var(--accent-ring),0 0 0 1px var(--accent-ring)}
+:where(html[data-offset-page="review"]) .review-panel .offset-player-controls button:focus-visible,:where(html[data-offset-page="review"]) .review-panel .clipgrid .offset-clip-preview:focus-visible{outline:2px solid var(--accent)}
+:where(html[data-offset-page="review"]) .review-panel .offset-player-download{color:var(--accent-text)}
+:where(html[data-offset-page="review"]) body:has(.review-intro) :is(button,summary,a,input,select):focus-visible{outline:2px solid var(--accent)}
+:where(html[data-offset-page="review"]) .review-panel .clip-actions input[data-select]{accent-color:var(--accent)}
+:where(html[data-offset-page="review"]) .review-panel .clip-actions .clip-download,:where(html[data-offset-page="review"]) .review-panel .offset-player-download{border:1px solid var(--accent-border);background:var(--accent-soft);color:var(--accent-text)}
+:where(html[data-offset-page="review"]) .review-panel .clip-actions .clip-download:hover,:where(html[data-offset-page="review"]) .review-panel .offset-player-download:hover{background:var(--accent-soft-hover);border-color:var(--accent)}
+:where(html[data-offset-page="review"]) .review-panel .clip.offset-clip-selected{border-color:var(--accent);background:var(--accent-soft)}
+:where(html[data-offset-page="review"]) .review-panel .clip-actions a:focus-visible,:where(html[data-offset-page="review"]) .review-panel .clip-select:focus-within{outline:2px solid var(--accent)}
+:where(html[data-offset-page="review"]) .review-panel #download-selected{background:var(--accent);border:1px solid var(--accent);color:var(--accent-ink)}
+:where(html[data-offset-page="review"]) .review-account-nav .review-admin-login:hover{border-color:var(--accent-border);background:var(--accent-soft)}
+:where(html[data-offset-page="review"]) .review-account-nav .review-admin-login:focus-visible{outline:2px solid var(--accent)}
+:where(html[data-offset-page="review"]) .review-panel .new-clips-filter[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text)}
+:where(html[data-offset-page="review"]) .review-panel .new-clips-filter:focus-visible{outline:2px solid var(--accent)}
+:where(html[data-offset-page="review"]) .review-panel #offset-sort-clips:focus-visible{outline:2px solid var(--accent)}
+:where(html[data-offset-page="review"]) .review-panel .offset-frame-inline select:focus-visible{outline:2px solid var(--accent)}
+:where(html[data-offset-page="review"]) .review-panel #metadata-filters :is(.clip-tool[data-active="true"],.new-clips-filter[aria-pressed="true"],details[open] > summary){color:var(--accent-text);background:var(--accent-soft)}
+/* planner */
+:where(html[data-offset-page="planner"]) .offset-planner button{border:1px solid var(--accent-border);background:var(--accent);color:var(--accent-ink)}
+:where(html[data-offset-page="planner"]) .offset-planner :is(button,input,select,textarea,a):focus-visible{outline:2px solid var(--accent)}
+:where(html[data-offset-page="planner"]) .shot-item.active{border-color:var(--accent)}
+:where(html[data-offset-page="planner"]) .map-toolbar button.active{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+@media(max-width:800px){:where(html[data-offset-page="planner"]) .map-footer span:last-child{color:var(--accent-text)}}
+:where(html[data-offset-page="planner"]) .offset-planner #cone-visible{accent-color:var(--accent)}
+:where(html[data-offset-page="planner"]) .planner-refresh:focus-visible{outline:2px solid var(--accent)}
+:where(html[data-offset-page="planner"]) .offset-planner .shot-editor .date-control:focus-within{outline:2px solid var(--accent)}
+:where(html[data-offset-page="planner"]) .offset-planner .shot-editor .lens-auto-row input{accent-color:var(--accent)}
+:where(html[data-offset-page="planner"]) .offset-planner .shot-simulator-controls .sim-edit-toggle input{accent-color:var(--accent)}
+/* controller-preview */
+:where(html[data-offset-page="controller-preview"]) button.primary{color:var(--accent-ink)}
+:where(html[data-offset-page="controller-preview"]) .eyebrow{color:var(--accent-text)}
+:where(html[data-offset-page="controller-preview"]) .safe-notice>span{color:var(--accent-text)}
+:where(html[data-offset-page="controller-preview"]) .state-dot{color:var(--accent-ink)}
+:where(html[data-offset-page="controller-preview"]) .meter-fill{color:var(--accent-ink)}
+:where(html[data-offset-page="controller-preview"]) .tiny-pill{color:var(--accent-text)}
+:where(html[data-offset-page="controller-preview"]) .settings-section>summary:after{color:var(--accent-text)}
+:where(html[data-offset-page="controller-preview"]) .switch-row input{accent-color:var(--accent)}
+:where(html[data-offset-page="controller-preview"]) .subnav button.current{border-color:var(--accent);color:var(--accent-text)}
+:where(html[data-offset-page="controller-preview"]) .demo-check{accent-color:var(--accent)}
+:where(html[data-offset-page="controller-preview"]) .offset-player-header strong{color:var(--accent-text)}
+:where(html[data-offset-page="controller-preview"]) .offset-player-seek input{accent-color:var(--accent)}
+@media(max-width:600px){:where(html[data-offset-page="controller-preview"]) .landscape-hint:after{color:var(--accent-text)}}
+
+/* Compact appearance editor; swatches are fixed examples, never theme targets. */
+#appearance-settings .appearance-presets,#appearance-settings .appearance-actions{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+#appearance-settings .appearance-preset{display:inline-flex;align-items:center;gap:8px;min-height:40px}
+#appearance-settings .appearance-preset[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text)}
+#appearance-settings .appearance-swatch{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--swatch);border:1px solid #ffffff40}
+#appearance-settings .appearance-custom{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+#appearance-settings input[type="color"]{width:64px;min-height:40px;padding:4px;cursor:pointer}
+#appearance-settings #appearance-hex{width:130px;font-variant-numeric:tabular-nums}
+#appearance-settings .appearance-sample{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:16px;margin-top:16px;border:1px solid #34413e;border-radius:8px;background:#0d1315}
+#appearance-settings .appearance-example-text{color:var(--accent-text);font-size:12px;font-weight:600}
+#appearance-settings .appearance-example-button{display:inline-block;padding:8px 12px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:650}
+#appearance-settings .appearance-error{color:#f2ada7}
+#appearance-settings [aria-invalid="true"]{border-color:#f2ada7}
+#appearance-settings [hidden]{display:none!important}
+
+/* Keep operational indicators independent of the chosen interface accent. */
+.state-dot,.meter-fill,.offset-status-pill,.offset-live-dot{--accent:#57b62f;--offset-accent:#57b62f}

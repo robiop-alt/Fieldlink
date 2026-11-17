@@ -131,6 +131,32 @@ def update_site_settings(body:SiteSettingsIn, request:Request, x_admin_key:str=H
             connection.execute('INSERT INTO site_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(key,value.strip()))
     return site_copy()
 
+# Site-wide presentation uses the same durable database as website copy.
+APPEARANCE_DEFAULT = '#57b62f'
+
+class SiteAppearanceIn(BaseModel):
+    accent_color: str = Field(min_length=7, max_length=7, pattern=r'^#[0-9a-fA-F]{6}$')
+
+def site_appearance():
+    with db() as connection:
+        row = connection.execute('SELECT value FROM site_settings WHERE key=?', ('accent_color',)).fetchone()
+    color = row['value'] if row else APPEARANCE_DEFAULT
+    if not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
+        color = APPEARANCE_DEFAULT
+    return {'accent_color': color.lower()}
+
+@app.get('/api/site/appearance')
+def public_site_appearance():
+    return JSONResponse(site_appearance(), headers={'Cache-Control': 'no-store'})
+
+@app.put('/api/admin/appearance')
+def update_site_appearance(body: SiteAppearanceIn, request: Request, x_admin_key: str = Header(default='')):
+    require_admin(x_admin_key, request)
+    with db() as connection:
+        connection.execute('INSERT INTO site_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+                           ('accent_color', body.accent_color.lower()))
+    return site_appearance()
+
 def probe_metadata(clip_id):
     import json
     path=FILES/clip_id
