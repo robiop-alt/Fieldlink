@@ -304,3 +304,5 @@ body.offset-theater-open{overflow:hidden!important}
 @media(pointer:coarse){
   .offset-player .offset-fullscreen-close{width:44px;height:44px}
 }
+
+.offset-metadata-quality{flex-basis:100%;font-size:10px;color:#a8bcb1}.follow-ready-toggle{display:flex;align-items:center;gap:5px;font-size:11px}.follow-ready-toggle input{width:16px;height:16px}#ready-status{font-size:11px;color:#a8bcb1}#next-ready{font-size:11px;min-height:36px}

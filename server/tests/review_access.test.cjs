@@ -32,7 +32,7 @@ async function viewer(allowDownloads,validPin=true,clips=[],sortMode=null){
     if(url.includes('/storage'))return response({used_bytes:52428800,clip_count:1});
     throw Error('Unexpected request: '+url);
   };
-  const context=vm.createContext({window,document,fetch,location:{pathname:'/r/test',hash:'',search:''},URLSearchParams,localStorage:{getItem(){return sortMode}},sessionStorage:{getItem(){return null},setItem(){},removeItem(){}}});
+  const context=vm.createContext({setInterval:()=>1,clearInterval(){},window,document,fetch,location:{pathname:'/r/test',hash:'',search:''},URLSearchParams,localStorage:{getItem(){return sortMode}},sessionStorage:{getItem(){return null},setItem(){},removeItem(){}}});
   const html=readFileSync(join(__dirname,'../static/review.html'),'utf8');
   const script=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)[1];
   vm.runInContext(script,context);

@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0d0f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="OFFSET"><link rel="apple-touch-icon" sizes="180x180" href="/pwa/iphone-logo-v2-180.png"><link id="offset-pwa-manifest" rel="manifest" href="/app.webmanifest"><script>document.getElementById('offset-pwa-manifest').href='/app.webmanifest?project='+encodeURIComponent(location.pathname.split('/').filter(Boolean).pop()||'');</script><title>OFFSET · Review</title><script src="/static/new-clips.js?v=1"></script><script defer src="/static/upload-time.js?v=1"></script><link rel="stylesheet" href="/static/style.css?v=logo-fix-2"><link rel="stylesheet" href="/static/review-enhancements.css?v=logo-green-1"><link rel="stylesheet" href="/static/offset-player.css?v=fullscreen-close-2"><link rel="stylesheet" href="/static/incoming-status.css?v=5"><link rel="stylesheet" href="/static/review-finish.css?v=clip-tools-1"><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0d0f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="OFFSET"><link rel="apple-touch-icon" sizes="180x180" href="/pwa/iphone-logo-v2-180.png"><link id="offset-pwa-manifest" rel="manifest" href="/app.webmanifest"><script>document.getElementById('offset-pwa-manifest').href='/app.webmanifest?project='+encodeURIComponent(location.pathname.split('/').filter(Boolean).pop()||'');</script><title>OFFSET · Review</title><script src="/static/new-clips.js?v=1"></script><script defer src="/static/upload-time.js?v=1"></script><link rel="stylesheet" href="/static/style.css?v=logo-fix-2"><link rel="stylesheet" href="/static/review-enhancements.css?v=logo-green-1"><link rel="stylesheet" href="/static/offset-player.css?v=20261117-live-rushes"><link rel="stylesheet" href="/static/incoming-status.css?v=5"><link rel="stylesheet" href="/static/review-finish.css?v=clip-tools-1"><style>
 .offset-uploaded-name{display:grid;gap:3px;min-width:0}.offset-uploaded-name b{overflow-wrap:anywhere}.clipmeta .offset-uploaded-age{display:block;color:#57b62f;font-size:11px;letter-spacing:.01em;font-variant-numeric:tabular-nums}
 .offset-video-stage{position:relative;background:#080b0c;overflow:hidden;border-radius:9px}
 .offset-video-stage video{display:block;width:100%;height:auto;min-height:160px;background:#000}
@@ -14,7 +14,8 @@ const slug=encodeURIComponent(location.pathname.split('/').filter(Boolean).pop()
 (async()=>{if(new URLSearchParams(location.hash.slice(1)).has('share'))return;try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');if(!saved||!saved.token||!Number.isFinite(saved.expires)||saved.expires<=Date.now()/1000){clearAccess();return}await openAccess(saved)}catch(e){showGate()}})();
 // Public projects issue short-lived sessions automatically; the project link itself does not expire.
 (async()=>{if(new URLSearchParams(location.hash.slice(1)).has('share'))return;try{const r=await fetch(`/api/review/${slug}/public-unlock`,{method:'POST'});if(!r.ok)return;await openAccess(await r.json())}catch(e){$('error').textContent='Unable to open project. Please refresh.'}})();
-let selected=new Set();const visitTracker=window.OffsetNewClips?.create(slug);let onlyNewClips=false;
+let selected=new Set();const visitTracker=window.OffsetNewClips?.create(slug);let onlyNewClips=false;let followNewClips=false;try{followNewClips=localStorage.getItem('offset:follow:'+slug)==='on'}catch(_){}
+let readyPoll=null,readyPending=false;const pendingReady=[];
 // PIN-free share links carry a 24-hour signed token in the URL fragment.
 (async()=>{
  const share=new URLSearchParams(location.hash.slice(1)).get('share');
@@ -106,8 +107,11 @@ async function load(){
  </details>
  <button type="button" class="clip-tool new-clips-filter" id="new-clips-filter" aria-pressed="false" aria-label="New clips since last visit" title="New clips since last visit"><span class="clip-new-badge">NEW</span></button>
  <label class="clip-tool clip-sort-tool" title="Sort clips">${icon('M8 4v16m-4-4 4 4 4-4m4 4V4m-4 4 4-4 4 4')}<select id="offset-sort-clips" aria-label="Sort clips"><option value="filename">Filename</option><option value="uploaded">Last uploaded</option></select></label>
- <button type="button" class="clip-tool" id="refresh-clips" aria-label="Refresh clips" title="Refresh clips">${icon('M20 4v6h-6m6 0a8 8 0 1 0 0 5')}</button>`;
+ <label class="follow-ready-toggle"><input id="follow-ready" type="checkbox"> Follow new clips</label><button type="button" id="next-ready" class="secondary" hidden>Next new clip</button><span id="ready-status" role="status" aria-live="polite"></span><button type="button" class="clip-tool" id="refresh-clips" aria-label="Refresh clips" title="Refresh clips">${icon('M20 4v6h-6m6 0a8 8 0 1 0 0 5')}</button>`;
  $('refresh-clips').onclick=()=>location.reload();
+ $('follow-ready').checked=followNewClips;
+ $('follow-ready').onchange=()=>{followNewClips=$('follow-ready').checked;try{localStorage.setItem('offset:follow:'+slug,followNewClips?'on':'off')}catch(_){}if(followNewClips)pollReady()};
+ $('next-ready').onclick=()=>{const id=pendingReady.shift();if(id)window.offsetChooseClip?.(id);$('next-ready').hidden=!pendingReady.length;$('next-ready').textContent='Next new clip ('+pendingReady.length+')'};
  $('offset-sort-clips').value=clipSort;
  $('clip-filter').value=savedSearch;
  const renderFilter=()=>{
@@ -144,13 +148,15 @@ async function load(){
  const cameraFields=[['RAW / ProRes','recording_format'],['Lens','lens'],['FPS','fps'],['ISO','iso'],['WB','white_balance'],['Shutter','shutter']];
  const cameraDetails=clip=>{
    const data=clip.camera_metadata&&typeof clip.camera_metadata==='object'?clip.camera_metadata:{};
-   return cameraFields.map(([title,key])=>{
+   const count=cameraFields.filter(([,key])=>data[key]!=null&&String(data[key]).trim()).length;
+   return '<span class="offset-metadata-quality" title="Matched screen readings are not manually verified">'+(count?'OCR matched · '+count+'/6 fields':'Camera metadata missing')+'</span>'+cameraFields.map(([title,key])=>{
      const value=data[key]===null||data[key]===undefined?'':String(data[key]).trim();
      return '<span class="offset-camera-field offset-camera-'+key+'" data-filled="'+(value?'true':'false')+'"><b>'+title+'</b><span>'+esc(value)+'</span></span>';
    }).join('');
  };
  const formatDuration=s=>{let n=Math.max(0,Math.floor(Number(s)));return Number.isFinite(n)?`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`:'--:--'};
- $('clips').innerHTML=clips.map(c=>`<article class="clip" data-clip-id="${esc(String(c.id))}" data-new="${newClipIds.has(String(c.id))}" data-search="${esc([c.filename,...Object.values(c.camera_metadata||{})].join(' ').toLowerCase())}"><div class="offset-video-stage"><video controls preload="none" playsinline webkit-playsinline poster="${base}/clips/${c.id}/thumbnail?${auth}" src="${base}/clips/${c.id}/file?${auth}"></video><div class="offset-frame-guides" aria-hidden="true" hidden></div></div><div class="offset-view-controls"><label>Frame lines <select class="offset-frame-select" aria-label="Frame lines for ${esc(c.filename)}"><option value="off">Off</option><option value="2.39">2.39:1</option><option value="2.00">2.00:1</option><option value="2.20">2.20:1</option><option value="1.85">1.85:1</option><option value="1.78">16:9</option><option value="1.33">4:3</option></select></label></div><p class="playback-help" id="playback-${c.id}" hidden>Browser playback unavailable. <a href="${base}/clips/${c.id}/file?${auth}" target="_blank" rel="noopener">Open video directly</a> or use Download clip below.</p><div class="clipmeta"><div class="offset-uploaded-name"><div class="clip-title-line"><b>${esc(c.filename)}</b>${newClipIds.has(String(c.id))?'<span class="clip-new-badge">NEW</span>':''}</div><span class="offset-uploaded-age" data-uploaded-at="${Number(c.created)||0}">Uploaded just now</span></div><span><span id="dur-${c.id}">${c.metadata?.duration_seconds!=null?formatDuration(c.metadata.duration_seconds):"--:--"}</span> · <span class="muted">${(c.size/1048576).toFixed(1)} MB</span></span><small>${cameraDetails(c)}</small></div>${allowDownloads?`<div class="clip-actions"><label class="clip-select"><input type="checkbox" data-select="${c.id}" aria-label="Select ${esc(c.filename)}"><span class="clip-selection-text">Select</span></label><a class="clip-download" href="${base}/clips/${c.id}/file?${auth}&download=1" aria-label="Download ${esc(c.filename)}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-4-4 4 4 4-4M4 13v4h12v-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Download</span></a></div>`:""}</article>`).join('')||'No clips uploaded yet.';document.getElementById('clip-filter').oninput=renderFilter;renderFilter();window.OffsetUploadTime?.update();
+ const clipHTML=c=>`<article class="clip" data-clip-id="${esc(String(c.id))}" data-new="${newClipIds.has(String(c.id))}" data-search="${esc([c.filename,...Object.values(c.camera_metadata||{})].join(' ').toLowerCase())}"><div class="offset-video-stage"><video controls preload="none" playsinline webkit-playsinline poster="${base}/clips/${c.id}/thumbnail?${auth}" src="${base}/clips/${c.id}/file?${auth}"></video><div class="offset-frame-guides" aria-hidden="true" hidden></div></div><div class="offset-view-controls"><label>Frame lines <select class="offset-frame-select" aria-label="Frame lines for ${esc(c.filename)}"><option value="off">Off</option><option value="2.39">2.39:1</option><option value="2.00">2.00:1</option><option value="2.20">2.20:1</option><option value="1.85">1.85:1</option><option value="1.78">16:9</option><option value="1.33">4:3</option></select></label></div><p class="playback-help" id="playback-${c.id}" hidden>Browser playback unavailable. <a href="${base}/clips/${c.id}/file?${auth}" target="_blank" rel="noopener">Open video directly</a> or use Download clip below.</p><div class="clipmeta"><div class="offset-uploaded-name"><div class="clip-title-line"><b>${esc(c.filename)}</b>${newClipIds.has(String(c.id))?'<span class="clip-new-badge">NEW</span>':''}</div><span class="offset-uploaded-age" data-uploaded-at="${Number(c.created)||0}">Uploaded just now</span></div><span><span id="dur-${c.id}">${c.metadata?.duration_seconds!=null?formatDuration(c.metadata.duration_seconds):"--:--"}</span> · <span class="muted">${(c.size/1048576).toFixed(1)} MB</span></span><small>${cameraDetails(c)}</small></div>${allowDownloads?`<div class="clip-actions"><label class="clip-select"><input type="checkbox" data-select="${c.id}" aria-label="Select ${esc(c.filename)}"><span class="clip-selection-text">Select</span></label><a class="clip-download" href="${base}/clips/${c.id}/file?${auth}&download=1" aria-label="Download ${esc(c.filename)}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-4-4 4 4 4-4M4 13v4h12v-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Download</span></a></div>`:""}</article>`;
+ $('clips').innerHTML=clips.map(clipHTML).join('')||'No clips uploaded yet.';document.getElementById('clip-filter').oninput=renderFilter;renderFilter();window.OffsetUploadTime?.update();
  document.querySelectorAll('.offset-frame-select').forEach(select=>{
    const stage=select.closest('.clip').querySelector('.offset-video-stage');
    const guides=stage.querySelector('.offset-frame-guides');
@@ -202,8 +208,38 @@ async function load(){
  if(allowDownloads) $('select-all').onclick=()=>{let all=clips.every(c=>selected.has(c.id));selected=all?new Set():new Set(clips.map(c=>c.id));document.querySelectorAll('[data-select]').forEach(el=>el.checked=selected.has(el.dataset.select));update()};
  if(allowDownloads) $('download-selected').onclick=()=>{if(!selected.size)return alert('Select at least one clip');location.href=`${base}/download-selected?${auth}&ids=${[...selected].join(',')}`};update();
  if(typeof window.initOffsetPlayer==='function') window.initOffsetPlayer(clips,base,auth,allowDownloads);
+ async function pollReady(){
+  if(!followNewClips||readyPending||document.hidden||!token)return;
+  readyPending=true;const requestToken=token;
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
+  try{
+   const response=await fetch(`${base}/clips`,{headers:{Authorization:`Bearer ${requestToken}`},cache:'no-store',signal:controller.signal});
+   if(!response.ok)throw Error('Update unavailable');
+   const latest=await response.json();if(token!==requestToken||!followNewClips)return;
+   const known=new Set(clips.map(c=>String(c.id))),fresh=latest.filter(c=>!known.has(String(c.id))).sort((a,b)=>Number(a.created)-Number(b.created));
+   if(fresh.length){
+    if(!clips.length){await load();return}
+    for(const c of fresh){
+     const container=document.createElement('div');container.innerHTML=clipHTML(c);const card=container.firstElementChild;
+     card.dataset.new='true';newClipIds.add(String(c.id));$('clips').prepend(card);
+     const input=card.querySelector('[data-select]');if(input)input.onchange=()=>{input.checked?selected.add(input.dataset.select):selected.delete(input.dataset.select);update()};
+     pendingReady.push(String(c.id));
+    }
+    window.offsetAppendPlayer?.(fresh);
+    const ordered=[...clips].sort(compareClips);const lookup=new Map([...$('clips').querySelectorAll('.clip')].map(c=>[c.dataset.clipId,c]));
+    $('clips').append(...ordered.map(c=>lookup.get(String(c.id))).filter(Boolean));window.offsetReorderPlayer?.(ordered.map(c=>String(c.id)));
+    $('count').textContent=clips.length+' clips available';renderFilter();update();
+    $('next-ready').hidden=false;$('next-ready').textContent='Next new clip ('+pendingReady.length+')';
+   }
+   window.offsetRefreshCamera?.(latest);
+   for(const clip of clips){const card=[...$('clips').querySelectorAll('.clip')].find(c=>c.dataset.clipId===String(clip.id));const details=card?.querySelector('.clipmeta small');if(details)details.innerHTML=cameraDetails(clip)}
+   $('ready-status').textContent=fresh.length?fresh.length+' new clip'+(fresh.length===1?'':'s')+' ready':'';
+  }catch(_){if(token===requestToken)$('ready-status').textContent='Updates paused · retrying automatically'}
+  finally{clearTimeout(timeout);readyPending=false}
+ }
+ if(readyPoll)clearInterval(readyPoll);readyPoll=setInterval(pollReady,12000);
  try{const r=await fetch(`${base}/storage?${auth}`,{cache:'no-store'});if(!r.ok)throw Error('Storage information unavailable');renderStorage(await r.json())}catch(e){$('storage-status').textContent='Storage information unavailable. Please refresh.'}
 }
 
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-</script><script src="/static/review-enhancements.js?v=5"></script><script src="/static/offset-player.js?v=fullscreen-close-1"></script><script src="/static/incoming-status.js?v=5"></script><script defer src="/static/offset-pwa.js?v=1"></script></body></html>
+</script><script src="/static/review-enhancements.js?v=5"></script><script src="/static/offset-player.js?v=20261117-live-rushes"></script><script src="/static/incoming-status.js?v=20261117-live-rushes"></script><script defer src="/static/offset-pwa.js?v=1"></script></body></html>

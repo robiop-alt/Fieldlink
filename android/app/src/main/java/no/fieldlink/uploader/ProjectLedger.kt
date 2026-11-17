@@ -6,19 +6,39 @@ import android.database.sqlite.SQLiteOpenHelper
 import androidx.documentfile.provider.DocumentFile
 
 /** Persistent fail-closed binding. Never reassign an observed file to another customer. */
-class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", null, 4) {
+class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", null, 5) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE media (uri TEXT PRIMARY KEY, size INTEGER NOT NULL, modified INTEGER NOT NULL, project TEXT, state TEXT NOT NULL, upload_id TEXT, received INTEGER NOT NULL DEFAULT 0)")
         createHistory(db)
         createQueue(db)
         createPriority(db)
+        createTransfers(db)
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if(oldVersion<2) createHistory(db)
         if(oldVersion<3) createQueue(db)
         if(oldVersion<4) createPriority(db)
+        if(oldVersion<5) createTransfers(db)
     }
 
+    private fun createTransfers(db:SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS transfer_progress (uri TEXT NOT NULL, project TEXT NOT NULL, phase TEXT NOT NULL, received INTEGER NOT NULL, total INTEGER NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY(uri,project))")
+    }
+    data class Transfer(val phase:String,val received:Long,val total:Long,val updated:Long)
+    @Synchronized fun noteTransfer(file:DocumentFile,project:String,phase:String,received:Long,total:Long) {
+        writableDatabase.execSQL("INSERT OR REPLACE INTO transfer_progress(uri,project,phase,received,total,updated) VALUES(?,?,?,?,?,?)",
+            arrayOf(file.uri.toString(),project,phase,received.coerceAtLeast(0),total.coerceAtLeast(0),System.currentTimeMillis()))
+    }
+    @Synchronized fun transferFor(uri:String,project:String):Transfer? {
+        readableDatabase.rawQuery("SELECT phase,received,total,updated FROM transfer_progress WHERE uri=? AND project=?",arrayOf(uri,project)).use {
+            return if(it.moveToFirst())Transfer(it.getString(0),it.getLong(1),it.getLong(2),it.getLong(3))else null
+        }
+    }
+    @Synchronized fun requestRetry(uri:String,project:String):Boolean {
+        if(stateFor(uri,project)!="pending")return false
+        // Preserve upload_id and confirmed offset. The service reconciles with the server.
+        return prioritizeNext(uri,project)
+    }
     private fun createQueue(db:SQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS clip_queue (uri TEXT PRIMARY KEY, project TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL)")
     }

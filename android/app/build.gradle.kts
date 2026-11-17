@@ -27,6 +27,11 @@ android {
         }
     }
     buildTypes {
+        getByName("debug") {
+            if (!System.getenv("OFFSET_KEYSTORE_PATH").isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("offsetRelease")
+            }
+        }
         getByName("release") {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("offsetRelease")

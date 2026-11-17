@@ -37,19 +37,6 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Build debug APK
-        env:
-          OFFSET_DEFAULT_DEVICE_TOKEN: ${{ secrets.OFFSET_DEFAULT_DEVICE_TOKEN }}
-        working-directory: android
-        run: gradle assembleDebug
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: offset-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
       - name: Prepare signing credentials
         id: signing
         env:
@@ -65,6 +52,25 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Signed release skipped until all four signing secrets are configured."
           fi
+
+      - name: Build debug APK
+        env:
+          OFFSET_DEFAULT_DEVICE_TOKEN: ${{ secrets.OFFSET_DEFAULT_DEVICE_TOKEN }}
+          OFFSET_VERSION_CODE: ${{ github.run_number }}
+          OFFSET_VERSION_NAME: 0.1.${{ github.run_number }}
+          OFFSET_KEYSTORE_PATH: ${{ steps.signing.outputs.enabled == 'true' && format('{0}/offset-release.jks', runner.temp) || '' }}
+          OFFSET_KEYSTORE_PASSWORD: ${{ secrets.OFFSET_ANDROID_KEYSTORE_PASSWORD }}
+          OFFSET_KEY_ALIAS: ${{ secrets.OFFSET_ANDROID_KEY_ALIAS }}
+          OFFSET_KEY_PASSWORD: ${{ secrets.OFFSET_ANDROID_KEY_PASSWORD }}
+        working-directory: android
+        run: gradle assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: offset-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 
       - name: Build signed release APK
         if: steps.signing.outputs.enabled == 'true' && github.ref == 'refs/heads/main'

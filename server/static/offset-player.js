@@ -159,10 +159,15 @@
     const cameraFields=make('div','offset-camera-fields');
     cameraFields.setAttribute('aria-label','Camera details for selected clip');
     metadata.append(cameraFields);
+    const metadataQuality=make('span','offset-metadata-quality');metadata.append(metadataQuality);
     const updateCameraDetails=clip=>{
       // Only DJI Pilot camera readings; proxy metadata must never fill these fields.
       const data=clip.camera_metadata&&typeof clip.camera_metadata==='object'?clip.camera_metadata:{};
       cameraFields.replaceChildren();
+      const present=['recording_format','lens','fps','iso','white_balance','shutter'].filter(k=>data[k]!=null&&String(data[k]).trim()).length;
+      const quality=metadataQuality;quality.textContent=present?'OCR matched · '+present+'/6 fields':'Camera metadata missing';
+      quality.title=present?'Matched DJI Pilot screen readings; not manually verified.':'No matched camera reading. Proxy metadata is not substituted.';
+
       for(const [label,key] of [['RAW / ProRes','recording_format'],['Lens','lens'],['FPS','fps'],['ISO','iso'],['WB','white_balance'],['Shutter','shutter']]){
         const value=data[key]===null||data[key]===undefined?'':String(data[key]).trim();
         const field=make('span','offset-camera-field offset-camera-'+key);
@@ -365,15 +370,15 @@
       if(!isFullscreen()) enterTheater();
     });
 
-    cards.forEach((card,i)=>{
+    function mountCard(card,clip,i){
       const old=card.querySelector('.offset-video-stage');
       if(!old)return;
-      const preview=button('','View '+clips[i].filename);
+      const preview=button('','View '+clip.filename);
       preview.className='offset-clip-preview';
       preview.setAttribute('aria-pressed','false');
       const img=make('img','offset-clip-thumb');
-      img.src=posterUrl(clips[i]);img.loading=i<6?'eager':'lazy';
-      img.alt=`Preview of ${clips[i].filename}`;
+      img.src=posterUrl(clip);img.loading=i<6?'eager':'lazy';
+      img.alt=`Preview of ${clip.filename}`;
       const playIcon=make('span','offset-clip-play-icon');
       playIcon.innerHTML=playSvg;
       preview.append(img,playIcon);
@@ -381,8 +386,23 @@
       card.querySelector('.offset-view-controls')?.remove();
       card.querySelector('.playback-help')?.remove();
       listen(preview,'click',()=>{const current=cards.indexOf(card);if(current>=0)choose(current,true);player.scrollIntoView({behavior:'smooth',block:'start'})});
-    });
+    }
+    cards.forEach((card,i)=>mountCard(card,clips[i],i));
     choose(0,false);
+    window.offsetAppendPlayer=newClips=>{
+      for(const clip of newClips){
+        if(clips.some(c=>String(c.id)===String(clip.id)))continue;
+        const card=[...list.querySelectorAll('.clip')].find(c=>c.dataset.clipId===String(clip.id));
+        if(!card)continue;
+        clips.push(clip);cards.push(card);mountCard(card,clip,cards.length-1);
+      }
+      counter.textContent=`${index+1} of ${clips.length}`;updateButtons();
+    };
+    window.offsetRefreshCamera=latest=>{
+      for(const update of latest){const clip=clips.find(c=>String(c.id)===String(update.id));if(clip)clip.camera_metadata=update.camera_metadata||{}}
+      if(clips[index])updateCameraDetails(clips[index]);
+    };
+    window.offsetChooseClip=id=>{const i=clips.findIndex(c=>String(c.id)===String(id));if(i>=0)choose(i,true)};
     // Keep the active clip and playback position intact when the review
     // grid is re-sorted. Navigation and card highlighting follow the new order.
     window.offsetReorderPlayer = orderedIds => {
@@ -405,7 +425,7 @@
     };
     destroy=()=>{
       stopChromeTimer();
-      delete window.offsetReorderPlayer;
+      delete window.offsetReorderPlayer;delete window.offsetAppendPlayer;delete window.offsetChooseClip;delete window.offsetRefreshCamera;
       frameObserver?.disconnect();
       if(player.classList.contains('offset-player-theater'))exitTheater();
       if(document.fullscreenElement===player)document.exitFullscreen?.().catch(()=>{});

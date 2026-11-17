@@ -1543,6 +1543,40 @@ class MainActivity : Activity() {
         handler.post(ticker)
     }
 
+    private fun transferLabel(file:DocumentFile,pid:String):String {
+        val ledger=ProjectLedger(this)
+        return try {
+            val t=ledger.transferFor(file.uri.toString(),pid)?:return "Queued"
+            val percent=if(t.total>0)((t.received*100)/t.total).coerceIn(0,100)else 0
+            when {
+                t.phase=="ready" -> "Server verified · refresh to check review"
+                t.phase=="processing" -> "Received · awaiting server verification"
+                prefs.getBoolean("upload_paused",false) -> "Paused · $percent% saved"
+                t.phase=="waiting"||System.currentTimeMillis()-t.updated>45000 -> "Waiting to resume · $percent% confirmed"
+                else -> "Uploading · $percent% confirmed"
+            }
+        }finally { ledger.close() }
+    }
+    private fun showDeliveryCheck(pid:String,files:List<DocumentFile>,remote:List<CloudClip>,available:Boolean) {
+        val ledger=ProjectLedger(this)
+        val scoped=files.filter { ledger.stateFor(it.uri.toString(),pid) in listOf("pending","done","quarantine") }
+        val unassigned=files.count { ledger.stateFor(it.uri.toString(),pid)=="new" }
+        val excluded=scoped.filter { ledger.stateFor(it.uri.toString(),pid)=="quarantine" }
+        val included=scoped.filter { it !in excluded }
+        val names=remote.map { it.filename }.toSet()
+        val missing=included.filter { file ->
+            val name=file.name.orEmpty()
+            name !in names && (name.substringBeforeLast('.')+"_LOW_DATA.mp4") !in names
+        }
+        val body=if(!available) "Server status unavailable. Refresh the library when connected. No clips are marked delivered from local history alone."
+            else "Project: $pid\nAll accessible local clips in this project (not only today's clips).\n\n"+
+                "Local: ${scoped.size}\nListed on server: ${included.size-missing.size}\nNot listed on server: ${missing.size}\nExcluded: ${excluded.size}\nNot assigned to a project: $unassigned\n\n"+
+                (if(missing.isEmpty())"All included local filenames are listed on the server." else "Not listed:\n"+missing.take(40).joinToString("\n") { it.name.orEmpty() })+
+                "\n\nThis compares filenames with the latest library refresh. Excluded files are not counted as missing. Originals are kept on the controller."
+        ledger.close()
+        OffsetDialogBuilder(this).setTitle("End-of-day delivery check").setMessage(body)
+            .setNegativeButton("Close",null).setPositiveButton("Copy to SD") { _,_ -> startManualSdBackup() }.show()
+    }
     private fun showMediaStorage(visibleBytes:Long,visibleCount:Int) {
         val data=ControllerMediaTools.inspect(this,visibleBytes,visibleCount)
         val free=data.appFreeBytes?.let(ControllerMediaTools::pretty) ?: "Unavailable"
@@ -1723,6 +1757,7 @@ class MainActivity : Activity() {
             var serverError=""
             var visibleMediaBytes=0L
             var visibleMediaCount=0
+            var allLocalMedia:List<DocumentFile> = emptyList()
             var thumbnailSources:Map<String,List<DocumentFile>> = emptyMap()
             try {
                 val tree=cacheUri?.let { DocumentFile.fromTreeUri(this,it) }
@@ -1730,6 +1765,7 @@ class MainActivity : Activity() {
                 val byFilename=compareBy<DocumentFile> { it.name.orEmpty().uppercase() }
                 val media=tree?.listFiles()?.filter { it.isFile && (it.name ?: "").endsWith(".mp4",true) }
                     ?.sortedWith(if(descending) byFilename.reversed() else byFilename).orEmpty()
+                allLocalMedia=media
                 visibleMediaBytes=media.sumOf { it.length().coerceAtLeast(0L) }
                 visibleMediaCount=media.size
                 for(file in media.take(250)) clips.add(LibraryClip(file))
@@ -1780,6 +1816,7 @@ class MainActivity : Activity() {
                 storageRow.addView(button("Storage") {
                     showMediaStorage(visibleMediaBytes,visibleMediaCount)
                 })
+                storageRow.addView(button("Day check") { showDeliveryCheck(pid,allLocalMedia,remote,cloudAvailable) })
                 grid.addView(storageRow)
 
                 val selection=LinkedHashSet<String>()
@@ -1823,6 +1860,23 @@ class MainActivity : Activity() {
                 val libraryGrid=android.widget.GridLayout(this).apply { columnCount=columns }
                 grid.addView(libraryGrid)
                 val thumbnailLoader=ControllerThumbnailLoader(this,root,thumbnailSources,cardWidth)
+                val transferLabels=mutableListOf<Pair<TextView,DocumentFile>>()
+                val deliveryHandler=android.os.Handler(android.os.Looper.getMainLooper())
+                val deliveryTick=object:Runnable {
+                    override fun run(){
+                        if(!root.isAttachedToWindow)return
+                        for((view,file) in transferLabels) {
+                            if(view.getGlobalVisibleRect(android.graphics.Rect()))
+                                view.text=transferLabel(file,pid)+" · "+view.tag
+                        }
+                        deliveryHandler.postDelayed(this,3000)
+                    }
+                }
+                root.addOnAttachStateChangeListener(object:View.OnAttachStateChangeListener {
+                    override fun onViewAttachedToWindow(v:View){}
+                    override fun onViewDetachedFromWindow(v:View){deliveryHandler.removeCallbacks(deliveryTick)}
+                })
+                deliveryHandler.postDelayed(deliveryTick,3000)
                 val playlist=clips.map { it.file }
                 for((position,item) in clips.withIndex()) {
                     val file=item.file
@@ -1831,9 +1885,10 @@ class MainActivity : Activity() {
                     val isQueued=file.uri.toString() in queued
                     val localState=ledger.stateFor(file.uri.toString(),pid)
                     val label=when {
-                        cloud!=null -> "UPLOADED"
+                        cloud!=null -> "READY ON REVIEW"
                         file.uri.toString() in priorityUris -> "★ PRIORITY"
-                        isQueued -> "QUEUED"
+                        isQueued -> transferLabel(file,pid)
+                        localState=="pending" -> transferLabel(file,pid)
                         localState=="done" -> if(cloudAvailable) "REMOVED FROM REVIEW" else "PREVIOUSLY UPLOADED"
                         localState=="quarantine" -> "EXCLUDED"
                         localState=="other" -> "OTHER PROJECT"
@@ -1890,9 +1945,12 @@ class MainActivity : Activity() {
                         orientation=LinearLayout.HORIZONTAL
                         gravity=android.view.Gravity.CENTER_VERTICAL
                     }
-                    detail.addView(text("$label · ${file.length()/1048576} MB",10f,
-                        if(cloud!=null) accent else muted),
-                        LinearLayout.LayoutParams(0,-2,1f))
+                    val transferText=text("$label · ${file.length()/1048576} MB",10f,if(cloud!=null) accent else muted)
+                    detail.addView(transferText,LinearLayout.LayoutParams(0,-2,1f))
+                    if(cloud==null&&localState=="pending") {
+                        transferText.tag=transferText.text.toString().substringAfterLast(" · ")
+                        transferLabels.add(transferText to file)
+                    }
                     val actions=mutableListOf<Pair<String,()->Unit>>()
                     if(cloud!=null && cloudAvailable) {
                         actions.add("Delete from review" to { confirmDeleteCloudClip(pid,cloud.id,name) })
@@ -2120,6 +2178,12 @@ class MainActivity : Activity() {
                 }
                 queueDialog?.dismiss()
                 showUploadQueue(searchTerm)
+            })
+            line.addView(button("Retry") {
+                if(ledger.requestRetry(item.uri,pid)) {
+                    prefs.edit().putBoolean("retry_requested",true).apply()
+                    showOffsetError("Retry requested","The clip keeps its saved upload position and will be tried next when OFFSET is on and network/battery conditions allow.")
+                }
             })
             if(item.priority)line.addView(button("Clear") {
                 ledger.clearPriority(item.uri,pid)

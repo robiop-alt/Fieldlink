@@ -16,6 +16,7 @@ function setup(clips,compact=true){
     contains(){return false}
     removeEventListener(){}
     querySelectorAll(){return []}
+    querySelector(){return null}
     getBoundingClientRect(){return {width:640,height:360}}
     get options(){return this.children}
   }
@@ -24,13 +25,14 @@ function setup(clips,compact=true){
   document.getElementById=id=>id==='clips'?list:host;
   document.createElement=tag=>new Element(tag);
   document.body=new Element('body');
+  const cards=clips.map(clip=>{const card=new Element('card');card.dataset.clipId=String(clip.id);return card});list.querySelectorAll=()=>cards;
   const window=new Element('window');window.matchMedia=()=>({matches:compact});
   const context=vm.createContext({window,document,location:{pathname:'/r/test'},localStorage:{getItem(){return null}},navigator:{userAgent:'iPhone'},setTimeout(fn){timers.set(++timerId,fn);return timerId},clearTimeout(id){timers.delete(id)},requestAnimationFrame:fn=>fn()});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../static/offset-player.js'),'utf8'),context);
   window.initOffsetPlayer(clips,'/api/test','',false);
   const player=host.children[0];
   const fields=player.children.find(el=>el.className==='offset-player-metadata').children[0];
-  return {fields,next:player.children.find(el=>el.className==='offset-player-controls').children[4],player,stage:player.children.find(el=>el.className==='offset-player-stage'),video:player.children.find(el=>el.className==='offset-player-stage').children[0],controls:player.children.find(el=>el.className==='offset-player-controls'),document,timers,flush(){const jobs=[...timers.values()];timers.clear();jobs.forEach(fn=>fn())}};
+  return {window,addCard(id){const card=new Element('card');card.dataset.clipId=id;cards.push(card)},fields,next:player.children.find(el=>el.className==='offset-player-controls').children[4],player,stage:player.children.find(el=>el.className==='offset-player-stage'),video:player.children.find(el=>el.className==='offset-player-stage').children[0],controls:player.children.find(el=>el.className==='offset-player-controls'),document,timers,flush(){const jobs=[...timers.values()];timers.clear();jobs.forEach(fn=>fn())}};
 }
 
 test('main player shows six camera fields and clears them for a clip without camera data',()=>{
@@ -94,3 +96,12 @@ test('choosing a frame line shows the guide and closes the panel',()=>{
   assert.equal(trigger.dataset.active,'true');
   assert.equal(menu.open,false);
 });
+
+ test('newly ready clips extend navigation without interrupting playback',()=>{
+  const env=setup([{id:'a',filename:'A.mp4'}]);env.video.currentTime=17;env.video.paused=false;
+  let loads=0;env.video.load=()=>loads++;
+  env.addCard('b');env.window.offsetAppendPlayer([{id:'b',filename:'B.mp4',camera_metadata:{lens:'35mm'}}]);
+  assert.equal(loads,0);assert.equal(env.video.currentTime,17);assert.equal(env.video.paused,false);assert.equal(env.next.disabled,false);
+  env.window.offsetRefreshCamera([{id:'a',camera_metadata:{lens:'24mm'}}]);assert.equal(loads,0);
+  env.window.offsetChooseClip('b');assert.equal(loads,1);
+ });

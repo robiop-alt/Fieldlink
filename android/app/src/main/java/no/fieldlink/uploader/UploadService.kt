@@ -203,6 +203,9 @@ class UploadService : Service() {
                     Thread.sleep(12000)
                     continue
                 }
+                if(prefs.getBoolean("retry_requested",false)) {
+                    prefs.edit().remove("retry_requested").apply();recoveryUntil=0
+                }
                 if(System.currentTimeMillis()<recoveryUntil &&
                    prefs.getBoolean("smart_recovery",true)) {
                     status("Waiting to retry · upload progress saved")
@@ -210,7 +213,7 @@ class UploadService : Service() {
                     continue
                 }
                 if (!hasNetwork()) {
-                    status("Waiting for network · uploads paused")
+                    status("Waiting for network · resumes automatically")
                     Thread.sleep(12000)
                     continue
                 }
@@ -520,13 +523,18 @@ class UploadService : Service() {
                         .header("X-Device-Token",token).header("X-Offset",offset.toString())
                         .put(multipart).build()
                     val startedAt=System.currentTimeMillis()
-                    val response=execute(req) ?: return false
+                    ledger.noteTransfer(doc,project,"uploading",offset,uploadSize)
+                    val response=execute(req) ?: run {
+                        ledger.noteTransfer(doc,project,"waiting",offset,uploadSize)
+                        return false
+                    }
                     val received=JSONObject(response).getLong("received")
                     if(received!=offset+len) {
                         status("Unexpected upload offset · rechecking on next attempt")
                         return false
                     }
                     offset=received
+                    ledger.noteTransfer(doc,project,"uploading",offset,uploadSize)
                     observeUploadSpeed(len,System.currentTimeMillis()-startedAt)
                     val delay=ControllerPolicy.throttleMillis(this,prefs)
                     if(delay>0 && running)Thread.sleep(delay)
@@ -537,13 +545,18 @@ class UploadService : Service() {
         if(offset!=uploadSize) return false
         if(lowBatteryPause()) { lowBatteryStatus(); return false }
         ControllerPolicy.pauseReason(this,prefs)?.let { status(it);return false }
+        ledger.noteTransfer(doc,project,"processing",offset,uploadSize)
+        status("Received · verifying $uploadName on server")
         val localDigest=sha256(sourceUri) ?: return false
         val complete=execute(Request.Builder().url("$base/api/upload/$uploadId/complete")
             .header("X-Device-Token",token).header("X-Content-SHA256",localDigest)
-            .post("".toRequestBody(null)).build()) ?: return false
+            .post("".toRequestBody(null)).build()) ?: run {
+                ledger.noteTransfer(doc,project,"waiting",offset,uploadSize);return false
+            }
         val result=JSONObject(complete)
         if(result.optString("status")!="ready" || result.optLong("size",-1)!=uploadSize ||
             !result.optString("sha256").equals(localDigest,true)) {
+            ledger.noteTransfer(doc,project,"waiting",offset,uploadSize)
             status("Integrity check failed · keeping upload queued")
             return false
         }
@@ -552,6 +565,7 @@ class UploadService : Service() {
     }
 
     private fun finishVerifiedUpload(doc:DocumentFile,uploadId:String,lowFile:File?,result:JSONObject) {
+        ledger.noteTransfer(doc,sessionProject,"ready",result.optLong("size"),result.optLong("size"))
         ledger.clearUploadId(doc,sessionProject)
         prefs.edit().remove("upload_low_$uploadId").apply()
         lowFile?.delete()

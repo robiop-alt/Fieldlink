@@ -32,7 +32,7 @@
    const pct=total?Math.min(100,Math.round(received*100/total)):0;
    const finished=hadResponse&&[...lastActive].some(name=>!clips.some(c=>c.filename===name));
    lastActive=new Set(clips.filter(c=>c.status==='uploading'||c.status==='processing'||c.status==='reconnecting').map(c=>c.filename));hadResponse=true;
-   if(finished&&typeof load==='function'){
+   if(finished&&typeof load==='function'&&!(typeof followNewClips==='boolean'&&followNewClips)){
     const video=document.querySelector('.offset-featured-video');
     if(!video||(!video.currentTime&&video.paused))load().catch(()=>{});
    }
