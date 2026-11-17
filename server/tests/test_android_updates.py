@@ -17,12 +17,21 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(data['version_code'],207)
         self.assertIn('/api/device/app-download?asset=123',data['download_url'])
         self.assertNotIn('test-server-token',str(data));self.assertNotIn('device',data['download_url'].split('?')[1])
+    def test_download_link_remains_valid_after_ten_minutes(self):
+        from urllib.parse import urlsplit, parse_qs
+        with patch.object(updates.time,'time',return_value=1000),patch.object(updates,'_open',return_value=io.BytesIO(json.dumps(self.release).encode())):
+            info=updates.latest_update('https://offset.example','s','d')
+        query=parse_qs(urlsplit(info['download_url']).query)
+        self.assertEqual(int(query['expires'][0]),4600)
+        with patch.object(updates.time,'time',return_value=4500),patch.object(updates,'_open',return_value=io.BytesIO(b'PK-test-apk')):
+            self.assertEqual(updates.download_release(123,4600,query['signature'][0],'s','d'),(None,b'PK-test-apk'))
+
     def test_public_fallback_preserves_existing_updater(self):
         with patch.dict(os.environ,{'OFFSET_GITHUB_RELEASE_TOKEN':''}),patch.object(updates,'_open',return_value=io.BytesIO(json.dumps(self.release).encode())):
             self.assertEqual(updates.latest_update('https://offset.example','s','d')['download_url'],'https://github.com/example.apk')
     def test_invalid_expired_or_revoked_ticket_does_not_fetch(self):
         with patch.object(updates,'_open') as fetch,patch.object(updates.time,'time',return_value=1000):
-            for expiry,signature,device in [(999,'bad','d'),(2000,'bad','d'),(1100,updates._signature(123,1100,'s','old'),'new')]:
+            for expiry,signature,device in [(999,'bad','d'),(5000,updates._signature(123,5000,'s','d'),'d'),(1100,updates._signature(123,1100,'s','old'),'new')]:
                 with self.assertRaises(PermissionError):updates.download_release(123,expiry,signature,'s',device)
             fetch.assert_not_called()
     def test_github_redirect_is_returned_without_forwarding_credentials(self):

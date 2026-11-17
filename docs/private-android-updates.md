@@ -3,7 +3,7 @@
 The existing controller APK can keep using Settings → Check for updates.
 The server authenticates its metadata request using the existing device token.
 With `OFFSET_GITHUB_RELEASE_TOKEN` configured, GitHub access stays on the server
-and the app receives a signed download link valid for ten minutes. The browser
+and the app receives a signed download link valid for one hour. The browser
 then receives a GitHub release-storage link; no GitHub token is sent to it.
 Android still asks the user to confirm installation, using the same signing key.
 

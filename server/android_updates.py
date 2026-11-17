@@ -11,6 +11,7 @@ from urllib.request import Request, HTTPRedirectHandler, build_opener
 
 RELEASES='https://api.github.com/repos/robiop-alt/Fieldlink/releases'
 MAX_APK=150*1024*1024
+DOWNLOAD_TTL_SECONDS=3600
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -38,7 +39,7 @@ def latest_update(base_url, secret, device):
     if not match or not asset or release.get('draft'):
         return {'version_code':0,'version_name':'','download_url':''}
     if os.getenv('OFFSET_GITHUB_RELEASE_TOKEN','').strip():
-        asset_id=int(asset['id']);expiry=int(time.time())+600
+        asset_id=int(asset['id']);expiry=int(time.time())+DOWNLOAD_TTL_SECONDS
         query=urlencode({'asset':asset_id,'expires':expiry,'signature':_signature(asset_id,expiry,secret,device)})
         url=base_url.rstrip('/')+'/api/device/app-download?'+query
     else:
@@ -49,7 +50,7 @@ def latest_update(base_url, secret, device):
 
 def download_release(asset, expires, signature, secret, device):
     now=int(time.time())
-    if asset<=0 or not now<=expires<=now+600 or not hmac.compare_digest(signature,_signature(asset,expires,secret,device)):
+    if asset<=0 or not now<=expires<=now+DOWNLOAD_TTL_SECONDS or not hmac.compare_digest(signature,_signature(asset,expires,secret,device)):
         raise PermissionError('Expired or invalid update link. Check for updates again.')
     try:
         with _open(RELEASES+'/assets/'+str(asset),binary=True) as response:
