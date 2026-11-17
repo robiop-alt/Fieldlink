@@ -1913,41 +1913,41 @@ body.offset-planner.simulator-expanded{overflow:hidden!important}
 
 /* Portrait phones: navigation above two full-width precision controls. */
 @media(max-width:600px) and (orientation:portrait){
- .offset-planner #waypoint-editor{padding:7px 8px}
+ .offset-planner #waypoint-editor{padding:4px 8px}
  .offset-planner #waypoint-editor .waypoint-edit-actions{
-  display:grid;grid-template-columns:44px minmax(64px,1fr) 44px 66px auto;
-  gap:6px;align-items:center;min-width:0;
+  display:grid;grid-template-columns:32px minmax(64px,1fr) 32px 66px auto;
+  gap:4px;align-items:center;min-width:0;
  }
  .offset-planner #waypoint-editor .waypoint-values{display:contents}
- .offset-planner #map-wp-previous{grid-column:1;grid-row:1;min-width:0;width:100%;min-height:44px}
- .offset-planner #map-waypoint{grid-column:2;grid-row:1;width:100%;min-width:0;min-height:44px;margin:0;font-size:12px}
- .offset-planner #map-wp-next{grid-column:3;grid-row:1;min-width:0;width:100%;min-height:44px}
+ .offset-planner #map-wp-previous{grid-column:1;grid-row:1;min-width:0;width:100%;min-height:32px}
+ .offset-planner #map-waypoint{grid-column:2;grid-row:1;width:100%;min-width:0;min-height:32px;margin:0;font-size:12px}
+ .offset-planner #map-wp-next{grid-column:3;grid-row:1;min-width:0;width:100%;min-height:32px}
  .offset-planner #waypoint-editor .waypoint-values>label:not(.waypoint-slider){
   grid-column:4;grid-row:1;display:flex;flex-direction:column;align-items:stretch;
   gap:2px;min-width:0;white-space:nowrap;font-size:9px;
  }
- .offset-planner #map-wp-bearing{width:100%;min-width:0;margin:0;height:30px;min-height:30px;padding:3px 5px;font-size:16px}
- .offset-planner #select-waypoints{grid-column:5;grid-row:1;min-width:0;min-height:44px;padding:5px 7px;font-size:10px}
+ .offset-planner #map-wp-bearing{width:100%;min-width:0;margin:0;height:24px;min-height:24px;padding:3px 5px;font-size:16px}
+ .offset-planner #select-waypoints{grid-column:5;grid-row:1;min-width:0;min-height:32px;padding:5px 7px;font-size:10px}
  .offset-planner #waypoint-editor .waypoint-slider{
-  grid-column:1/-1;display:grid;grid-template-columns:60px minmax(0,1fr);
-  gap:8px;align-items:center;min-width:0;margin:0;
+  grid-column:1/-1;display:grid;grid-template-columns:86px minmax(0,1fr);
+  gap:6px;align-items:center;min-width:0;margin:0;
  }
  .offset-planner #waypoint-editor .waypoint-slider:first-child{grid-row:2}
  .offset-planner #waypoint-editor .waypoint-slider:nth-child(2){grid-row:3}
  .offset-planner #waypoint-editor .waypoint-slider>span:first-child{
-  display:flex;flex-direction:column;align-items:flex-start;justify-content:center;
-  gap:1px;font-size:10px;line-height:1.35;
+  display:flex;flex-direction:row;align-items:center;justify-content:space-between;
+  gap:5px;font-size:10px;line-height:1.2;
  }
- .offset-planner #waypoint-editor .waypoint-slider output{font-size:12px}
- .offset-planner #waypoint-editor .precision-slider{display:flex;gap:6px;width:100%;min-width:0}
+ .offset-planner #waypoint-editor .waypoint-slider output{font-size:11px}
+ .offset-planner #waypoint-editor .precision-slider{display:flex;gap:4px;width:100%;min-width:0}
  .offset-planner #waypoint-editor .precision-step{
-  flex:0 0 44px;width:44px;min-width:44px;height:44px;min-height:44px;
-  padding:2px;font-size:20px;
+  flex:0 0 22px;width:22px;min-width:22px;height:22px;min-height:22px;
+  padding:1px;font-size:14px;line-height:1;
  }
  .offset-planner #waypoint-editor .precision-slider input[type=range]{
-  height:44px;min-height:44px;margin:0;padding:0;min-width:0;
+  height:24px;min-height:24px;margin:0;padding:0;min-width:0;
  }
 }
 @media(max-width:360px) and (orientation:portrait){
- .offset-planner #waypoint-editor .waypoint-edit-actions{grid-template-columns:40px minmax(60px,1fr) 40px 60px auto;gap:4px}
+ .offset-planner #waypoint-editor .waypoint-edit-actions{grid-template-columns:32px minmax(60px,1fr) 32px 60px auto;gap:4px}
 }
