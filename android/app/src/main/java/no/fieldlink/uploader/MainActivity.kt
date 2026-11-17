@@ -156,13 +156,11 @@ class MainActivity : Activity() {
             setStroke(dp(1),stroke)
         }
     private fun button(label:String, action:()->Unit)=Button(this).apply {
-        text=label;isAllCaps=false;setTextColor(Color.WHITE)
-        textSize=11f;letterSpacing=0.015f
-        minHeight=0;minimumHeight=0;minWidth=0;minimumWidth=0
+        text=label;setTextColor(Color.WHITE)
+        OffsetButtons.compact(this)
         elevation=0f
         backgroundTintList=null
         background=getDrawable(R.drawable.offset_button_background)
-        setPadding(dp(9),dp(5),dp(9),dp(5))
         setOnClickListener { action() }
     }
     private fun showButtonMenu(title:String,actions:List<Pair<String,()->Unit>>) {
@@ -176,8 +174,8 @@ class MainActivity : Activity() {
         actions.forEach { (label,action) ->
             body.addView(button(label) { dialog.dismiss();action() }.apply {
                 gravity=android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-                minHeight=dp(44);minimumHeight=dp(44);textSize=12f
-                setPadding(dp(14),dp(8),dp(14),dp(8))
+                minHeight=dp(36);minimumHeight=dp(36)
+                setPadding(dp(12),dp(6),dp(12),dp(6))
             },LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(4),0,dp(4)) })
         }
         dialog.show()
@@ -303,7 +301,7 @@ class MainActivity : Activity() {
         }
         fun row(vararg views:Button):LinearLayout = LinearLayout(this).apply {
             views.forEachIndexed { index, child ->
-                addView(child,LinearLayout.LayoutParams(0,dp(36),1f).apply {
+                addView(child,LinearLayout.LayoutParams(0,-2,1f).apply {
                     if(index>0) leftMargin=dp(6)
                 })
             }
@@ -315,7 +313,7 @@ class MainActivity : Activity() {
             gravity=android.view.Gravity.CENTER_VERTICAL
             setPadding(dp(18),dp(8),dp(18),dp(4))
             addView(button("‹ Media Library") { showMediaLibraryPage() },
-                LinearLayout.LayoutParams(-2,dp(38)))
+                LinearLayout.LayoutParams(-2,-2))
             addView(text("Settings",19f).apply {
                 setTypeface(typeface,android.graphics.Typeface.BOLD)
             },LinearLayout.LayoutParams(0,-2,1f).apply { leftMargin=dp(12) })
@@ -1725,7 +1723,7 @@ class MainActivity : Activity() {
         // settings immediately available, with no intermediate dashboard.
         header.addView(button(
             (prefs.getString("project_name",null)?.takeIf { it.isNotBlank() } ?: "Select project")+"  ▾"
-        ) { showProjects() },LinearLayout.LayoutParams(0,dp(37),1f))
+        ) { showProjects() },LinearLayout.LayoutParams(0,-2,1f))
         header.addView(button("▣ QR") { showProjectShare() })
         header.addView(button("⚙ Settings") {
             settingsView?.let {
@@ -1766,7 +1764,7 @@ class MainActivity : Activity() {
             addView(text("End-of-day backup",12f,muted),LinearLayout.LayoutParams(0,-2,1f))
             addView(button("SD status") { showSdBackupStatus() })
             addView(primaryButton("Copy to SD") { startManualSdBackup() },
-                LinearLayout.LayoutParams(-2,dp(40)).apply { leftMargin=dp(6) })
+                LinearLayout.LayoutParams(-2,-2).apply { leftMargin=dp(6) })
         }
         root.addView(sdRow)
         val status=text("Loading media…",12f,muted)

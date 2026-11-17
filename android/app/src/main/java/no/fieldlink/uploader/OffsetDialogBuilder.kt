@@ -45,11 +45,12 @@ class OffsetDialogBuilder(context: Context) :
                 val frame = (convertView as? FrameLayout) ?: FrameLayout(context).apply {
                     setPadding(dp(12), dp(4), dp(12), dp(4))
                     addView(TextView(context).apply {
-                        textSize = 13f
+                        textSize = 11f
                         setTextColor(Color.rgb(244, 247, 246))
                         gravity = android.view.Gravity.CENTER_VERTICAL
-                        setPadding(dp(14), dp(10), dp(14), dp(10))
-                        minHeight = dp(44)
+                        includeFontPadding = false
+                        setPadding(dp(12), dp(7), dp(12), dp(7))
+                        minHeight = dp(36)
                         background = context.getDrawable(R.drawable.offset_button_background)
                         // The list owns clicks, focus and accessibility, not a nested button.
                         isDuplicateParentStateEnabled = true
@@ -64,15 +65,8 @@ class OffsetDialogBuilder(context: Context) :
     private fun styleButton(button: Button, primary: Boolean) {
         val quiet = button.text.toString().trim().lowercase() in setOf("close", "cancel", "back", "ok", "done")
         val emphasized = primary && !quiet
-        button.isAllCaps = false
-        button.textSize = 12f
+        OffsetButtons.compact(button)
         button.setTextColor(if (emphasized) Color.rgb(17, 20, 22) else Color.rgb(244, 247, 246))
-        button.minHeight = dp(44)
-        button.minimumHeight = dp(44)
-        button.minWidth = 0
-        button.minimumWidth = 0
-        button.maxLines = 2
-        button.setPadding(dp(12), dp(6), dp(12), dp(6))
         button.elevation = 0f
         button.stateListAnimator = null
         // DJI's framework tint otherwise flattens a custom drawable back to a text-button look.
@@ -80,7 +74,10 @@ class OffsetDialogBuilder(context: Context) :
         button.background = context.getDrawable(if (emphasized)
             R.drawable.offset_button_primary else R.drawable.offset_button_background)
         (button.layoutParams as? ViewGroup.MarginLayoutParams)?.let {
-            it.setMargins(dp(4), dp(6), dp(4), dp(6))
+            // DJI's native button bar can be shorter than the stock Android bar.
+            // Vertical margins plus a 44dp minimum used to exceed that row.
+            it.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            it.setMargins(dp(4), 0, dp(4), 0)
             button.layoutParams = it
         }
     }
@@ -105,6 +102,25 @@ class OffsetDialogBuilder(context: Context) :
         }
         for (which in listOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL)) {
             dialog.getButton(which)?.let { styleButton(it, which == AlertDialog.BUTTON_POSITIVE) }
+        }
+        // Let the existing native bar measure its compact buttons. Keep the same
+        // Button instances so validation listeners and Android accessibility work.
+        val panelId = context.resources.getIdentifier("buttonPanel", "id", "android")
+        val buttonPanel = if (panelId != 0) dialog.findViewById<ViewGroup>(panelId) else null
+        buttonPanel?.let { panel ->
+            fun fitBar(group: ViewGroup) {
+                group.minimumHeight = 0
+                group.layoutParams?.let { params ->
+                    params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    group.layoutParams = params
+                }
+                for (i in 0 until group.childCount) {
+                    val child = group.getChildAt(i)
+                    if (child is ViewGroup) fitBar(child)
+                }
+            }
+            fitBar(panel)
+            panel.requestLayout()
         }
         window.decorView.clipToOutline = true
         val width = minOf(dp(560), context.resources.displayMetrics.widthPixels - dp(32))
