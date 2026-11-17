@@ -3,8 +3,8 @@
   display:inline-flex;align-items:center;gap:8px;vertical-align:middle;text-decoration:none;
 }
 .offset-beta,.brand .offset-beta{
-  display:inline-block;flex:0 0 auto;padding:3px 5px;border:1px solid #3f613b;border-radius:4px;
-  background:#18261a;color:#a9d59b;font:600 9px/1.15 system-ui,sans-serif;
+  display:inline-block;flex:0 0 auto;padding:3px 5px;border:1px solid #41647a;border-radius:4px;
+  background:#15232e;color:#9dd9ff;font:600 9px/1.15 system-ui,sans-serif;
   letter-spacing:1.1px;white-space:nowrap;
 }
 @media(max-width:600px){
