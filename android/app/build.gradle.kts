@@ -40,6 +40,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.zxing:core:3.5.3")
     implementation("androidx.core:core-ktx:1.15.0")

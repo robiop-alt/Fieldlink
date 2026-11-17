@@ -561,7 +561,7 @@ class MainActivity : Activity() {
         }
         val showProject=Switch(this).apply {
             text="Show project ID";setTextColor(Color.WHITE)
-            isChecked=prefs.getBoolean("overlay_show_project",false)
+            isChecked=prefs.getBoolean("overlay_show_project",true)
             setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("overlay_show_project",v).apply() }
         }
         settings.addView(showStatus)

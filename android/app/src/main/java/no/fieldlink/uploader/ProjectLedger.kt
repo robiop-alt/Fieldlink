@@ -145,6 +145,11 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
         }
         return items
     }
+    @Synchronized fun latestDelivery(project:String):HistoryItem? {
+        readableDatabase.rawQuery("SELECT filename,status,COALESCE(detail,''),created FROM upload_history WHERE project=? AND status='done' ORDER BY id DESC LIMIT 1",arrayOf(project)).use { row ->
+            return if(row.moveToFirst())HistoryItem(row.getString(0),row.getString(1),row.getString(2),row.getLong(3))else null
+        }
+    }
     @Synchronized fun counts(project:String):Triple<Int,Int,Int> {
         readableDatabase.rawQuery("SELECT SUM(CASE WHEN state='done' THEN 1 ELSE 0 END),SUM(CASE WHEN state='pending' THEN 1 ELSE 0 END),SUM(CASE WHEN state='quarantine' THEN 1 ELSE 0 END) FROM media WHERE project=?",
             arrayOf(project)).use { rows ->

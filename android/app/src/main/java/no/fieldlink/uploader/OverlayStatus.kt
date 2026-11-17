@@ -26,6 +26,9 @@ class OverlayStatus(private val ctx: Context) {
     private var header:TextView?=null
     private var details:TextView?=null
     private var projectLabel:TextView?=null
+    private var deliveredLabel:TextView?=null
+    private val queueWatchdog=QueueWatchdog()
+    private var queueWarning:String?=null
     private var metadataTap:TextView?=null
     private var permissionTap:TextView?=null
     private var modeLabel:TextView?=null
@@ -42,6 +45,7 @@ class OverlayStatus(private val ctx: Context) {
         setStroke(dp(1),Color.rgb(88,102,91))
     }
     private fun stateColor():Int=when {
+        queueWarning!=null -> Color.rgb(255,194,93)
         last.contains("attention",true)||last.contains("permission needed",true)||
             last.contains("failed",true)||last.contains("error",true)||
             last.contains("feil",true)||last.contains("mismatch",true)||
@@ -53,6 +57,7 @@ class OverlayStatus(private val ctx: Context) {
         else -> accent
     }
     private fun shortText():String {
+        if(queueWarning!=null)return "!"
         val progress=if(last.contains("battery",true)) null else Regex("""(\d{1,3})\s*%""").find(last)?.groupValues?.get(1)
         return when {
             last.contains("attention",true) || last.contains("permission needed",true) -> "!"
@@ -83,6 +88,45 @@ class OverlayStatus(private val ctx: Context) {
         else -> last
     }
     private fun paint() {
+        val project=prefs.getString("project","").orEmpty()
+        val isManual=prefs.getString("upload_mode","auto")=="manual"
+        var waiting=0
+        var deliveredFile=prefs.getString("last_delivered_file_$project",null)
+        var deliveredAt=prefs.getLong("last_delivered_at_$project",0L)
+        try {
+            if(project.isNotBlank())ProjectLedger(ctx).use { ledger ->
+                waiting=ledger.pendingQueue(project).count { !isManual || it.manual || it.priority }
+                if(deliveredAt==0L)ledger.latestDelivery(project)?.let {
+                    deliveredFile=it.filename;deliveredAt=it.created
+                }
+            }
+        }catch(_:Exception) { }
+        val reason=when {
+            prefs.getBoolean("upload_paused",false) -> "Uploads OFF"
+            last.contains("battery",true) -> "Low battery"
+            last.contains("network",true)||last.contains("nett",true) -> "Waiting for network"
+            last.contains("paused",true)||last.contains("charger",true)||last.contains("Wi-Fi only",true) -> last
+            last.contains("compress",true) -> "Preparing Low Data copy"
+            last.contains("verifying",true) -> "Waiting for server verification"
+            last.contains("retry",true)||last.contains("waiting",true)||last.contains("venter",true) -> "Retrying connection"
+            else -> "Check connection and upload status"
+        }
+        queueWarning=queueWatchdog.update(project,waiting,
+            prefs.getLong("delivery_progress_$project",0L),android.os.SystemClock.elapsedRealtime(),reason)
+        if(last.contains("permission needed",true) || last.contains("attention",true))queueWarning=null
+        deliveredLabel?.apply {
+            text=if(deliveredAt>0L) "Last verified · "+java.text.SimpleDateFormat("HH:mm",java.util.Locale.getDefault()).format(java.util.Date(deliveredAt))+"\n"+deliveredFile
+                 else "No recent confirmed delivery"
+            visibility=if(expanded || style=="classic") View.VISIBLE else View.GONE
+        }
+        val showProject=expanded || prefs.getBoolean("overlay_show_project",true)
+        projectLabel?.apply {
+            text=prefs.getString("project_name",null)?.takeIf { it.isNotBlank() }
+                ?: project.takeIf { it.isNotBlank() } ?: "No project selected"
+            textSize=if(expanded) 11f else 9f
+            visibility=if(showProject) View.VISIBLE else View.GONE
+            setPadding(dp(if(expanded) 12 else 6),0,dp(if(expanded) 12 else 6),dp(if(expanded) 8 else 5))
+        }
         val compact=style=="compact"
         header?.apply {
             text=when {
@@ -97,25 +141,15 @@ class OverlayStatus(private val ctx: Context) {
                 dp(if(!expanded && style=="minimal") 7 else 12),dp(9))
         }
         details?.apply {
-            text=readableStatus()
+            text=queueWarning ?: readableStatus()
             visibility=if(expanded || (style=="classic" && prefs.getBoolean("overlay_show_status",true))) View.VISIBLE else View.GONE
         }
-        projectLabel?.visibility=if((expanded || style=="classic") && prefs.getBoolean("overlay_show_project",false)) View.VISIBLE else View.GONE
-        val isManual=prefs.getString("upload_mode","auto")=="manual"
         modeLabel?.apply {
             text=if(isManual) "Manual mode" else "Auto upload"
             setTextColor(if(isManual) Color.rgb(255,190,103) else accent)
             visibility=if(expanded) View.VISIBLE else View.GONE
         }
         waitingLabel?.apply {
-            val project=prefs.getString("project","").orEmpty()
-            val waiting=try {
-                if(project.isBlank()) 0 else ProjectLedger(ctx).use { ledger ->
-                    val counts=ledger.counts(project)
-                    // Manual queue is included in pending, so avoid double-counting.
-                    counts.second
-                }
-            }catch(_:Exception) { 0 }
             text="$waiting clips waiting · ${if(isManual) "Only selected clips upload" else "Monitoring new clips"}"
             visibility=if(expanded) View.VISIBLE else View.GONE
         }
@@ -129,10 +163,10 @@ class OverlayStatus(private val ctx: Context) {
             if(expanded) {
                 // Make room for the expanded card before placing it against the edge.
                 p.width=dp(272)
-            } else p.width=WindowManager.LayoutParams.WRAP_CONTENT
+            } else p.width=if(showProject) dp(132) else WindowManager.LayoutParams.WRAP_CONTENT
             val screenWidth=ctx.resources.displayMetrics.widthPixels
             p.x=if(prefs.getString("overlay_side","right")=="left") 0
-                else (screenWidth-if(expanded) dp(272) else dp(if(style=="minimal") 40 else 112)).coerceAtLeast(0)
+                else (screenWidth-if(expanded) dp(272) else dp(if(showProject) 132 else if(style=="minimal") 40 else 112)).coerceAtLeast(0)
             try {wm.updateViewLayout(view,p)}catch(_:Exception){}
         } }
     }
@@ -155,9 +189,17 @@ class OverlayStatus(private val ctx: Context) {
         }
         val project=TextView(ctx).apply {
             setTextColor(Color.LTGRAY)
-            text="PROJECT · "+(prefs.getString("project","") ?: "")
+            maxLines=1
+            ellipsize=android.text.TextUtils.TruncateAt.END
             textSize=11f
             setPadding(dp(12),0,dp(12),dp(10))
+        }
+        val delivered=TextView(ctx).apply {
+            setTextColor(Color.LTGRAY)
+            textSize=11f
+            maxLines=2
+            ellipsize=android.text.TextUtils.TruncateAt.END
+            setPadding(dp(12),0,dp(12),dp(8))
         }
         val mode=TextView(ctx).apply {
             textSize=13f
@@ -213,7 +255,7 @@ class OverlayStatus(private val ctx: Context) {
             }
         }
         layout.addView(label);layout.addView(permission);layout.addView(metadata);layout.addView(mode);layout.addView(waiting)
-        layout.addView(detail);layout.addView(project);layout.addView(action)
+        layout.addView(detail);layout.addView(project);layout.addView(delivered);layout.addView(action)
         val display=ctx.resources.displayMetrics
         val savedSide=prefs.getString("overlay_side","right")
         val p=WindowManager.LayoutParams(
@@ -226,7 +268,7 @@ class OverlayStatus(private val ctx: Context) {
             x=if(savedSide=="left") 0 else (display.widthPixels-dp(60)).coerceAtLeast(0)
             y=prefs.getInt("overlay_y",dp(140)).coerceIn(dp(50),(display.heightPixels-dp(80)).coerceAtLeast(dp(50)))
         }
-        root=layout;header=label;details=detail;projectLabel=project
+        root=layout;header=label;details=detail;projectLabel=project;deliveredLabel=delivered
         metadataTap=metadata;permissionTap=permission
         modeLabel=mode;waitingLabel=waiting;actionLabel=action;params=p
         expanded=style=="classic"
@@ -271,7 +313,7 @@ class OverlayStatus(private val ctx: Context) {
     }
     fun hide() {
         val current=root
-        root=null;header=null;details=null;projectLabel=null;metadataTap=null;permissionTap=null
+        root=null;header=null;details=null;projectLabel=null;deliveredLabel=null;metadataTap=null;permissionTap=null
         modeLabel=null;waitingLabel=null;actionLabel=null;params=null
         if(current!=null) try {wm.removeView(current)}catch(_:Exception){}
     }

@@ -534,6 +534,7 @@ class UploadService : Service() {
                         return false
                     }
                     offset=received
+                    prefs.edit().putLong("delivery_progress_$sessionProject",System.currentTimeMillis()).apply()
                     ledger.noteTransfer(doc,project,"uploading",offset,uploadSize)
                     observeUploadSpeed(len,System.currentTimeMillis()-startedAt)
                     val delay=ControllerPolicy.throttleMillis(this,prefs)
@@ -565,6 +566,11 @@ class UploadService : Service() {
     }
 
     private fun finishVerifiedUpload(doc:DocumentFile,uploadId:String,lowFile:File?,result:JSONObject) {
+        // Record only after size and SHA-256 have been confirmed by the server.
+        val verifiedAt=System.currentTimeMillis()
+        prefs.edit().putString("last_delivered_file_$sessionProject",doc.name ?: "clip.mp4")
+            .putLong("last_delivered_at_$sessionProject",verifiedAt)
+            .putLong("delivery_progress_$sessionProject",verifiedAt).apply()
         ledger.noteTransfer(doc,sessionProject,"ready",result.optLong("size"),result.optLong("size"))
         ledger.clearUploadId(doc,sessionProject)
         prefs.edit().remove("upload_low_$uploadId").apply()

@@ -63,7 +63,7 @@ jobs:
           OFFSET_KEY_ALIAS: ${{ secrets.OFFSET_ANDROID_KEY_ALIAS }}
           OFFSET_KEY_PASSWORD: ${{ secrets.OFFSET_ANDROID_KEY_PASSWORD }}
         working-directory: android
-        run: gradle assembleDebug
+        run: gradle testDebugUnitTest assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
