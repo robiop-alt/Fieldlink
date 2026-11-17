@@ -947,30 +947,32 @@ def device_app_update(x_device_token:str=Header(default='')):
     version_code=int(os.getenv('OFFSET_ANDROID_RELEASE_CODE','0'))
     version_name=os.getenv('OFFSET_ANDROID_RELEASE_VERSION','')
     apk_url=os.getenv('OFFSET_ANDROID_RELEASE_URL','')
-    # Public GitHub Releases work without manually updating Render variables.
-    # If the repository is private, configure an HTTPS release URL explicitly.
+    # The existing Android client can open a short-lived server download link.
+    # A GitHub read token is used only on the server when releases are private.
     if not apk_url:
+        from android_updates import latest_update
         try:
-            import json
-            from urllib.request import Request as UrlRequest, urlopen
-            req=UrlRequest('https://api.github.com/repos/robiop-alt/Fieldlink/releases/latest',
-                           headers={'Accept':'application/vnd.github+json','User-Agent':'OFFSET-updates'})
-            with urlopen(req,timeout=5) as response:
-                release=json.load(response)
-            tag=release.get('tag_name','')
-            match=re.fullmatch(r'offset-android-(\d+)',tag)
-            if match:
-                assets=release.get('assets',[])
-                asset=next((a for a in assets if a.get('name') in ('OFFSET.apk','app-release.apk')),None)
-                if asset:
-                    version_code=int(match.group(1))
-                    version_name=release.get('name',tag)
-                    apk_url=asset.get('browser_download_url','')
+            return latest_update(os.getenv('OFFSET_PUBLIC_URL','https://fieldlink-xrd1.onrender.com'),SECRET,DEVICE)
         except Exception:
-            pass
+            raise HTTPException(502,'Could not check app releases. Please retry later.')
     if not apk_url.startswith('https://'):
         apk_url=''
     return {'version_code':version_code,'version_name':version_name,'download_url':apk_url}
+
+@app.get('/api/device/app-download')
+def device_app_download(asset:int, expires:int, signature:str):
+    from android_updates import download_release
+    try:
+        location,content=download_release(asset,expires,signature,SECRET,DEVICE)
+    except PermissionError as error:
+        raise HTTPException(403,str(error))
+    except Exception:
+        raise HTTPException(502,'Update download unavailable. Check for updates again.')
+    headers={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer',
+             'X-Content-Type-Options':'nosniff'}
+    if location:return RedirectResponse(location,status_code=302,headers=headers)
+    headers['Content-Disposition']='attachment; filename="OFFSET.apk"'
+    return Response(content,media_type='application/vnd.android.package-archive',headers=headers)
 
 @app.get('/api/device/projects')
 def device_list_projects(x_device_token:str=Header(default='')):
