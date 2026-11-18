@@ -164,11 +164,13 @@
       // Only DJI Pilot camera readings; proxy metadata must never fill these fields.
       const data=clip.camera_metadata&&typeof clip.camera_metadata==='object'?clip.camera_metadata:{};
       cameraFields.replaceChildren();
-      const present=['recording_format','lens','fps','iso','white_balance','shutter'].filter(k=>data[k]!=null&&String(data[k]).trim()).length;
+      const exposure=data.exposure_index!=null&&String(data.exposure_index).trim()?['EI','exposure_index']:['ISO','iso'];
+      const fields=[['RAW / ProRes','recording_format'],['Lens','lens'],['FPS','fps'],exposure,['WB','white_balance'],['Shutter','shutter']];
+      const present=fields.filter(([,key])=>data[key]!=null&&String(data[key]).trim()).length;
       const quality=metadataQuality;quality.textContent=present?'OCR matched · '+present+'/6 fields':'Camera metadata missing';
       quality.title=present?'Matched DJI Pilot screen readings; not manually verified.':'No matched camera reading. Proxy metadata is not substituted.';
 
-      for(const [label,key] of [['RAW / ProRes','recording_format'],['Lens','lens'],['FPS','fps'],['ISO','iso'],['WB','white_balance'],['Shutter','shutter']]){
+      for(const [label,key] of fields){
         const value=data[key]===null||data[key]===undefined?'':String(data[key]).trim();
         const field=make('span','offset-camera-field offset-camera-'+key);
         field.dataset.filled=String(!!value);

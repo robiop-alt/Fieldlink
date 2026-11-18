@@ -16,7 +16,7 @@ object CameraSettingsStore {
     private const val KEY="camera_pilot_samples"
     private const val MAX_AGE_MS=4*60*60*1000L
     private const val MATCH_WINDOW_MS=8000L
-    private val settings=listOf("recording_format","lens","fps","iso","white_balance","shutter")
+    private val settings=listOf("recording_format","lens","fps","iso","exposure_index","white_balance","shutter")
 
     fun parse(screen:String):Map<String,String> {
         val text=screen.uppercase(Locale.ROOT).replace('°','°')
@@ -45,7 +45,10 @@ object CameraSettingsStore {
     }
 
     @Synchronized fun observe(context:Context, screen:String, whenMs:Long=System.currentTimeMillis()) {
-        val values=parse(screen)
+        observeValues(context,parse(screen),whenMs)
+    }
+
+    @Synchronized fun observeValues(context:Context,values:Map<String,String>,whenMs:Long=System.currentTimeMillis()) {
         val statusPrefs=context.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
         statusPrefs.edit().putLong("metadata_last_read_at",whenMs)
             .putString("metadata_last_fields",values.keys.sorted().joinToString(", ")).apply()

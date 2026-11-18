@@ -50,7 +50,7 @@ def ensure_metadata_schema():
         c.execute("CREATE TABLE IF NOT EXISTS clip_metadata (clip_id TEXT PRIMARY KEY, data_json TEXT NOT NULL)")
 ensure_metadata_schema()
 
-CAMERA_KEYS=('recording_format','lens','fps','iso','white_balance','shutter')
+CAMERA_KEYS=('recording_format','lens','fps','iso','exposure_index','white_balance','shutter')
 def ensure_camera_metadata_schema():
     with db() as c:
         c.execute("""CREATE TABLE IF NOT EXISTS camera_metadata (

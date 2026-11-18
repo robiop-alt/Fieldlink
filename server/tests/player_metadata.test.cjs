@@ -105,3 +105,12 @@ test('choosing a frame line shows the guide and closes the panel',()=>{
   env.window.offsetRefreshCamera([{id:'a',camera_metadata:{lens:'24mm'}}]);assert.equal(loads,0);
   env.window.offsetChooseClip('b');assert.equal(loads,1);
  });
+
+
+test('EI mode displays exposure index as EI and never as ISO',()=>{
+  const {fields}=setup([{id:'a',filename:'A.mov',camera_metadata:{recording_format:'CinemaDNG',lens:'18mm',fps:'25',exposure_index:'800',white_balance:'5600K',shutter:'180°'}}]);
+  assert.equal(fields.children.length,6);
+  assert.equal(fields.children[3].children[0].textContent,'EI');
+  assert.equal(fields.children[3].children[1].textContent,'800');
+  assert.ok(!fields.children.some(el=>el.children[0].textContent==='ISO'));
+});

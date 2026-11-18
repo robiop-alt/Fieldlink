@@ -148,8 +148,9 @@ async function load(){
  const cameraFields=[['RAW / ProRes','recording_format'],['Lens','lens'],['FPS','fps'],['ISO','iso'],['WB','white_balance'],['Shutter','shutter']];
  const cameraDetails=clip=>{
    const data=clip.camera_metadata&&typeof clip.camera_metadata==='object'?clip.camera_metadata:{};
-   const count=cameraFields.filter(([,key])=>data[key]!=null&&String(data[key]).trim()).length;
-   return '<span class="offset-metadata-quality" title="Matched screen readings are not manually verified">'+(count?'OCR matched · '+count+'/6 fields':'Camera metadata missing')+'</span>'+cameraFields.map(([title,key])=>{
+   const fields=cameraFields.map(([label,key])=>key==='iso'&&data.exposure_index!=null&&String(data.exposure_index).trim()?['EI','exposure_index']:[label,key]);
+   const count=fields.filter(([,key])=>data[key]!=null&&String(data[key]).trim()).length;
+   return '<span class="offset-metadata-quality" title="Matched screen readings are not manually verified">'+(count?'OCR matched · '+count+'/6 fields':'Camera metadata missing')+'</span>'+fields.map(([title,key])=>{
      const value=data[key]===null||data[key]===undefined?'':String(data[key]).trim();
      return '<span class="offset-camera-field offset-camera-'+key+'" data-filled="'+(value?'true':'false')+'"><b>'+title+'</b><span>'+esc(value)+'</span></span>';
    }).join('');
@@ -242,4 +243,4 @@ async function load(){
 }
 
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-</script><script src="/static/review-enhancements.js?v=5"></script><script src="/static/offset-player.js?v=20261117-live-rushes"></script><script src="/static/incoming-status.js?v=20261117-live-rushes"></script><script defer src="/static/offset-pwa.js?v=1"></script></body></html>
+</script><script src="/static/review-enhancements.js?v=5"></script><script src="/static/offset-player.js?v=20261118-ei-hud"></script><script src="/static/incoming-status.js?v=20261117-live-rushes"></script><script defer src="/static/offset-pwa.js?v=1"></script></body></html>

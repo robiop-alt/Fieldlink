@@ -125,7 +125,15 @@ class ScreenCaptureService : Service() {
                 val capturedAt=System.currentTimeMillis()
                 recognizer.process(InputImage.fromBitmap(bitmap,0))
                     .addOnSuccessListener { result ->
-                        CameraSettingsStore.observe(this,result.text,capturedAt)
+                        val words=result.textBlocks.flatMap { block -> block.lines.flatMap { line ->
+                            line.elements.mapNotNull { element -> element.boundingBox?.let { box ->
+                                PilotHudParser.Word(element.text,box.centerX().toFloat()/width,box.centerY().toFloat()/height)
+                            } }
+                        } }
+                        val hud=PilotHudParser.parse(words)
+                        // Labelled legacy controls remain a fallback, without inventing fields.
+                        val values=if(hud.isNotEmpty())hud else CameraSettingsStore.parse(result.text)
+                        CameraSettingsStore.observeValues(this,values,capturedAt)
                     }
                     .addOnCompleteListener {
                         bitmap.recycle()
