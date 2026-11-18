@@ -1359,6 +1359,44 @@ class MainActivity : Activity() {
     private data class LibraryClip(val file:DocumentFile)
     private data class CloudClip(val id:String,val filename:String,val bytes:Long)
 
+    private fun showFrameLineSettings(overlay:FrameLineOverlay,changed:()->Unit):android.app.AlertDialog {
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(14),dp(4),dp(14),dp(4))
+        }
+        fun choices(label:String,options:List<Pair<String,String>>,selected:()->String,choose:(String)->Unit) {
+            body.addView(text(label,11f,muted))
+            val buttons=mutableListOf<Pair<String,Button>>()
+            fun refresh() {
+                for((value,control) in buttons) {
+                    val active=value==selected()
+                    control.isSelected=active
+                    control.setTextColor(if(active)bg else Color.WHITE)
+                    control.background=getDrawable(if(active)R.drawable.offset_button_primary else R.drawable.offset_button_background)
+                    control.contentDescription=control.text.toString()+if(active)", selected" else ""
+                }
+            }
+            for(rowOptions in options.chunked(4)) {
+                val row=LinearLayout(this).apply { gravity=android.view.Gravity.CENTER_VERTICAL }
+                for((value,title) in rowOptions) {
+                    val control=button(title) { choose(value);overlay.save();refresh();changed() }
+                    buttons.add(value to control)
+                    row.addView(control,LinearLayout.LayoutParams(0,dp(36),1f).apply { setMargins(dp(2),dp(3),dp(2),dp(3)) })
+                }
+                body.addView(row)
+            }
+            refresh()
+        }
+        choices("Format",listOf("off" to "Off","2.39" to "2.39:1","2.20" to "2.20:1","2.00" to "2.00:1",
+            "1.85" to "1.85:1","1.777778" to "16:9","1.333333" to "4:3"),{overlay.format},{overlay.format=it})
+        choices("Shading",listOf("25" to "25%","50" to "50%","75" to "75%","100" to "100%"),
+            {overlay.shade.toString()},{overlay.shade=it.toInt()})
+        choices("Outline",listOf("off" to "Off","white" to "White","red" to "Red","green" to "Green"),
+            {overlay.outline},{overlay.outline=it})
+        return OffsetDialogBuilder(this).setTitle("Frame lines")
+            .setView(ScrollView(this).apply { addView(body) }).setPositiveButton("Done",null).show()
+    }
+
     /** Operator-only local player. No decoding or playback runs in the background. */
     private fun showLocalClipPreview(file:DocumentFile, playlist:List<DocumentFile>) {
         val files=playlist.filter { it.isFile && it.name.orEmpty().endsWith(".mp4",true) }
@@ -1455,7 +1493,20 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.BLACK)
             addView(player,android.widget.FrameLayout.LayoutParams(-1,-1,android.view.Gravity.CENTER))
         }
+        val frameOverlay=FrameLineOverlay(this,player)
+        videoStage.addView(frameOverlay,android.widget.FrameLayout.LayoutParams(-1,-1))
         content.addView(videoStage,android.widget.FrameLayout.LayoutParams(-1,-1))
+        val frameButton=button("▭") {}.apply {
+            textSize=18f
+            contentDescription="Frame lines"
+        }
+        fun refreshFrameButton() {
+            val active=frameOverlay.format!="off"
+            frameButton.isSelected=active
+            frameButton.setTextColor(if(active)accent else Color.WHITE)
+            frameButton.contentDescription=if(active)"Frame lines: ${frameOverlay.format}" else "Frame lines: Off"
+        }
+        refreshFrameButton()
         val header=LinearLayout(this).apply {
             gravity=android.view.Gravity.CENTER_VERTICAL
             setPadding(dp(12),dp(6),dp(12),dp(6))
@@ -1481,6 +1532,7 @@ class MainActivity : Activity() {
             addView(previous,LinearLayout.LayoutParams(dp(48),dp(44)))
             addView(playback,LinearLayout.LayoutParams(dp(108),dp(44)).apply { setMargins(dp(10),0,dp(10),0) })
             addView(next,LinearLayout.LayoutParams(dp(48),dp(44)))
+            addView(frameButton,LinearLayout.LayoutParams(dp(44),dp(44)).apply { leftMargin=dp(10) })
         })
         bottom.addView(playerStatus)
         info.maxLines=1;info.ellipsize=android.text.TextUtils.TruncateAt.END
@@ -1488,15 +1540,24 @@ class MainActivity : Activity() {
         content.addView(header,android.widget.FrameLayout.LayoutParams(-1,-2,android.view.Gravity.TOP))
         content.addView(bottom,android.widget.FrameLayout.LayoutParams(-1,-2,android.view.Gravity.BOTTOM))
         var chromeVisible=true
+        var frameSettingsOpen=false
+        var frameSettingsDialog:android.app.AlertDialog?=null
         val hideChrome=Runnable {
-            if(player.isPlaying&&!scrubbing){
+            if(player.isPlaying&&!scrubbing&&!frameSettingsOpen){
                 header.visibility=View.GONE;bottom.visibility=View.GONE;chromeVisible=false
             }
         }
         fun showChrome(){
             header.visibility=View.VISIBLE;bottom.visibility=View.VISIBLE;chromeVisible=true
             handler.removeCallbacks(hideChrome)
-            if(player.isPlaying&&!scrubbing)handler.postDelayed(hideChrome,2800)
+            if(player.isPlaying&&!scrubbing&&!frameSettingsOpen)handler.postDelayed(hideChrome,2800)
+        }
+        frameButton.setOnClickListener {
+            frameSettingsOpen=true
+            showChrome()
+            frameSettingsDialog=showFrameLineSettings(frameOverlay) { refreshFrameButton() }.also { settings ->
+                settings.setOnDismissListener { frameSettingsOpen=false;showChrome() }
+            }
         }
         playbackInteraction={ showChrome() }
         videoStage.setOnClickListener {
@@ -1580,6 +1641,8 @@ class MainActivity : Activity() {
         }
         dialog.setOnDismissListener {
             closed=true
+            frameSettingsDialog?.setOnDismissListener(null)
+            frameSettingsDialog?.dismiss()
             handler.removeCallbacks(ticker);handler.removeCallbacks(hideChrome)
             try { player.stopPlayback() }catch(_:Exception){}
         }
