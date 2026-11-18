@@ -127,6 +127,33 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
         db.execSQL("DELETE FROM clip_queue WHERE uri=? AND project=?",arrayOf(uri,project))
         clearPriority(uri,project)
     }
+    /** Persistent project-local tombstone. The source document is never deleted. */
+    @Synchronized fun removeFromLibrary(file:DocumentFile,project:String):Boolean {
+        if(project.isBlank())return false
+        val uri=file.uri.toString()
+        val db=writableDatabase
+        db.beginTransaction()
+        try {
+            if(stateFor(uri,project)=="other" || getUploadId(file,project)!=null)return false
+            db.execSQL("INSERT OR IGNORE INTO media(uri,size,modified,project,state) VALUES(?,?,?,?,'removed')",
+                arrayOf(uri,file.length(),file.lastModified(),project))
+            db.execSQL("UPDATE media SET state='removed',project=?,upload_id=NULL,received=0 WHERE uri=?",
+                arrayOf(project,uri))
+            db.execSQL("DELETE FROM clip_queue WHERE uri=? AND project=?",arrayOf(uri,project))
+            db.execSQL("DELETE FROM upload_priority WHERE uri=? AND project=?",arrayOf(uri,project))
+            db.execSQL("DELETE FROM transfer_progress WHERE uri=? AND project=?",arrayOf(uri,project))
+            db.setTransactionSuccessful()
+            return true
+        }finally { db.endTransaction() }
+    }
+    @Synchronized fun removedUris(project:String):Set<String> {
+        val result=mutableSetOf<String>()
+        readableDatabase.rawQuery("SELECT uri FROM media WHERE project=? AND state='removed'",arrayOf(project)).use { rows ->
+            while(rows.moveToNext())result.add(rows.getString(0))
+        }
+        return result
+    }
+
     @Synchronized fun queueUris(project:String):Set<String> {
         val result=mutableSetOf<String>()
         readableDatabase.rawQuery("SELECT uri FROM clip_queue WHERE project=?",arrayOf(project)).use { rows -> while(rows.moveToNext()) result.add(rows.getString(0)) }
@@ -249,8 +276,10 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
             return if(c.moveToFirst() && !c.isNull(0)) c.getString(0) else null
         }
     }
-    @Synchronized fun setUploadId(f: DocumentFile, project: String, id: String) {
-        writableDatabase.execSQL("UPDATE media SET upload_id=? WHERE uri=? AND project=? AND state='pending'", arrayOf(id,f.uri.toString(),project))
+    @Synchronized fun setUploadId(f: DocumentFile, project: String, id: String):Boolean {
+        val values=android.content.ContentValues().apply { put("upload_id",id) }
+        return writableDatabase.update("media",values,"uri=? AND project=? AND state='pending'",
+            arrayOf(f.uri.toString(),project))==1
     }
     @Synchronized fun clearUploadId(f: DocumentFile, project: String) {
         writableDatabase.execSQL("UPDATE media SET upload_id=NULL WHERE uri=? AND project=? AND state='pending'", arrayOf(f.uri.toString(),project))

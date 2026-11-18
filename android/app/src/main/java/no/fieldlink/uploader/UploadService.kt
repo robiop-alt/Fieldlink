@@ -499,7 +499,7 @@ class UploadService : Service() {
             uploadId = JSONObject(response).getString("upload_id")
             // commit() persists before any chunk is transferred.
             prefs.edit().putBoolean("upload_low_$uploadId",lowMode).commit()
-            ledger.setUploadId(doc,project,uploadId)
+            if(!ledger.setUploadId(doc,project,uploadId))return false
         }
         val state = execute(Request.Builder().url("$base/api/upload/$uploadId")
             .header("X-Device-Token",token).get().build()) ?: return false

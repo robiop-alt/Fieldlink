@@ -1829,7 +1829,8 @@ class MainActivity : Activity() {
                 allLocalMedia=media
                 visibleMediaBytes=media.sumOf { it.length().coerceAtLeast(0L) }
                 visibleMediaCount=media.size
-                for(file in media.take(250)) clips.add(LibraryClip(file))
+                val removedUris=ProjectLedger(this).removedUris(pid)
+                for(file in media.filter { it.uri.toString() !in removedUris }.take(250)) clips.add(LibraryClip(file))
             }catch(e:Exception) {serverError="Could not read CACHE_VIDEO: ${e.localizedMessage}"}
             if(base.startsWith("https://") && secret.isNotBlank()) {
                 try {
@@ -1853,8 +1854,16 @@ class MainActivity : Activity() {
                 val ledger=ProjectLedger(this)
                 val queued=ledger.queueUris(pid)
                 val priorityUris=ledger.urgentUris(pid).toSet()
-                val remoteByName=remote.associateBy { it.filename }
-                val localNames=clips.mapNotNull { it.file.name }.toSet()
+                val remoteByName=remote.associateBy { it.filename }.toMutableMap()
+                for(item in clips) {
+                    val name=item.file.name ?: continue
+                    val lowName=name.substringBeforeLast('.')+"_LOW_DATA.mp4"
+                    remote.firstOrNull { it.filename.equals(lowName,true) }?.let { remoteByName.putIfAbsent(name,it) }
+                }
+                val localNames=clips.flatMap { item ->
+                    val name=item.file.name ?: return@flatMap emptyList<String>()
+                    listOf(name,remoteByName[name]?.filename ?: name)
+                }.toSet()
                 val uploaded=clips.count { (it.file.name ?: "") in remoteByName }
                 status.text="${clips.size} local  ·  ${uploaded} uploaded  ·  ${ledger.pendingQueue(pid).size} waiting  ·  ${priorityUris.size} priority" +
                     if(cloudAvailable) "" else "\n$serverError"
@@ -1903,7 +1912,12 @@ class MainActivity : Activity() {
                     performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection && remoteByName[it.file.name.orEmpty()]==null }
                         .map { it.file },"exclude")
                 }
+                val bulkRemove=button("Remove") {
+                    removeLibraryClips(pid,clips.filter { it.file.uri.toString() in selection }.map { it.file },
+                        remote.filter { "cloud:"+it.id in selection })
+                }
                 fun refreshBulk() {
+                    bulkRemove.isEnabled=selection.isNotEmpty()
                     selectedCount.text="${selection.size} selected"
                     for(control in listOf(bulkQueue,bulkPriority,bulkClearPriority,bulkExclude))
                         control.isEnabled=clips.any { item ->
@@ -1912,11 +1926,15 @@ class MainActivity : Activity() {
                             ledger.stateFor(item.file.uri.toString(),pid) !in listOf("other","done")
                         }
                 }
+                bulk.addView(bulkRemove)
                 bulk.addView(bulkQueue)
                 bulk.addView(bulkPriority)
                 bulk.addView(bulkClearPriority)
                 bulk.addView(bulkExclude)
-                grid.addView(bulk)
+                grid.addView(android.widget.HorizontalScrollView(this).apply {
+                    isHorizontalScrollBarEnabled=false
+                    addView(bulk)
+                })
                 refreshBulk()
                 if(clips.isEmpty()) grid.addView(text("No local MP4 clips found. Cloud-only clips are listed below.",13f,muted))
                 val columns=if(resources.displayMetrics.widthPixels>=dp(760)) 3 else 2
@@ -2026,8 +2044,9 @@ class MainActivity : Activity() {
                         transferLabels.add(transferText to file)
                     }
                     val actions=mutableListOf<Pair<String,()->Unit>>()
+                    if(cloud==null && localState!="other")actions.add("Remove" to { removeLibraryClips(pid,listOf(file),emptyList()) })
                     if(cloud!=null && cloudAvailable) {
-                        actions.add("Delete from review" to { confirmDeleteCloudClip(pid,cloud.id,name) })
+                        actions.add("Remove" to { removeLibraryClips(pid,listOf(file),emptyList()) })
                     }else if(isQueued || (localState=="pending" && prefs.getString("upload_mode","auto")=="auto")) {
                         actions.add("Prioritize next" to {
                             if(ledger.prioritizeNext(file.uri.toString(),pid))showMediaLibraryPage()
@@ -2080,9 +2099,19 @@ class MainActivity : Activity() {
                         setPadding(dp(10),dp(8),dp(10),dp(8))
                         background=rounded(panel,Color.rgb(52,62,64))
                     }
+                    val cloudSelect=android.widget.CheckBox(this).apply {
+                        contentDescription="Select ${cloud.filename}"
+                        buttonTintList=android.content.res.ColorStateList.valueOf(accent)
+                        setPadding(0,0,0,0)
+                        setOnCheckedChangeListener { _,checked ->
+                            if(checked)selection.add("cloud:"+cloud.id) else selection.remove("cloud:"+cloud.id)
+                            refreshBulk()
+                        }
+                    }
+                    line.addView(cloudSelect,LinearLayout.LayoutParams(dp(33),dp(40)))
                     line.addView(text("${cloud.filename}\nUPLOADED · CLOUD ONLY",12f,accent),
                         LinearLayout.LayoutParams(0,-2,1f))
-                    line.addView(button("Delete") { confirmDeleteCloudClip(pid,cloud.id,cloud.filename) })
+                    line.addView(button("Remove") { removeLibraryClips(pid,emptyList(),listOf(cloud)) })
                     grid.addView(line,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
                 }
                 grid.addView(text("Deleting from review removes only the cloud proxy. Original DJI files are never deleted.",11f,muted))
@@ -2090,32 +2119,74 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun confirmDeleteCloudClip(pid:String,clipId:String,name:String) {
-        showOffsetConfirm("Remove clip from review?",
-            "$name will be removed from the review site. The original DJI file stays on the controller.",
+
+    private fun removeLibraryClips(pid:String,files:List<DocumentFile>,cloudClips:List<CloudClip>) {
+        if(files.isEmpty() && cloudClips.isEmpty())return
+        val base=normalizedServerUrl(server.text.toString())
+        val secret=token.text.toString().trim()
+        showOffsetConfirm("Remove selected clips?",
+            "Remove these clips from Media Library and the review site. Original DJI files stay in the cache and will not be uploaded again. Active uploads must finish first.",
             "Remove",destructive=true) {
-                Thread {
-                    val error=try {
-                        val base=normalizedServerUrl(server.text.toString())
-                        val req=Request.Builder()
-                            .url("$base/api/device/projects/${Uri.encode(pid)}/clips/${Uri.encode(clipId)}")
-                            .header("X-Device-Token",token.text.toString().trim())
-                            .delete().build()
-                        OkHttpClient().newCall(req).execute().use { res ->
-                            if(res.isSuccessful) null
-                            else "Server HTTP ${res.code}: ${res.body?.string()?.take(150)}"
-                        }
-                    }catch(e:Exception){e.localizedMessage ?: "Network error"}
-                    runOnUiThread {
-                        if(error==null) {
-                            ProjectLedger(this).logEvent(pid,name,"removed","Deleted cloud proxy from review")
-                            showMediaLibraryPage()
-                        }else showOffsetError("Clip not removed",
-                            "The proxy is still in the review project. Check your connection and try again.",
-                            error)
+            val progress=OffsetDialogBuilder(this).setTitle("Removing clips…")
+                .setMessage("Removing selected clips from the library and review site.")
+                .setCancelable(false).show()
+            Thread {
+                val ledger=ProjectLedger(this)
+                val client=OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).build()
+                var removed=0
+                val failures=mutableListOf<String>()
+                try {
+                    // Refresh before removing anything: offline is not proof of deletion.
+                    val req=Request.Builder().url("$base/api/device/projects/${Uri.encode(pid)}/uploads")
+                        .header("X-Device-Token",secret).get().build()
+                    val remote=client.newCall(req).execute().use { res ->
+                        if(!res.isSuccessful)throw IllegalStateException("Cloud check HTTP ${res.code}")
+                        val arr=JSONObject(res.body?.string() ?: "{}").optJSONArray("clips")
+                        (0 until (arr?.length() ?: 0)).map { arr!!.getJSONObject(it) }
                     }
-                }.start()
-            }
+                    val deleted=mutableSetOf<String>()
+                    fun deleteCloud(id:String) {
+                        if(id in deleted)return
+                        val request=Request.Builder()
+                            .url("$base/api/device/projects/${Uri.encode(pid)}/clips/${Uri.encode(id)}")
+                            .header("X-Device-Token",secret).delete().build()
+                        client.newCall(request).execute().use { res ->
+                            if(!res.isSuccessful && res.code!=404)throw IllegalStateException("Remove HTTP ${res.code}")
+                        }
+                        deleted.add(id)
+                    }
+                    for(file in files) {
+                        if(prefs.getString("project","")!=pid)throw IllegalStateException("Project changed; remaining clips were not removed.")
+                        val name=file.name ?: "clip"
+                        if(ledger.stateFor(file.uri.toString(),pid)=="other" || ledger.getUploadId(file,pid)!=null) {
+                            failures.add("$name: upload in progress or another project");continue
+                        }
+                        try {
+                            val lowName=name.substringBeforeLast('.')+"_LOW_DATA.mp4"
+                            for(clip in remote.filter { it.optString("filename").equals(name,true) || it.optString("filename").equals(lowName,true) })
+                                deleteCloud(clip.getString("id"))
+                            if(!ledger.removeFromLibrary(file,pid))throw IllegalStateException("Upload started; try again when finished")
+                            ledger.logEvent(pid,name,"removed","Removed from library and review; original retained")
+                            removed++
+                        }catch(e:Exception){failures.add("$name: ${e.localizedMessage}")}
+                    }
+                    for(clip in cloudClips) {
+                        if(clip.id in deleted)continue
+                        if(prefs.getString("project","")!=pid)throw IllegalStateException("Project changed; remaining clips were not removed.")
+                        try { deleteCloud(clip.id);removed++ }
+                        catch(e:Exception){failures.add("${clip.filename}: ${e.localizedMessage}")}
+                    }
+                }catch(e:Exception){failures.add(e.localizedMessage ?: "Connection failed")}
+                runOnUiThread {
+                    progress.dismiss()
+                    if(prefs.getString("project","")==pid)showMediaLibraryPage()
+                    OffsetDialogBuilder(this).setTitle(if(failures.isEmpty())"Clips removed" else "Removal incomplete")
+                        .setMessage("$removed removed. Original DJI files retained."+
+                            if(failures.isEmpty())"" else "\n\n"+failures.take(8).joinToString("\n"))
+                        .setPositiveButton("Close",null).show()
+                }
+            }.start()
+        }
     }
 
     private fun showClipLibrary() {
