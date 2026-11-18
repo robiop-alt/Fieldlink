@@ -258,6 +258,10 @@ class MainActivity : Activity() {
         orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(14),dp(18),dp(14));background=rounded(panel,Color.rgb(57,65,67))
         addView(text(title,15f))
     }
+    override fun onStart() {
+        MetadataCaptureGate.setOffsetVisible(true,android.os.SystemClock.elapsedRealtime())
+        super.onStart()
+    }
     override fun onResume() {
         super.onResume()
         refreshUploadChoice()
@@ -271,6 +275,7 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        MetadataCaptureGate.setOffsetVisible(false,android.os.SystemClock.elapsedRealtime())
         // A manual end-of-day SD copy must never continue when DJI Pilot comes back.
         if(sdBackupRunning)sdBackupCancel=true
         super.onStop()
@@ -1326,12 +1331,12 @@ class MainActivity : Activity() {
         val readAt=prefs.getLong("metadata_last_read_at",0L)
         val fields=prefs.getString("metadata_last_fields","").orEmpty()
         val age=if(readAt>0L)((System.currentTimeMillis()-readAt)/1000).coerceAtLeast(0) else -1L
-        val reading=if(age>=0) "Last screen reading: $age seconds ago" else "No screen readings recorded"
+        val reading=if(age>=0) "Last external screen reading: $age seconds ago" else "No external screen readings recorded"
         val detected=if(fields.isBlank()) "No labelled camera fields recognized. Open the DJI Pilot camera view." else "Recognized: $fields"
         OffsetDialogBuilder(this).setTitle("Camera metadata")
             .setMessage("Screen access: ${if(active) "ON" else "OFF"}\n$reading\n$detected\n\n"+
                 prefs.getString("metadata_last_delivery","No camera fields attached yet.").orEmpty()+
-                "\n\nReadings are collected only while screen access is enabled. Existing clips are not filled with current camera settings.")
+                "\n\nReading pauses while OFFSET is open, preserving the last external-screen result. Open DJI Pilot for 10-15 seconds, then return here. Existing clips are not filled with current settings.")
             .setNegativeButton("Close",null)
             .setNeutralButton("Reading details") { _,_ ->
                 OffsetDialogBuilder(this).setTitle("HUD reading details")

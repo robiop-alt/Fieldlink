@@ -61,7 +61,9 @@ class ScreenCaptureService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        lastReadingDetails="Waiting for the first screen reading."
+        lastReadingDetails="Waiting for the first external screen reading. Open DJI Pilot for 10-15 seconds."
+        getSharedPreferences("fieldlink",MODE_PRIVATE).edit()
+            .remove("metadata_last_read_at").remove("metadata_last_fields").apply()
         val channel="offset_metadata"
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(channel,"OFFSET kamerametadata",NotificationManager.IMPORTANCE_LOW))
@@ -111,6 +113,11 @@ class ScreenCaptureService : Service() {
                 val now=System.currentTimeMillis()
                 if(now-lastAttempt<5000L || !busy.compareAndSet(false,true))return@setOnImageAvailableListener
                 lastAttempt=now
+                val captureTick=android.os.SystemClock.elapsedRealtime()
+                if(!MetadataCaptureGate.allowFrame(captureTick)) {
+                    busy.set(false)
+                    return@setOnImageAvailableListener
+                }
                 if(PilotForeground.permissionGranted(this) && !PilotForeground.isPilotVisible(this)) {
                     busy.set(false)
                     return@setOnImageAvailableListener
@@ -129,6 +136,9 @@ class ScreenCaptureService : Service() {
                 val capturedAt=System.currentTimeMillis()
                 recognizer.process(InputImage.fromBitmap(bitmap,0))
                     .addOnSuccessListener { result ->
+                        // Returning to OFFSET must not overwrite the Pilot result
+                        // with text from Settings or this diagnostic dialog.
+                        if(!MetadataCaptureGate.allowFrame(captureTick))return@addOnSuccessListener
                         val words=result.textBlocks.flatMap { block -> block.lines.flatMap { line ->
                             line.elements.mapNotNull { element -> element.boundingBox?.let { box ->
                                 PilotHudParser.Word(element.text,box.centerX().toFloat()/width,box.centerY().toFloat()/height)
