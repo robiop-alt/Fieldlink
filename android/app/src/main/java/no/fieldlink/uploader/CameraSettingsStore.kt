@@ -20,11 +20,11 @@ object CameraSettingsStore {
 
     fun parse(screen:String):Map<String,String> {
         val text=screen.uppercase(Locale.ROOT).replace('°','°')
-        val lines=text.lines().map { it.trim().replace(Regex("\\s+")," ") }
+        val lines=listOf(text.trim().replace(Regex("\\s+")," "))
         val values=mutableMapOf<String,String>()
-        fun first(regex:Regex):String? = lines.firstNotNullOfOrNull { line ->
-            regex.find(line)?.groupValues?.getOrNull(1)
-        }
+        fun first(regex:Regex):String? = lines.flatMap { line ->
+            regex.findAll(line).map { it.groupValues[1] }.toList()
+        }.distinct().singleOrNull()
         // Only explicitly labelled controls; never infer a camera format from MP4.
         first(Regex("\\b(?:RECORDING FORMAT|RECORD FORMAT|CODEC)\\s*[:=]?\\s*(APPLE PRORES(?:\\s+(?:RAW|422(?: HQ)?))?|PRORES(?:\\s+(?:RAW|422(?: HQ)?))?|CINEDNG|CDNG)\\b"))
             ?.let { values["recording_format"]=it.take(32) }
@@ -46,6 +46,9 @@ object CameraSettingsStore {
 
     @Synchronized fun observe(context:Context, screen:String, whenMs:Long=System.currentTimeMillis()) {
         val values=parse(screen)
+        val statusPrefs=context.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
+        statusPrefs.edit().putLong("metadata_last_read_at",whenMs)
+            .putString("metadata_last_fields",values.keys.sorted().joinToString(", ")).apply()
         if(values.isEmpty())return
         val project=context.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
             .getString("project","").orEmpty()
@@ -81,10 +84,43 @@ object CameraSettingsStore {
             }
             if(values.size>=2)matching.add(values to t)
         }
-        // Require two consistent observations, and never merge conflicting readings.
-        if(matching.size<2)return null
-        val base=matching.first().first
-        if(matching.any { it.first!=base })return null
-        return base to matching.last().second
+        return confirmedSamples(matching)
+    }
+
+    internal fun confirmedSamples(samples:List<Pair<Map<String,String>,Long>>):Pair<Map<String,String>,Long>? {
+        if(samples.map { it.second }.distinct().size<2)return null
+        val confirmed=mutableMapOf<String,String>()
+        for(key in settings) {
+            val readings=samples.mapNotNull { (values,time) -> values[key]?.let { it to time } }
+            if(readings.map { it.second }.distinct().size>=2 && readings.map { it.first }.distinct().size==1)
+                confirmed[key]=readings.first().first
+        }
+        if(confirmed.isEmpty())return null
+        return confirmed to samples.maxOf { it.second }
+    }
+
+    /** Freeze a confirmed reading before a slow upload can outlive the OCR buffer. */
+    @Synchronized fun bind(context:Context, project:String, uri:String, modified:Long):Pair<Map<String,String>,Long>? {
+        val prefs=context.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
+        val entries=try { JSONArray(prefs.getString("camera_file_bindings","[]")) }catch(_:Exception){JSONArray()}
+        val retained=JSONArray()
+        val now=System.currentTimeMillis()
+        for(i in 0 until entries.length()) {
+            val item=entries.optJSONObject(i)?:continue
+            if(now-item.optLong("observed") !in 0..MAX_AGE_MS)continue
+            if(item.optString("project")==project && item.optString("uri")==uri) {
+                if(item.optLong("modified")==modified) {
+                    val obj=item.optJSONObject("values")?:continue
+                    val values=settings.mapNotNull { key -> obj.optString(key).takeIf { it.isNotBlank() }?.let { key to it } }.toMap()
+                    if(values.isNotEmpty())return values to item.optLong("observed")
+                }
+            }else retained.put(item)
+        }
+        val matched=match(context,project,modified)?:return null
+        retained.put(JSONObject().put("project",project).put("uri",uri).put("modified",modified)
+            .put("observed",matched.second).put("values",JSONObject(matched.first)))
+        while(retained.length()>200)retained.remove(0)
+        prefs.edit().putString("camera_file_bindings",retained.toString()).apply()
+        return matched
     }
 }

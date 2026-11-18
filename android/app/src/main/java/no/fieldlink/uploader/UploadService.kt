@@ -183,7 +183,10 @@ class UploadService : Service() {
                         val stable=if(old!=null && old.size==size && old.modified==modified)
                             (old.stableScans+1).coerceAtMost(3) else 0
                         seen[key]=FileState(size,modified,stable)
-                        if(stable>=3) ledger.observe(file,sessionProject,true)
+                        if(stable>=3) {
+                            ledger.observe(file,sessionProject,true)
+                            runCatching { CameraSettingsStore.bind(this,sessionProject,key,modified) }
+                        }
                     }
                     status("OFFSET off · monitoring DJI files · uploads paused")
                     Thread.sleep(12000)
@@ -233,7 +236,11 @@ class UploadService : Service() {
                         .thenBy { it.lastModified() }.thenBy { it.name ?: "" })
                 }
                 val eligible=ordered.filter { file ->
-                    try { ledger.observe(file,sessionProject,true)=="pending" }catch(_:Exception){false}
+                    try {
+                        val pending=ledger.observe(file,sessionProject,true)=="pending"
+                        if(pending)runCatching { CameraSettingsStore.bind(this,sessionProject,file.uri.toString(),file.lastModified()) }
+                        pending
+                    }catch(_:Exception){false}
                 }
                 publishIncoming(eligible + manualFiles.filter {
                     ledger.stateFor(it.uri.toString(),sessionProject)=="pending"
@@ -429,6 +436,7 @@ class UploadService : Service() {
         val base = sessionBase
         val project = sessionProject
         val token = sessionToken
+        runCatching { CameraSettingsStore.bind(this,sessionProject,doc.uri.toString(),doc.lastModified()) }
         val originalName = doc.name ?: "drone_clip.mp4"
         var uploadId = ledger.getUploadId(doc,project)
         // Freeze the encoding choice at upload/init. Never switch bytes on resume.
@@ -589,7 +597,10 @@ class UploadService : Service() {
      */
     private fun sendCameraSettings(doc:DocumentFile,clipId:String) {
         try {
-            val matched=CameraSettingsStore.match(this,sessionProject,doc.lastModified())?:return
+            val matched=CameraSettingsStore.bind(this,sessionProject,doc.uri.toString(),doc.lastModified())?:run {
+                prefs.edit().putString("metadata_last_delivery","No matching camera reading for "+(doc.name ?: "clip")).apply()
+                return
+            }
             val (values,observedAt)=matched
             val payload=JSONObject()
                 .put("project_id",sessionProject)
@@ -602,6 +613,8 @@ class UploadService : Service() {
                 .put(payload).build()
             // Camera metadata is best-effort, independent of verified video delivery.
             http.newCall(request).execute().use { response ->
+                prefs.edit().putString("metadata_last_delivery",if(response.isSuccessful)
+                    "Attached to "+(doc.name ?: "clip") else "Server rejected camera fields: HTTP ${response.code}").apply()
                 if(!response.isSuccessful)status("Camera settings not attached · clip remains safe")
             }
         }catch(_:Exception) {

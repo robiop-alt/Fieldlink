@@ -154,7 +154,10 @@ class OverlayStatus(private val ctx: Context) {
             visibility=if(expanded) View.VISIBLE else View.GONE
         }
         actionLabel?.visibility=if(expanded) View.VISIBLE else View.GONE
-        permissionTap?.visibility=if(last.contains("permission needed",true)) View.VISIBLE else View.GONE
+        permissionTap?.apply {
+            text=if(!ScreenCaptureService.isReading) "!  ENABLE METADATA" else "!  ALLOW ACCESS"
+            visibility=if(last.contains("permission needed",true)) View.VISIBLE else View.GONE
+        }
         metadataTap?.visibility=if(!last.contains("permission needed",true) &&
             prefs.getBoolean("metadata_reminder",true) &&
             !prefs.getBoolean("metadata_capture_active",false)) View.VISIBLE else View.GONE
@@ -240,7 +243,7 @@ class OverlayStatus(private val ctx: Context) {
             }
         }
         val permission=TextView(ctx).apply {
-            text="!  ALLOW ACCESS"
+            text=if(!ScreenCaptureService.isReading) "!  ENABLE METADATA" else "!  ALLOW ACCESS"
             textSize=10f
             setTypeface(null,Typeface.BOLD)
             setTextColor(Color.rgb(255,194,93))
@@ -249,7 +252,7 @@ class OverlayStatus(private val ctx: Context) {
             setOnClickListener {
                 try {
                     ctx.startActivity(Intent(ctx,MainActivity::class.java)
-                        .putExtra("request_permission_help",true)
+                        .putExtra(if(!ScreenCaptureService.isReading) "request_metadata_access" else "request_permission_help",true)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
                 }catch(_:Exception){}
             }

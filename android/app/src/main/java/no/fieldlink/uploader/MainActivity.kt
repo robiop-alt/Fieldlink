@@ -332,9 +332,20 @@ class MainActivity : Activity() {
         folderLabel=text("",12f,muted)
         upload.addView(folderLabel)
         upload.addView(row(
-            button("Camera metadata") { startMetadataCapture() },
+            button("Camera metadata") { showCameraMetadataStatus() },
             button("Permissions") { showPermissionStatus() }
         ))
+        val metadataState=text("",12f,muted)
+        upload.addView(metadataState)
+        metadataState.post(object:Runnable {
+            override fun run() {
+                if(!metadataState.isAttachedToWindow)return
+                val active=ScreenCaptureService.isReading
+                metadataState.text=if(active) "Camera metadata: ON" else "Camera metadata: OFF · tap Camera metadata to enable"
+                metadataState.setTextColor(if(active) accent else Color.rgb(255,104,106))
+                metadataState.postDelayed(this,1500)
+            }
+        })
         uploadChoiceLabel=text("",12f,muted)
         upload.addView(uploadChoiceLabel)
         startUploadButton=button("Start upload") { saveAndStart();refreshUploadChoice() }
@@ -504,16 +515,7 @@ class MainActivity : Activity() {
         }
         settings.addView(pilotOnly)
         settings.addView(text("When off, floating status can appear over other apps. When on, it appears only in DJI Pilot 2. Uploads continue in the background either way.",11f,muted))
-        val metadataReminder=Switch(this).apply {
-            text="Metadata access reminder"
-            setTextColor(Color.WHITE)
-            isChecked=prefs.getBoolean("metadata_reminder",true)
-            setOnCheckedChangeListener { _,checked ->
-                prefs.edit().putBoolean("metadata_reminder",checked).apply()
-            }
-        }
-        settings.addView(metadataReminder)
-        settings.addView(text("Show a small METADATA TAP prompt over DJI Pilot when screen capture access is inactive.",12f,muted))
+        settings.addView(text("Camera metadata is expected ON. OFFSET always warns when screen access is missing or stops; tap Enable metadata to restore access.",12f,muted))
 
         settings.addView(text("FLOATING STATUS STYLE",12f,accent))
         val styles=android.widget.RadioGroup(this).apply {
@@ -1317,6 +1319,24 @@ class MainActivity : Activity() {
         showOffsetConfirm("Camera metadata access",
             "Allow OFFSET to read the DJI Pilot display for camera metadata during this session? Android will ask for screen capture permission. You can stop it at any time.",
             "Continue") { startMetadataCapture() }
+    }
+
+    private fun showCameraMetadataStatus() {
+        val active=ScreenCaptureService.isReading
+        val readAt=prefs.getLong("metadata_last_read_at",0L)
+        val fields=prefs.getString("metadata_last_fields","").orEmpty()
+        val age=if(readAt>0L)((System.currentTimeMillis()-readAt)/1000).coerceAtLeast(0) else -1L
+        val reading=if(age>=0) "Last screen reading: $age seconds ago" else "No screen readings recorded"
+        val detected=if(fields.isBlank()) "No labelled camera fields recognized. Open the DJI Pilot camera view." else "Recognized: $fields"
+        OffsetDialogBuilder(this).setTitle("Camera metadata")
+            .setMessage("Screen access: ${if(active) "ON" else "OFF"}\n$reading\n$detected\n\n"+
+                prefs.getString("metadata_last_delivery","No camera fields attached yet.").orEmpty()+
+                "\n\nReadings are collected only while screen access is enabled. Existing clips are not filled with current camera settings.")
+            .setNegativeButton("Close",null)
+            .setPositiveButton(if(active) "Restart reading" else "Enable reading") { _,_ ->
+                stopService(Intent(this,ScreenCaptureService::class.java))
+                startMetadataCapture()
+            }.show()
     }
 
     private fun startMetadataCapture() {

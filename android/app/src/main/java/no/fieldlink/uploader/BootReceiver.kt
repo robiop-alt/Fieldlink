@@ -22,6 +22,10 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action != Intent.ACTION_BOOT_COMPLETED && intent?.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val prefs=context.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
+        // Screen capture consent never survives a controller reboot.
+        if(intent.action==Intent.ACTION_BOOT_COMPLETED)
+            prefs.edit().putBoolean("metadata_capture_active",false).apply()
+        if(!ScreenCaptureService.isReading)ScreenCaptureService.notifyAccessNeeded(context)
         // Do not override the operator's master power choice on reboot.
         if (!prefs.getBoolean("start_on_boot",true)) return
         // The lightweight status pill is independent of the uploader, so it

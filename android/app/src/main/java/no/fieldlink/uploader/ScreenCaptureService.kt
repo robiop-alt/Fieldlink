@@ -29,6 +29,24 @@ import java.util.concurrent.atomic.AtomicBoolean
  * foreground if usage-access permission makes that detectable.
  */
 class ScreenCaptureService : Service() {
+    companion object {
+        @Volatile var isReading=false
+            private set
+        fun notifyAccessNeeded(context:android.content.Context) {
+            val manager=context.getSystemService(NotificationManager::class.java)
+            val channel="offset_metadata_access"
+            manager.createNotificationChannel(NotificationChannel(channel,"OFFSET metadata access",NotificationManager.IMPORTANCE_DEFAULT))
+            val open=Intent(context,MainActivity::class.java).putExtra("request_metadata_access",true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            val tap=android.app.PendingIntent.getActivity(context,4302,open,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+            manager.notify(4302,Notification.Builder(context,channel)
+                .setContentTitle("OFFSET · Camera metadata OFF")
+                .setContentText("Screen access required · tap to enable before recording")
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setContentIntent(tap).setOngoing(true).setOnlyAlertOnce(true).build())
+        }
+    }
     private var projection: MediaProjection?=null
     private var display: VirtualDisplay?=null
     private var reader: ImageReader?=null
@@ -48,7 +66,7 @@ class ScreenCaptureService : Service() {
             .setContentText("DJI Pilot screen readings · on-device only")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setOngoing(true).build()
-        startForeground(43,note)
+        startForeground(4301,note)
     }
 
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
@@ -66,6 +84,9 @@ class ScreenCaptureService : Service() {
                 override fun onStop() { mainHandler.post { stopSelf() } }
             },mainHandler)
             startReading()
+            check(display!=null) { "Screen reader did not start" }
+            isReading=true
+            getSystemService(NotificationManager::class.java).cancel(4302)
             getSharedPreferences("fieldlink",MODE_PRIVATE).edit()
                 .putBoolean("metadata_capture_active",true).apply()
         }catch(_:Exception) { stopSelf() }
@@ -120,6 +141,8 @@ class ScreenCaptureService : Service() {
     override fun onBind(intent:Intent?):IBinder?=null
 
     override fun onDestroy() {
+        isReading=false
+        notifyAccessNeeded(this)
         getSharedPreferences("fieldlink",MODE_PRIVATE).edit()
             .putBoolean("metadata_capture_active",false).apply()
         reader?.setOnImageAvailableListener(null,null)

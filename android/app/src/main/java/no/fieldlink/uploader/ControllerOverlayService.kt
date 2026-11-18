@@ -40,6 +40,7 @@ class ControllerOverlayService : Service() {
     private var latestStatus="Ready"
     private var permissionCheckAt=0L
     private var missingPermission:String?=null
+    private var metadataWasActive:Boolean?=null
     private fun permissionNotice():String? {
         val now=System.currentTimeMillis()
         if(now-permissionCheckAt<8000L)return missingPermission
@@ -60,6 +61,7 @@ class ControllerOverlayService : Service() {
         return missingPermission
     }
     private fun showStatus():String {
+        if(!ScreenCaptureService.isReading)return "Permission needed · Camera metadata OFF · tap to enable"
         permissionNotice()?.let { return it }
         val until=prefs.getLong("overlay_notice_until",0L)
         val critical=prefs.getString("overlay_notice",null)
@@ -71,6 +73,12 @@ class ControllerOverlayService : Service() {
     }
     private val visibilityCheck=object:Runnable {
         override fun run() {
+            val active=ScreenCaptureService.isReading
+            if(metadataWasActive!=active) {
+                metadataWasActive=active
+                if(active)getSystemService(NotificationManager::class.java).cancel(4302)
+                else ScreenCaptureService.notifyAccessNeeded(this@ControllerOverlayService)
+            }
             syncVisibility()
             overlay?.update(showStatus())
             handler.postDelayed(this,1500)
