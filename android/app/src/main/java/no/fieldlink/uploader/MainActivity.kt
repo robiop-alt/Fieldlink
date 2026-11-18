@@ -1496,15 +1496,15 @@ class MainActivity : Activity() {
         val frameOverlay=FrameLineOverlay(this,player)
         videoStage.addView(frameOverlay,android.widget.FrameLayout.LayoutParams(-1,-1))
         content.addView(videoStage,android.widget.FrameLayout.LayoutParams(-1,-1))
-        val frameButton=button("▭") {}.apply {
+        val frameButton=button("⚙") {}.apply {
             textSize=18f
-            contentDescription="Frame lines"
+            contentDescription="Player settings: frame lines"
         }
         fun refreshFrameButton() {
             val active=frameOverlay.format!="off"
             frameButton.isSelected=active
             frameButton.setTextColor(if(active)accent else Color.WHITE)
-            frameButton.contentDescription=if(active)"Frame lines: ${frameOverlay.format}" else "Frame lines: Off"
+            frameButton.contentDescription=if(active)"Player settings: frame lines ${frameOverlay.format}" else "Player settings: frame lines Off"
         }
         refreshFrameButton()
         val header=LinearLayout(this).apply {
