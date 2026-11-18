@@ -34,6 +34,13 @@ class ProjectLedger(ctx: Context) : SQLiteOpenHelper(ctx, "offset_ledger.db", nu
             return if(it.moveToFirst())Transfer(it.getString(0),it.getLong(1),it.getLong(2),it.getLong(3))else null
         }
     }
+    @Synchronized fun transfers(project:String):Map<String,Transfer> {
+        val result=mutableMapOf<String,Transfer>()
+        readableDatabase.rawQuery("SELECT uri,phase,received,total,updated FROM transfer_progress WHERE project=?",arrayOf(project)).use { rows ->
+            while(rows.moveToNext())result[rows.getString(0)]=Transfer(rows.getString(1),rows.getLong(2),rows.getLong(3),rows.getLong(4))
+        }
+        return result
+    }
     @Synchronized fun requestRetry(uri:String,project:String):Boolean {
         if(stateFor(uri,project)!="pending")return false
         // Preserve upload_id and confirmed offset. The service reconciles with the server.

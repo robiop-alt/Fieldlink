@@ -2171,8 +2171,12 @@ class MainActivity : Activity() {
             setBackgroundColor(bg)
         }
         val urgent=queue.count { it.priority }
-        layout.addView(text("${queue.size} waiting · ${urgent} prioritized · active upload finishes first",
-            12f,muted))
+        val summary=text("${queue.size} waiting · ${urgent} prioritized · active upload finishes first",12f,muted)
+        layout.addView(summary)
+        data class QueueRow(val item:ProjectLedger.QueueEntry,val status:TextView,
+                            val bar:android.widget.ProgressBar,val actions:MutableList<Button>,
+                            var available:Boolean,var size:Long)
+        val progressRows=mutableListOf<QueueRow>()
         var queueDialog:AlertDialog?=null
         layout.addView(button(if(searchTerm.isBlank())"Find clip by name" else "Filter: $searchTerm · Change") {
             val field=EditText(this).apply {
@@ -2211,6 +2215,13 @@ class MainActivity : Activity() {
                 setPadding(dp(10),dp(6),dp(8),dp(6))
                 background=rounded(panel,if(item.priority) accent else Color.rgb(57,65,67),10)
             }
+            val statusText=text("Queued",11f,muted)
+            val progress=android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply {
+                max=100
+                progressTintList=android.content.res.ColorStateList.valueOf(accent)
+                indeterminateTintList=progressTintList
+            }
+            val rowActions=mutableListOf<Button>()
             line.addView(LinearLayout(this).apply {
                 orientation=LinearLayout.VERTICAL
                 addView(text(name,13f).apply {
@@ -2221,6 +2232,8 @@ class MainActivity : Activity() {
                 val source=if(item.manual) "MANUAL" else "DJI"
                 addView(text(if(item.priority) "★ NEXT  ·  $source" else source,
                     10f,if(item.priority) accent else muted))
+                addView(statusText)
+                addView(progress,LinearLayout.LayoutParams(-1,dp(4)).apply { topMargin=dp(4);bottomMargin=dp(2) })
             },LinearLayout.LayoutParams(0,-2,1f).apply { rightMargin=dp(6) })
             line.addView(button(if(item.priority)"★ Next" else "Prioritize") {
                 val promoted=ledger.prioritizeNext(item.uri,pid)
@@ -2251,13 +2264,66 @@ class MainActivity : Activity() {
                     showUploadQueue(searchTerm)
                 }
             })
+            for(i in 0 until line.childCount)(line.getChildAt(i) as? Button)?.let { rowActions.add(it) }
+            progressRows.add(QueueRow(item,statusText,progress,rowActions,
+                try { file?.exists()==true && file.canRead() }catch(_:Exception){false},
+                try { file?.length()?:0L }catch(_:Exception){0L}))
             layout.addView(line,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
         }
-        OffsetDialogBuilder(this).setTitle("Upload queue · ${pid}")
+        val uiHandler=android.os.Handler(android.os.Looper.getMainLooper())
+        var lastFileCheck=0L
+        val updater=object:Runnable {
+            override fun run() {
+                if(queueDialog?.isShowing!=true)return
+                if(prefs.getString("project","")!=pid) { queueDialog?.dismiss();return }
+                try {
+                    val now=System.currentTimeMillis()
+                    val pending=ledger.pendingQueue(pid).map { it.uri }.toSet()
+                    val transfers=ledger.transfers(pid)
+                    val paused=prefs.getBoolean("upload_paused",false)
+                    val manual=prefs.getString("upload_mode","auto")=="manual"
+                    val eligible=if(manual)(ledger.manualPending(pid)+ledger.urgentUris(pid)).toSet() else pending
+                    val policy=ControllerPolicy.pauseReason(this@MainActivity,prefs)
+                    summary.text="${pending.size} waiting · ${queue.count { it.priority && it.uri in pending }} prioritized · status updates automatically"
+                    val checkFiles=now-lastFileCheck>10000L
+                    if(checkFiles)lastFileCheck=now
+                    for(row in progressRows) {
+                        if(checkFiles) {
+                            val document=try { DocumentFile.fromSingleUri(this@MainActivity,Uri.parse(row.item.uri)) }catch(_:Exception){null}
+                            row.available=try { document?.exists()==true && document.canRead() }catch(_:Exception){false}
+                            row.size=try { document?.length()?:0L }catch(_:Exception){0L}
+                        }
+                        val transfer=transfers[row.item.uri]
+                        val total=transfer?.total?:row.size
+                        val state=QueueUploadStatus.describe(row.available,row.item.uri in pending,
+                            transfer?.phase=="ready",transfer?.phase,transfer?.received?:0L,total,
+                            paused,manual && row.item.uri !in eligible,policy,
+                            transfer?.let { (now-it.updated).coerceAtLeast(0L) }?:0L)
+                        val bytes=if(total>0L && row.available && transfer!=null)
+                            " · "+android.text.format.Formatter.formatShortFileSize(this@MainActivity,transfer.received.coerceIn(0L,total))+" / "+android.text.format.Formatter.formatShortFileSize(this@MainActivity,total) else ""
+                        row.status.text=state.label+bytes
+                        row.status.setTextColor(when(state.tone) {
+                            "error" -> Color.rgb(255,104,106)
+                            "waiting" -> Color.rgb(255,194,93)
+                            "active","ok" -> accent
+                            else -> muted
+                        })
+                        row.bar.isIndeterminate=state.verifying
+                        row.bar.progress=state.percent
+                        for(action in row.actions)action.isEnabled=row.item.uri in pending &&
+                            (row.available || action.text.toString()=="Remove")
+                    }
+                }catch(_:Exception) { summary.text="Status temporarily unavailable · retrying" }
+                uiHandler.postDelayed(this,1500)
+            }
+        }
+        OffsetDialogBuilder(this).setTitle("Upload queue · ${prefs.getString("project_name",pid)}")
             .setView(ScrollView(this).apply { addView(layout) })
             .setPositiveButton("Close",null).create().also {
                 queueDialog=it
+                it.setOnDismissListener { uiHandler.removeCallbacks(updater);ledger.close() }
                 it.show()
+                uiHandler.post(updater)
             }
     }
     private fun chooseManualFiles() {
