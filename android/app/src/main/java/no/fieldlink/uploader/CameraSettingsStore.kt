@@ -90,6 +90,22 @@ object CameraSettingsStore {
         return confirmedSamples(matching)
     }
 
+    /** Local diagnostics only: explain timing failures without guessing settings. */
+    @Synchronized fun matchFailureDetails(context:Context,project:String,modified:Long):String {
+        if(modified<=0L)return "File has no last-write timestamp."
+        if(abs(System.currentTimeMillis()-modified)>MAX_AGE_MS)return "File timestamp is outside the 4-hour capture window."
+        val prefs=context.getSharedPreferences("fieldlink",Context.MODE_PRIVATE)
+        val entries=try { JSONArray(prefs.getString(KEY,"[]")) }catch(_:Exception){JSONArray()}
+        val times=(0 until entries.length()).mapNotNull { i ->
+            entries.optJSONObject(i)?.takeIf { it.optString("project")==project }?.optLong("time")
+        }
+        if(times.isEmpty())return "No valid camera samples saved for this project."
+        val count=times.distinct().count { abs(it-modified)<=MATCH_WINDOW_MS }
+        val nearest=times.minOf { abs(it-modified) }/1000L
+        val fileTime=java.text.SimpleDateFormat("HH:mm:ss",Locale.ROOT).format(java.util.Date(modified))
+        return "File last write $fileTime; $count readings within ±8s; nearest ${nearest}s away. Two consistent readings are required."
+    }
+
     internal fun confirmedSamples(samples:List<Pair<Map<String,String>,Long>>):Pair<Map<String,String>,Long>? {
         if(samples.map { it.second }.distinct().size<2)return null
         val confirmed=mutableMapOf<String,String>()

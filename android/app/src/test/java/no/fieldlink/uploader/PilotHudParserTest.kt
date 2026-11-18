@@ -41,4 +41,23 @@ class PilotHudParserTest {
         assertFalse(actual.containsKey("lens"))
         assertTrue(PilotHudParser.readHud("ISO800 WB5600K 18mm 25").isEmpty())
     }
+
+    @Test fun clipElevenActualOcrText() {
+        val actual=PilotHudParser.readHud("RC.I 180.0° A 18mm IRIS3.5 M.M+0.7 WB5600K C60) 60) EI N 800 RECD-Log", "MON 709 MF OSTBY 18:46 TC 12:19:27:04 FF CinemaDNG 8K 25 D022C0011")
+        assertEquals(mapOf("exposure_index" to "800", "shutter" to "180°", "white_balance" to "5600K", "lens" to "18mm", "recording_format" to "CinemaDNG", "fps" to "25"),actual)
+    }
+    @Test fun mergedWhiteBalanceElementDoesNotDiscardHud() {
+        val actual=PilotHudParser.parse(listOf(
+            PilotHudParser.Word("180.0° 18mm IRIS3.5",.1f,.10f),
+            PilotHudParser.Word("M.M+0.7 WB5600K C60)",.4f,.10f),
+            PilotHudParser.Word("EI N 800 RECD-Log",.7f,.10f),
+            PilotHudParser.Word("FF CinemaDNG 8K 25 D022C0011",.4f,.94f)))
+        assertEquals(6,actual.size)
+        assertEquals("180°",actual["shutter"])
+    }
+    @Test fun zeroGimbalAndConflictingAnglesAreNotShutter() {
+        assertEquals("180°",PilotHudParser.readHud("180° EI800 IRIS3.5 WB5600K 0°")["shutter"])
+        assertFalse(PilotHudParser.readHud("180° EI800 IRIS3.5 WB5600K 90°").containsKey("shutter"))
+        assertFalse(PilotHudParser.readHud("EI800 IRIS3.5 WB5600K 0°").containsKey("shutter"))
+    }
 }

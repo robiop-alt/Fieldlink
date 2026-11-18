@@ -25,11 +25,14 @@ internal object PilotHudParser {
         unique(top,"\\bWB\\s*(\\d{4,5})\\s*K?\\b")?.toIntOrNull()
             ?.takeIf { it in 2000..12000 }?.let { values["white_balance"]="${it}K" }
         unique(top,"\\b(18|24|35|50)\\s*\\.?\\s*MM\\b")?.let { values["lens"]="${it}mm" }
-        // EI/ISO -> shutter-angle symbol/value -> IRIS is the observed DJI order.
-        unique(top,"\\b(?:EI|ISO)\\s*(?:N\\s*)?\\d{2,5}(?:\\s*N)?\\s*[∠<∡]?\\s*(\\d{1,3}(?:\\.\\d{1,2})?)\\s*[°º]\\s*IRIS")
-            ?.toDoubleOrNull()?.takeIf { it>0 && it<=360 }?.let {
-                values["shutter"]=(if(it%1.0==0.0)it.toInt().toString() else it.toString())+"°"
-            }
+        // The angle can precede EI in fullscreen mode. Only accept a unique
+        // positive degree value inside the verified camera HUD (0° is gimbal).
+        val angles=Regex("(?<![\\d.])(\\d{1,3}(?:\\.\\d{1,2})?)\\s*[°º]").findAll(top)
+            .mapNotNull { it.groupValues[1].toDoubleOrNull() }
+            .filter { it>0 && it<=360 }.distinct().toList()
+        angles.singleOrNull()?.let {
+            values["shutter"]=(if(it%1.0==0.0)it.toInt().toString() else it.toString())+"°"
+        }
         // These are explicit codec names; Rec LUT/D-Log and MON709 are not codecs.
         val codecText="$top $bottom"
         val codecs=Regex("\\b(CINEMADNG|CINEDNG|CDNG|(?:APPLE\\s+)?PRORES(?:\\s+(?:RAW|422(?:\\s+HQ)?))?)\\b")
@@ -48,16 +51,13 @@ internal object PilotHudParser {
     }
 
     fun parse(words:List<Word>):Map<String,String> {
-        val topWords=words.filter { it.y in 0f..0.35f }
-        val anchors=topWords.filter { normalized(it.text).matches(Regex("WB(?:\\s*\\d{4,5}K?)?")) }
-        val candidates=anchors.map { anchor ->
-            val text=topWords.filter { kotlin.math.abs(it.y-anchor.y)<0.065f }
-                .sortedWith(compareBy<Word> { it.x }.thenBy { it.y }).joinToString(" ") { it.text }
-            val bottom=words.filter { it.y>=0.84f && it.y<=1f }
-                .sortedBy { it.x }.joinToString(" ") { it.text }
-            readHud(text,bottom)
-        }.filter { it.isNotEmpty() }
-        if(candidates.size!=1)return emptyMap()
-        return candidates[0]
+        // ML Kit may merge WB with neighbouring words or split it across
+        // elements. Parse the bounded HUD as a whole rather than requiring one
+        // exact WB element. Label checks and per-field ambiguity checks remain.
+        val top=words.filter { it.y in 0f..0.35f }
+            .sortedWith(compareBy<Word> { it.x }.thenBy { it.y }).joinToString(" ") { it.text }
+        val bottom=words.filter { it.y in 0.84f..1f }
+            .sortedWith(compareBy<Word> { it.x }.thenBy { it.y }).joinToString(" ") { it.text }
+        return readHud(top,bottom)
     }
 }

@@ -616,7 +616,7 @@ class UploadService : Service() {
     private fun sendCameraSettings(doc:DocumentFile,clipId:String,reading:Pair<Map<String,String>,Long>?) {
         try {
             val matched=reading?:run {
-                prefs.edit().putString("metadata_last_delivery","No matching camera reading for "+(doc.name ?: "clip")).apply()
+                prefs.edit().putString("metadata_last_delivery","No matching camera reading for "+(doc.name ?: "clip")+"\n"+CameraSettingsStore.matchFailureDetails(this,sessionProject,doc.lastModified())).apply()
                 return
             }
             val (values,observedAt)=matched
