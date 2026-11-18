@@ -155,7 +155,7 @@ class OverlayStatus(private val ctx: Context) {
         }
         actionLabel?.visibility=if(expanded) View.VISIBLE else View.GONE
         permissionTap?.apply {
-            text=if(!ScreenCaptureService.isReading) "!  ENABLE METADATA" else "!  ALLOW ACCESS"
+            text=if(!ScreenCaptureService.isReading) "Tap me for metadata" else "!  ALLOW ACCESS"
             visibility=if(last.contains("permission needed",true)) View.VISIBLE else View.GONE
         }
         metadataTap?.visibility=if(!last.contains("permission needed",true) &&
@@ -228,7 +228,7 @@ class OverlayStatus(private val ctx: Context) {
             }
         }
         val metadata=TextView(ctx).apply {
-            text="●  METADATA TAP"
+            text="Tap me for metadata"
             textSize=10f
             setTypeface(null,Typeface.BOLD)
             setTextColor(Color.rgb(255,183,86))
@@ -243,7 +243,7 @@ class OverlayStatus(private val ctx: Context) {
             }
         }
         val permission=TextView(ctx).apply {
-            text=if(!ScreenCaptureService.isReading) "!  ENABLE METADATA" else "!  ALLOW ACCESS"
+            text=if(!ScreenCaptureService.isReading) "Tap me for metadata" else "!  ALLOW ACCESS"
             textSize=10f
             setTypeface(null,Typeface.BOLD)
             setTextColor(Color.rgb(255,194,93))
