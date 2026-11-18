@@ -1888,25 +1888,29 @@ class MainActivity : Activity() {
                 }
                 bulk.addView(selectedCount,LinearLayout.LayoutParams(0,-2,1f))
                 val bulkQueue=button("Add to queue") {
-                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection && remoteByName[it.file.name.orEmpty()]==null }
                         .map { it.file },"queue")
                 }
                 val bulkPriority=button("Priority") {
-                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection && remoteByName[it.file.name.orEmpty()]==null }
                         .map { it.file },"priority")
                 }
                 val bulkClearPriority=button("Clear ★") {
-                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection && remoteByName[it.file.name.orEmpty()]==null }
                         .map { it.file },"clear_priority")
                 }
                 val bulkExclude=button("Exclude") {
-                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection }
+                    performMediaBatchAction(pid,clips.filter { it.file.uri.toString() in selection && remoteByName[it.file.name.orEmpty()]==null }
                         .map { it.file },"exclude")
                 }
                 fun refreshBulk() {
                     selectedCount.text="${selection.size} selected"
                     for(control in listOf(bulkQueue,bulkPriority,bulkClearPriority,bulkExclude))
-                        control.isEnabled=selection.isNotEmpty()
+                        control.isEnabled=clips.any { item ->
+                            item.file.uri.toString() in selection &&
+                            remoteByName[item.file.name.orEmpty()]==null &&
+                            ledger.stateFor(item.file.uri.toString(),pid) !in listOf("other","done")
+                        }
                 }
                 bulk.addView(bulkQueue)
                 bulk.addView(bulkPriority)
@@ -1979,14 +1983,23 @@ class MainActivity : Activity() {
                         text=""
                         contentDescription="Select $name"
                         buttonTintList=android.content.res.ColorStateList.valueOf(accent)
-                        isEnabled=cloud==null && localState!="other" && localState!="done"
+                        isEnabled=localState!="other"
+                        minWidth=0
+                        minHeight=0
+                        setPadding(0,0,0,0)
                         setOnCheckedChangeListener { _,checked ->
                             if(checked)selection.add(file.uri.toString())
                             else selection.remove(file.uri.toString())
                             refreshBulk()
                         }
                     }
-                    selectRow.addView(selectBox,LinearLayout.LayoutParams(dp(33),dp(34)))
+                    // The full filename row is a selection target, not just the small glyph.
+                    selectRow.minimumHeight=dp(40)
+                    selectRow.isEnabled=selectBox.isEnabled
+                    selectRow.setOnClickListener {
+                        if(selectBox.isEnabled)selectBox.toggle()
+                    }
+                    selectRow.addView(selectBox,LinearLayout.LayoutParams(dp(33),dp(40)))
                     selectRow.addView(text(name,12f,Color.WHITE).apply {
                         maxLines=1
                         ellipsize=android.text.TextUtils.TruncateAt.MIDDLE
