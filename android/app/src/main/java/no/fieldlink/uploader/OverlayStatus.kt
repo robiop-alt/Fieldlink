@@ -119,7 +119,7 @@ class OverlayStatus(private val ctx: Context) {
                  else "No recent confirmed delivery"
             visibility=if(expanded || style=="classic") View.VISIBLE else View.GONE
         }
-        val showProject=expanded || prefs.getBoolean("overlay_show_project",true)
+        val showProject=expanded || (style!="minimal" && prefs.getBoolean("overlay_show_project",true))
         projectLabel?.apply {
             text=prefs.getString("project_name",null)?.takeIf { it.isNotBlank() }
                 ?: project.takeIf { it.isNotBlank() } ?: "No project selected"
@@ -133,7 +133,7 @@ class OverlayStatus(private val ctx: Context) {
                 expanded -> "OFFSET  −"
                 compact -> "●  ${shortText()}"
                 style=="classic" -> "●  OFFSET  +"
-                else -> shortText()
+                else -> "●"
             }
             setTextColor(stateColor())
             textSize=if(expanded) 13f else if(style=="minimal") 12f else 13f
@@ -154,8 +154,8 @@ class OverlayStatus(private val ctx: Context) {
             visibility=if(expanded) View.VISIBLE else View.GONE
         }
         actionLabel?.visibility=if(expanded) View.VISIBLE else View.GONE
-        permissionTap?.visibility=if(last.contains("permission needed",true)) View.VISIBLE else View.GONE
-        metadataTap?.visibility=if(!last.contains("permission needed",true) &&
+        permissionTap?.visibility=if((expanded || style!="minimal") && last.contains("permission needed",true)) View.VISIBLE else View.GONE
+        metadataTap?.visibility=if((expanded || style!="minimal") && !last.contains("permission needed",true) &&
             prefs.getBoolean("metadata_reminder",true) &&
             !prefs.getBoolean("metadata_capture_active",false)) View.VISIBLE else View.GONE
         root?.background=drawable()
