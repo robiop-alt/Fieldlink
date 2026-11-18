@@ -33,6 +33,7 @@ class UploadService : Service() {
     private var sessionProject = ""
     private var sessionBase = ""
     private var sessionToken = ""
+    private var sessionTree = ""
     private val prefs by lazy { getSharedPreferences("fieldlink", MODE_PRIVATE) }
     private val http = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).writeTimeout(120, TimeUnit.SECONDS).build()
     @Volatile private var running = true
@@ -64,6 +65,7 @@ class UploadService : Service() {
             sessionProject = prefs.getString("project", "") ?: ""
             sessionBase = prefs.getString("server", "")?.trimEnd('/') ?: ""
             sessionToken = prefs.getString("token", "") ?: ""
+            sessionTree = prefs.getString("tree_uri", "") ?: ""
             loopStarted = true
             Thread { monitorLoop() }.start()
         }
@@ -388,7 +390,7 @@ class UploadService : Service() {
     }
 
     private fun publishPreviewImages(files:List<DocumentFile>) {
-        val tree=prefs.getString("tree_uri",null)?.let(Uri::parse) ?: return
+        val tree=sessionTree.takeIf { it.isNotBlank() }?.let(Uri::parse) ?: return
         val thumbDir=DocumentFile.fromTreeUri(this,tree)?.findFile(".thumbnail") ?: return
         val thumbs=thumbDir.listFiles().filter { it.isFile &&
             ((it.name ?: "").endsWith(".JPEG",true) || (it.name ?: "").endsWith(".JPG",true)) }
@@ -595,9 +597,12 @@ class UploadService : Service() {
         lowFile?.delete()
         val clipId=result.optString("clip_id")
         if(clipId.isNotBlank()) {
+            val cameraReading=runCatching {
+                CameraSettingsStore.bind(this,sessionProject,doc.uri.toString(),doc.lastModified())
+            }.getOrNull()
             // The video is verified. Optional requests must not delay the next clip.
             runCatching { auxiliaryWorker.execute {
-                sendCameraSettings(doc,clipId)
+                sendCameraSettings(doc,clipId,cameraReading)
                 sendDjiThumbnail(doc,clipId)
             } }
         }
@@ -608,9 +613,9 @@ class UploadService : Service() {
      * match this file's close/last-modified time. Never use proxy ffprobe fields.
      * A missing or ambiguous reading leaves the review chips empty.
      */
-    private fun sendCameraSettings(doc:DocumentFile,clipId:String) {
+    private fun sendCameraSettings(doc:DocumentFile,clipId:String,reading:Pair<Map<String,String>,Long>?) {
         try {
-            val matched=CameraSettingsStore.bind(this,sessionProject,doc.uri.toString(),doc.lastModified())?:run {
+            val matched=reading?:run {
                 prefs.edit().putString("metadata_last_delivery","No matching camera reading for "+(doc.name ?: "clip")).apply()
                 return
             }
@@ -659,7 +664,7 @@ class UploadService : Service() {
 
     private fun sendDjiThumbnail(video: DocumentFile, clipId: String) {
         try {
-            val tree=prefs.getString("tree_uri",null)?.let(Uri::parse) ?: return
+            val tree=sessionTree.takeIf { it.isNotBlank() }?.let(Uri::parse) ?: return
             val root=DocumentFile.fromTreeUri(this,tree) ?: return
             val thumbs=root.findFile(".thumbnail") ?: return
             val stem=(video.name ?: return).substringBeforeLast('.')
