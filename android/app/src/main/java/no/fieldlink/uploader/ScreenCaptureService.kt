@@ -24,12 +24,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Explicitly operator-authorized MediaProjection, OCR only on-device.
- * Image pixels and unfiltered screen text are NEVER stored or uploaded.
+ * Images and raw OCR are never written to storage or uploaded. The most recent
+ * HUD words can be inspected locally in a transient diagnostic message.
  * Captures a frame at most every 5 seconds; pauses when DJI Pilot is not
  * foreground if usage-access permission makes that detectable.
  */
 class ScreenCaptureService : Service() {
     companion object {
+        @Volatile var lastReadingDetails="No OCR result in this session."
+            private set
         @Volatile var isReading=false
             private set
         fun notifyAccessNeeded(context:android.content.Context) {
@@ -58,6 +61,7 @@ class ScreenCaptureService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        lastReadingDetails="Waiting for the first screen reading."
         val channel="offset_metadata"
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(channel,"OFFSET kamerametadata",NotificationManager.IMPORTANCE_LOW))
@@ -130,7 +134,13 @@ class ScreenCaptureService : Service() {
                                 PilotHudParser.Word(element.text,box.centerX().toFloat()/width,box.centerY().toFloat()/height)
                             } }
                         } }
+                        val hudWords=words.filter { it.y<=0.35f || it.y>=0.84f }
                         val hud=PilotHudParser.parse(words)
+                        lastReadingDetails="Frame: ${width} x ${height}\nOCR words: ${words.size} · HUD words: ${hudWords.size}\n"+
+                            "HUD matched fields: "+hud.keys.joinToString(", ").ifBlank { "none" }+
+                            "\n\nLatest HUD text (local only):\n"+
+                            hudWords.sortedWith(compareBy<PilotHudParser.Word> { it.y }.thenBy { it.x })
+                                .take(90).joinToString(" ") { it.text }.take(1600).ifBlank { "No text detected." }
                         // Labelled legacy controls remain a fallback, without inventing fields.
                         val values=if(hud.isNotEmpty())hud else CameraSettingsStore.parse(result.text)
                         CameraSettingsStore.observeValues(this,values,capturedAt)
@@ -150,6 +160,7 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         isReading=false
+        lastReadingDetails="Screen reading stopped. Enable Camera metadata and inspect DJI Pilot again."
         notifyAccessNeeded(this)
         getSharedPreferences("fieldlink",MODE_PRIVATE).edit()
             .putBoolean("metadata_capture_active",false).apply()

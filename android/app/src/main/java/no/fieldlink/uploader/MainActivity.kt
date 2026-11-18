@@ -1333,6 +1333,11 @@ class MainActivity : Activity() {
                 prefs.getString("metadata_last_delivery","No camera fields attached yet.").orEmpty()+
                 "\n\nReadings are collected only while screen access is enabled. Existing clips are not filled with current camera settings.")
             .setNegativeButton("Close",null)
+            .setNeutralButton("Reading details") { _,_ ->
+                OffsetDialogBuilder(this).setTitle("HUD reading details")
+                    .setMessage(ScreenCaptureService.lastReadingDetails)
+                    .setPositiveButton("Close",null).show()
+            }
             .setPositiveButton(if(active) "Restart reading" else "Enable reading") { _,_ ->
                 stopService(Intent(this,ScreenCaptureService::class.java))
                 startMetadataCapture()

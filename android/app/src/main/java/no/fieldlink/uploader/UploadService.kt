@@ -37,8 +37,13 @@ class UploadService : Service() {
     private val http = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).writeTimeout(120, TimeUnit.SECONDS).build()
     @Volatile private var running = true
     @Volatile private var loopStarted = false
-    private data class FileState(val size: Long, val modified: Long, val stableScans: Int)
-    private val seen = mutableMapOf<String, FileState>()
+    private val fileStability=FileStabilityTracker()
+    private val previewWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val auxiliaryWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val incomingBusy=java.util.concurrent.atomic.AtomicBoolean(false)
+    private val auxiliaryHttp=OkHttpClient.Builder().connectTimeout(5,TimeUnit.SECONDS)
+        .readTimeout(10,TimeUnit.SECONDS).writeTimeout(10,TimeUnit.SECONDS)
+        .callTimeout(20,TimeUnit.SECONDS).build()
     private var batteryPaused=false
     private var recoveryFailures=0
     private var recoveryUntil=0L
@@ -65,7 +70,12 @@ class UploadService : Service() {
         return START_STICKY
     }
     override fun onBind(intent: Intent?): IBinder? = null
-    override fun onDestroy() { running = false; super.onDestroy() }
+    override fun onDestroy() {
+        running=false
+        previewWorker.shutdown()
+        auxiliaryWorker.shutdown() // finish already queued best-effort attachments
+        super.onDestroy()
+    }
 
     private fun notification(message: String): Notification {
         val channel = "fieldlink_upload"
@@ -177,24 +187,20 @@ class UploadService : Service() {
                     for(file in discovered) {
                         if(!file.isFile || file.length()<=0L)continue
                         val key=file.uri.toString()
-                        val old=seen[key]
                         val size=file.length()
                         val modified=file.lastModified()
-                        val stable=if(old!=null && old.size==size && old.modified==modified)
-                            (old.stableScans+1).coerceAtMost(3) else 0
-                        seen[key]=FileState(size,modified,stable)
-                        if(stable>=3) {
+                        if(fileStability.observe(key,size,modified,android.os.SystemClock.elapsedRealtime())) {
                             ledger.observe(file,sessionProject,true)
                             runCatching { CameraSettingsStore.bind(this,sessionProject,key,modified) }
                         }
                     }
                     status("OFFSET off · monitoring DJI files · uploads paused")
-                    Thread.sleep(12000)
+                    Thread.sleep(4000)
                     continue
                 }
                 if (lowBatteryPause()) {
                     lowBatteryStatus()
-                    Thread.sleep(12000)
+                    Thread.sleep(4000)
                     continue
                 }
                 if (prefs.getString("project", "") != sessionProject) {
@@ -203,7 +209,7 @@ class UploadService : Service() {
                 val policyPause=ControllerPolicy.pauseReason(this,prefs)
                 if(policyPause!=null) {
                     status(policyPause)
-                    Thread.sleep(12000)
+                    Thread.sleep(4000)
                     continue
                 }
                 if(prefs.getBoolean("retry_requested",false)) {
@@ -212,12 +218,12 @@ class UploadService : Service() {
                 if(System.currentTimeMillis()<recoveryUntil &&
                    prefs.getBoolean("smart_recovery",true)) {
                     status("Waiting to retry · upload progress saved")
-                    Thread.sleep(12000)
+                    Thread.sleep(4000)
                     continue
                 }
                 if (!hasNetwork()) {
                     status("Waiting for network · resumes automatically")
-                    Thread.sleep(12000)
+                    Thread.sleep(4000)
                     continue
                 }
                 // Priority is persisted independently of the manual queue. The
@@ -256,6 +262,11 @@ class UploadService : Service() {
                 // normal DJI sequence. A file appears once, regardless of source.
                 val unique=HashSet<String>()
                 val work=(urgent+manualFiles+ordered).filter { unique.add(it.uri.toString()) }
+                // Observe every waiting file together: a growing clip does not
+                // restart a separate settling delay for each later finished clip.
+                val fileReady=work.filter { file ->
+                    fileStability.observe(file.uri.toString(),file.length(),file.lastModified(),android.os.SystemClock.elapsedRealtime())
+                }.map { it.uri.toString() }.toSet()
                 var uploaded=0
                 for((index,f) in work.withIndex()) {
                     if(!running || prefs.getBoolean("upload_paused",false) || lowBatteryPause()) {
@@ -268,20 +279,9 @@ class UploadService : Service() {
                     val manual=key in manualSet
                     val binding=ledger.observe(f,sessionProject,!manual)
                     if(binding!="pending")continue
-                    val stamp=f.lastModified()
                     val size=f.length()
-                    if(!manual) {
-                        // A prioritized DJI cache file must obey the same
-                        // stability/quarantine rules as any automatic file.
-                        val old=seen[key]
-                        if(old==null || old.size!=size || old.modified!=stamp) {
-                            seen[key]=FileState(size,stamp,0)
-                            break
-                        }
-                        val stable=old.stableScans+1
-                        seen[key]=old.copy(stableScans=stable)
-                        if(stable<3 || size<=0L)break
-                    }
+                    // Explicit file-picker queue keeps its existing behavior.
+                    if(!manual && (key !in fileReady || size<=0L))continue
                     status("Sender ${f.name ?: "videoklipp"} · ${size/1048576} MB"+
                         if(key in ledger.urgentUris(sessionProject))" · PRIORITY" else "")
                     ledger.logEvent(sessionProject,f.name ?: "clip.mp4","started",
@@ -312,7 +312,7 @@ class UploadService : Service() {
                 if(lowBatteryPause()) lowBatteryStatus()
                 else status(if (uploaded > 0) "$uploaded klipp sendt · overvåker nye filer" else "Overvåker · ${ledger.countQuarantined()} gamle/ukjente filer blokkert")
             } catch (e: Exception) { status("Venter på nett / tilgang · ${e.message?.take(70) ?: "feil"}");recoveryFailure() }
-            try { Thread.sleep(12000) } catch (_: InterruptedException) { }
+            try { Thread.sleep(4000) } catch (_: InterruptedException) { }
         }
     }
 
@@ -356,6 +356,16 @@ class UploadService : Service() {
         .writeTimeout(8,TimeUnit.SECONDS).build()
 
     private fun publishIncoming(files:List<DocumentFile>) {
+        if(!incomingBusy.compareAndSet(false,true))return
+        val snapshot=files.toList()
+        try {
+            previewWorker.execute {
+                try { publishIncomingNow(snapshot) }finally { incomingBusy.set(false) }
+            }
+        }catch(_:java.util.concurrent.RejectedExecutionException) { incomingBusy.set(false) }
+    }
+
+    private fun publishIncomingNow(files:List<DocumentFile>) {
         if(!sessionBase.startsWith("https://") || sessionProject.isBlank()) return
         try {
             val names=HashSet<String>()
@@ -585,8 +595,11 @@ class UploadService : Service() {
         lowFile?.delete()
         val clipId=result.optString("clip_id")
         if(clipId.isNotBlank()) {
-            sendCameraSettings(doc,clipId)
-            sendDjiThumbnail(doc,clipId)
+            // The video is verified. Optional requests must not delay the next clip.
+            runCatching { auxiliaryWorker.execute {
+                sendCameraSettings(doc,clipId)
+                sendDjiThumbnail(doc,clipId)
+            } }
         }
     }
 
@@ -612,10 +625,9 @@ class UploadService : Service() {
                 .header("X-Device-Token",sessionToken)
                 .put(payload).build()
             // Camera metadata is best-effort, independent of verified video delivery.
-            http.newCall(request).execute().use { response ->
+            auxiliaryHttp.newCall(request).execute().use { response ->
                 prefs.edit().putString("metadata_last_delivery",if(response.isSuccessful)
                     "Attached to "+(doc.name ?: "clip") else "Server rejected camera fields: HTTP ${response.code}").apply()
-                if(!response.isSuccessful)status("Camera settings not attached · clip remains safe")
             }
         }catch(_:Exception) {
             // Never delay or roll back a successfully verified video upload.
@@ -663,8 +675,8 @@ class UploadService : Service() {
             val body=data.toRequestBody("image/jpeg".toMediaType())
             val multipart=MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("image",jpeg.name ?: "thumbnail.jpg",body).build()
-            execute(Request.Builder().url("$sessionBase/api/device/clips/$clipId/thumbnail")
-                .header("X-Device-Token",sessionToken).post(multipart).build())
+            auxiliaryHttp.newCall(Request.Builder().url("$sessionBase/api/device/clips/$clipId/thumbnail")
+                .header("X-Device-Token",sessionToken).post(multipart).build()).execute().use { }
         } catch (_:Exception) {
             // Thumbnail is optional; never mark an otherwise successful video upload failed.
         }
